@@ -1,6 +1,6 @@
-# Tauri + Leptos
+# ArkSync
 
-This template should help get you started developing with Tauri and Leptos.
+An environmental control system for Raspberry Pi 4+. Curious about the project? Learn more on my [blog](https://theredfi.sh/).
 
 ## Recommended IDE Setup
 

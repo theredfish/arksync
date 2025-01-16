@@ -59,7 +59,7 @@ pub fn App() -> impl IntoView {
                     placeholder="Enter a name..."
                     on:input=update_name
                 />
-                <button type="submit">"Greet"</button>
+                <button class="rounded-lg h-10 p-3 bg-blue-400" type="submit">"Greet"</button>
             </form>
             <p>{ move || greet_msg.get() }</p>
         </main>
