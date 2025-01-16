@@ -1,67 +1,54 @@
-use leptos::leptos_dom::ev::SubmitEvent;
-use leptos::*;
-use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
-}
-
-#[derive(Serialize, Deserialize)]
-struct GreetArgs<'a> {
-    name: &'a str,
-}
+use charming::{
+    component::{Axis, Title},
+    element::AxisType,
+    series::Line,
+    Chart, WasmRenderer,
+};
+use leptos::prelude::*;
+use leptos_use::use_interval_fn;
+use leptos_use::utils::Pausable;
 
 #[component]
 pub fn App() -> impl IntoView {
-    let (name, set_name) = create_signal(String::new());
-    let (greet_msg, set_greet_msg) = create_signal(String::new());
+    // Chart
+    let data = RwSignal::new(vec![150, 230, 224, 218, 135, 147, 260]);
+    let action = Action::new(move |_input: &()| {
+        let local = data.get();
+        async move {
+            let chart = Chart::new()
+                .title(Title::new().text("Demo: Leptos + Charming"))
+                .x_axis(
+                    Axis::new()
+                        .type_(AxisType::Category)
+                        .data(vec!["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]),
+                )
+                .y_axis(Axis::new().type_(AxisType::Value))
+                .series(Line::new().data(local));
 
-    let update_name = move |ev| {
-        let v = event_target_value(&ev);
-        set_name.set(v);
-    };
+            let renderer = WasmRenderer::new(600, 400);
+            renderer.render("chart", &chart).unwrap();
+        }
+    });
 
-    let greet = move |ev: SubmitEvent| {
-        ev.prevent_default();
-        spawn_local(async move {
-            let name = name.get_untracked();
-            if name.is_empty() {
-                return;
-            }
+    let Pausable {
+        pause,
+        resume,
+        is_active: _,
+    } = use_interval_fn(
+        move || {
+            data.update(|d| d.rotate_right(1));
+            action.dispatch(());
+        },
+        1000,
+    );
 
-            let args = serde_wasm_bindgen::to_value(&GreetArgs { name: &name }).unwrap();
-            // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-            let new_msg = invoke("greet", args).await.as_string().unwrap();
-            set_greet_msg.set(new_msg);
-        });
-    };
+    action.dispatch(());
 
     view! {
-        <main class="container">
-            <h1>"Welcome to Tauri + Leptos"</h1>
-
-            <div class="row">
-                <a href="https://tauri.app" target="_blank">
-                    <img src="public/tauri.svg" class="logo tauri" alt="Tauri logo"/>
-                </a>
-                <a href="https://docs.rs/leptos/" target="_blank">
-                    <img src="public/leptos.svg" class="logo leptos" alt="Leptos logo"/>
-                </a>
-            </div>
-            <p>"Click on the Tauri and Leptos logos to learn more."</p>
-
-            <form class="row" on:submit=greet>
-                <input
-                    id="greet-input"
-                    placeholder="Enter a name..."
-                    on:input=update_name
-                />
-                <button class="rounded-lg h-10 p-3 bg-blue-400" type="submit">"Greet"</button>
-            </form>
-            <p>{ move || greet_msg.get() }</p>
-        </main>
+        <div>
+            <div id="chart"></div>
+            <button on:click=move |_| pause()>"Pause"</button>
+            <button on:click=move |_| resume()>"Resume"</button>
+        </div>
     }
 }
