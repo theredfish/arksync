@@ -22,6 +22,10 @@ pub fn DynamicChartExample() -> impl IntoView {
     let data = RwSignal::new(vec![150, 230, 224, 218, 135, 147, 260]);
     let action = Action::new(move |_input: &()| {
         let local = data.get();
+        let (width, height) = size.get();
+        let width = width.clamp(100_f64, 600_f64) as u32;
+        let height = height.clamp(50_f64, 400_f64) as u32;
+
         async move {
             let chart = Chart::new()
                 .title(Title::new().text("Demo: Leptos + Charming"))
@@ -33,15 +37,14 @@ pub fn DynamicChartExample() -> impl IntoView {
                 .y_axis(Axis::new().type_(AxisType::Value))
                 .series(Line::new().data(local));
 
-            let (width, height) = size.get();
-            let renderer = WasmRenderer::new(width as u32, height as u32);
+            let renderer = WasmRenderer::new(width, height);
             let echarts = renderer.render("chart", &chart).unwrap();
-            // let chart_size: ChartResize =
+
             WasmRenderer::resize_chart(
                 &echarts,
                 ChartResize {
-                    width: width as u32,
-                    height: height as u32,
+                    width,
+                    height,
                     silent: true,
                     animation: Some(Animation {
                         duration: 250,
@@ -70,9 +73,6 @@ pub fn DynamicChartExample() -> impl IntoView {
         <div class="flex flex-col">
             <div class="flex-grow border-2 border-red-700 w-1/2 p-20">
                 <div node_ref=chartNode id="chart"></div>
-            </div>
-            <div>
-                { move || format!("{},{}", size.get().0, size.get().1) }
             </div>
             <button on:click=move |_| pause()>"Pause"</button>
             <button on:click=move |_| resume()>"Resume"</button>
