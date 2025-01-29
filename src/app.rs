@@ -5,11 +5,11 @@ use leptos::prelude::*;
 #[component]
 pub fn App() -> impl IntoView {
     view! {
-        <div class="flex w-full h-full">
-            <div class="w-1/2">
+        <div class="bg-darcula-black text-gray-100 flex w-screen h-screen">
+            <Sidebar class="w-1/6 bg-darcula-gray p-5" />
+            <div id="charts-container" class="w-full p-5">
                 <DynamicChartExample />
             </div>
-            <Sidebar class="w-1/2 bg-gray-900 p-20" />
         </div>
     }
 }

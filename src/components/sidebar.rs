@@ -5,7 +5,7 @@ use leptos::IntoView;
 pub fn Sidebar(#[prop(into)] class: String) -> impl IntoView {
     view! {
         <div class={class}>
-            <p>"Sidebar"</p>
+            <h2>"ArkSync"</h2>
         </div>
     }
 }
