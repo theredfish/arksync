@@ -4,7 +4,7 @@ use charming::{
     series::Line,
     Animation, Chart, ChartResize, Easing, Echarts, WasmRenderer,
 };
-use leptos::{html::Div, logging::log, prelude::*};
+use leptos::{html::Div, prelude::*};
 use leptos_use::{use_element_size, use_interval_fn, utils::Pausable};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -23,7 +23,8 @@ pub fn DynamicChartExample() -> impl IntoView {
     let render_responsive_chart = move |width: f64, height: f64, serie: Vec<i32>| {
         let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::clone(&chart_instance);
         let mut chart_ref = chart_instance.borrow_mut();
-        let (width, height) = (width as u32, height as u32);
+        let width = if width == 0.0 { 300 } else { width as u32 };
+        let height = if height == 0.0 { 150 } else { height as u32 };
 
         let chart_config = Chart::new()
             .title(
@@ -49,7 +50,7 @@ pub fn DynamicChartExample() -> impl IntoView {
                     height,
                     silent: true,
                     animation: Some(Animation {
-                        duration: 300,
+                        duration: 150,
                         easing: Some(Easing::Linear),
                     }),
                 },
