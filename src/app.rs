@@ -14,7 +14,7 @@ pub fn App() -> impl IntoView {
                 <Sidebar class="w-1/6 bg-darcula-gray p-5" />
                 <Routes fallback=|| "Not found.">
                     <Route path=path!("/") view=Home/>
-                    <Route path=path!("/dashboard") view=Dashboard />
+                    <Route path=path!("/dashboards") view=Dashboards />
                 </Routes>
             </main>
         </Router>
@@ -22,7 +22,7 @@ pub fn App() -> impl IntoView {
 }
 
 #[component]
-pub fn Dashboard() -> impl IntoView {
+pub fn Dashboards() -> impl IntoView {
     view! {
         <div id="charts-container" class="w-full p-5">
             <DynamicChartExample />
