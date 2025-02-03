@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+
+    a[aria-current],
+    a:hover {
+        @apply text-darcula-yellow-400
+    }
+}
