@@ -1,4 +1,4 @@
-use crate::components::charts::DynamicChartExample;
+use crate::components::charts::AirTemperatureChart;
 use crate::components::sidebar::Sidebar;
 use leptos::prelude::*;
 use leptos_router::{
@@ -25,7 +25,7 @@ pub fn App() -> impl IntoView {
 pub fn Dashboards() -> impl IntoView {
     view! {
         <div id="charts-container" class="w-full p-5">
-            <DynamicChartExample />
+            <AirTemperatureChart />
         </div>
     }
 }

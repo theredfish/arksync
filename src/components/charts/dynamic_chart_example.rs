@@ -4,23 +4,34 @@ use charming::{
     series::Line,
     Animation, Chart, ChartResize, Easing, Echarts, WasmRenderer,
 };
-use leptos::{html::Div, prelude::*};
-use leptos_use::{use_element_size, use_interval_fn, utils::Pausable};
+use futures_util::StreamExt;
+use leptos::{html::Div, logging::log, prelude::*};
+use leptos_use::use_element_size;
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::rc::Rc;
+use tauri_sys::event::listen;
+use wasm_bindgen_futures::spawn_local;
+
+#[derive(Clone, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct SensorData {
+    name: String,
+    value: [f32; 7],
+}
 
 #[component]
-pub fn DynamicChartExample() -> impl IntoView {
+pub fn AirTemperatureChart() -> impl IntoView {
     let chart_container = NodeRef::<Div>::new();
     let chart_node = NodeRef::<Div>::new();
     let chart_container_size = use_element_size(chart_container);
     let (chart_container_w, chart_container_h) =
         (chart_container_size.width, chart_container_size.height);
 
-    let serie = RwSignal::new(vec![150, 230, 224, 218, 135, 147, 260]);
+    let sensor_values = RwSignal::new(vec![0.0; 7]);
     let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::new(RefCell::new(None));
 
-    let render_responsive_chart = move |width: f64, height: f64, serie: Vec<i32>| {
+    let render_responsive_chart = move |width: f64, height: f64, serie: Vec<f32>| {
         let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::clone(&chart_instance);
         let mut chart_ref = chart_instance.borrow_mut();
         let width = if width == 0.0 { 300 } else { width as u32 };
@@ -62,28 +73,37 @@ pub fn DynamicChartExample() -> impl IntoView {
         }
     };
 
-    // Auto-rotate data
-    let Pausable {
-        pause,
-        resume,
-        is_active: _,
-    } = use_interval_fn(
-        move || {
-            serie.update(|d| d.rotate_right(1));
-        },
-        1000,
-    );
+    Effect::new(move |_| {
+        spawn_local(async move {
+            let _ = tauri_sys::core::invoke::<()>("air_temperature_sensor", &()).await;
+        });
+
+        spawn_local(async move {
+            let event_name = "sensor-data";
+            let mut stream = match listen::<SensorData>(event_name).await {
+                Ok(s) => s,
+                Err(e) => {
+                    log!("Failed to subscribe to sensor-data: {}", e);
+                    return;
+                }
+            };
+
+            while let Some(sensor_data) = stream.next().await {
+                sensor_values.set(sensor_data.payload.value.to_vec());
+            }
+        });
+    });
 
     Effect::watch(
         move || {
             (
                 chart_container_w.get(),
                 chart_container_h.get(),
-                serie.get(),
+                sensor_values.get(),
             )
         },
-        move |(width, height, serie): &(f64, f64, Vec<i32>), _prev, _| {
-            render_responsive_chart(*width, *height, serie.clone());
+        move |(width, height, sensor_values): &(f64, f64, Vec<f32>), _prev, _| {
+            render_responsive_chart(*width, *height, sensor_values.to_vec());
         },
         false,
     );
@@ -91,8 +111,6 @@ pub fn DynamicChartExample() -> impl IntoView {
     view! {
         <div node_ref=chart_container class="w-1/2 h-1/3">
             <div node_ref=chart_node id="chart"></div>
-            <button on:click=move |_| pause()>"Pause"</button>
-            <button on:click=move |_| resume()>"Resume"</button>
         </div>
     }
 }
