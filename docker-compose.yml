@@ -1,0 +1,13 @@
+services:
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    volumes:
+      - influx-data:/var/lib/influxdb2
+      - influx-config:/etc/influxdb2
+    ports:
+      - 5432:5432
+
+volumes:
+    influx-data:
+    influx-config:

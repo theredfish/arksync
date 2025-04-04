@@ -2,6 +2,19 @@
 
 An environmental control system for Raspberry Pi 4+. Curious about the project? Learn more on my [blog](https://theredfi.sh/).
 
+## Getting Started
+
+̀```bash
+docker-compose up -d
+
+docker exec influxdb influx setup \
+  --username admin \
+  --password sation_admin \
+  --org station_knot \
+  --bucket arksync_series \
+  --force
+```
+
 ## Recommended IDE Setup
 
 [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
