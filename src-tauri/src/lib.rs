@@ -1,5 +1,9 @@
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::Serialize;
+use std::{
+    collections::HashSet,
+    sync::{LazyLock, Mutex},
+};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_log::{Builder as TauriLog, Target, TargetKind};
 use tokio::time::{interval, Duration};
@@ -9,7 +13,6 @@ pub fn run() {
         .plugin(
             TauriLog::new()
                 .targets([
-                    Target::new(TargetKind::Stdout),
                     Target::new(TargetKind::Stderr),
                     Target::new(TargetKind::Webview),
                 ])
@@ -17,13 +20,6 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
-        .setup(|_app| {
-            // Directly test logging here
-            println!("✅ println! Logging from setup()");
-            log::debug!("✅ log::debug! Logging from setup()");
-            log::info!("ℹ️ info log from setup()");
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             air_temperature_sensor,
             water_temperature_sensor
@@ -31,6 +27,9 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+static SPAWNED_SENSORS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,8 +47,19 @@ struct SensorData<'a> {
 
 #[tauri::command]
 async fn water_temperature_sensor(app: AppHandle) {
-    log::debug!("water_temperature_sensor");
+    let sensor_name = "water_temperature_sensor";
+    let mut spawned = SPAWNED_SENSORS.lock().unwrap();
+
+    if spawned.contains(sensor_name) {
+        log::info!("Sensor '{sensor_name}' is already spawned.");
+        return;
+    }
+
+    spawned.insert(sensor_name.to_string());
+
     tauri::async_runtime::spawn(async move {
+        log::info!("Spawning sensor '{sensor_name}'...");
+
         let mut interval = interval(Duration::from_secs(5));
         loop {
             interval.tick().await;
@@ -76,8 +86,19 @@ async fn water_temperature_sensor(app: AppHandle) {
 
 #[tauri::command]
 async fn air_temperature_sensor(app: AppHandle) {
-    log::debug!("air_temperature_sensor");
+    let sensor_name = "air_temperature_sensor";
+    let mut spawned = SPAWNED_SENSORS.lock().unwrap();
+
+    if spawned.contains(sensor_name) {
+        log::info!("Sensor '{sensor_name}' is already spawned.");
+        return;
+    }
+
+    spawned.insert(sensor_name.to_string());
+
     tauri::async_runtime::spawn(async move {
+        log::info!("Spawning sensor '{sensor_name}'...");
+
         let mut interval = interval(Duration::from_secs(5));
         loop {
             interval.tick().await;
