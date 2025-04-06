@@ -24,42 +24,76 @@ pub fn run() {
             log::info!("ℹ️ info log from setup()");
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![air_temperature_sensor])
+        .invoke_handler(tauri::generate_handler![
+            air_temperature_sensor,
+            water_temperature_sensor
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct SensorData<'a> {
+struct VecSensorData<'a> {
     name: &'a str,
     value: [f32; 7],
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SensorData<'a> {
+    name: &'a str,
+    value: f32,
+}
+
 #[tauri::command]
-async fn air_temperature_sensor(app: AppHandle) {
-    log::debug!("air_temperature_sensor");
-    log::info!("air_temperature_sensor");
+async fn water_temperature_sensor(app: AppHandle) {
+    log::debug!("water_temperature_sensor");
     tauri::async_runtime::spawn(async move {
         let mut interval = interval(Duration::from_secs(5));
         loop {
-            let mut rng = StdRng::from_os_rng();
             interval.tick().await;
+
+            let mut rng = StdRng::from_os_rng();
             let mut air_temp_series: [f32; 7] = [0.0; 7];
 
             for i in 0..7 {
-                air_temp_series[i] = rng.random_range(8.02..80.);
+                air_temp_series[i] = rng.random_range(8.02..80.0);
             }
 
             // TODO: retrieve the data from GPIO
-            let sensor_data = SensorData {
-                name: "Air Temperature (C°)",
+            let sensor_data = VecSensorData {
+                name: "Water Temperature (C°)",
                 value: air_temp_series,
             };
 
             log::debug!("{sensor_data:#?}");
 
-            app.emit("sensor-data", &sensor_data).unwrap();
+            app.emit("water_temperature_sensor", &sensor_data).unwrap();
+        }
+    });
+}
+
+#[tauri::command]
+async fn air_temperature_sensor(app: AppHandle) {
+    log::debug!("air_temperature_sensor");
+    tauri::async_runtime::spawn(async move {
+        let mut interval = interval(Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+
+            let mut rng = StdRng::from_os_rng();
+            let water_temp_series = rng.random_range(8.02..80.0);
+
+            // TODO: retrieve the data from GPIO
+            let sensor_data = SensorData {
+                name: "Air Temperature (C°)",
+                value: water_temp_series,
+            };
+
+            log::debug!("{sensor_data:#?}");
+
+            app.emit("air_temperature_sensor", &sensor_data).unwrap();
         }
     });
 }

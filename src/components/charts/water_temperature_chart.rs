@@ -21,7 +21,7 @@ struct SensorData {
 }
 
 #[component]
-pub fn AirTemperatureChart() -> impl IntoView {
+pub fn WaterTemperatureChart() -> impl IntoView {
     let chart_container = NodeRef::<Div>::new();
     let chart_node = NodeRef::<Div>::new();
     let chart_container_size = use_element_size(chart_container);
@@ -40,7 +40,7 @@ pub fn AirTemperatureChart() -> impl IntoView {
         let chart_config = Chart::new()
             .title(
                 Title::new()
-                    .text("Dynamic and responsive chart".to_string())
+                    .text("Water Temperature (C°)".to_string())
                     .text_style(TextStyle::new().color(Color::Value("#39344a".to_string()))),
             )
             .series(Line::new().data(serie))
@@ -68,22 +68,24 @@ pub fn AirTemperatureChart() -> impl IntoView {
             );
         } else {
             let renderer = WasmRenderer::new(width, height);
-            let echarts = renderer.render("chart", &chart_config).unwrap();
+            let echarts = renderer
+                .render("water-temparature-gauge", &chart_config)
+                .unwrap();
             *chart_ref = Some(echarts);
         }
     };
 
     Effect::new(move |_| {
         spawn_local(async move {
-            let _ = tauri_sys::core::invoke::<()>("air_temperature_sensor", &()).await;
+            let _ = tauri_sys::core::invoke::<()>("water_temperature_sensor", &()).await;
         });
 
         spawn_local(async move {
-            let event_name = "sensor-data";
+            let event_name = "water_temperature_sensor";
             let mut stream = match listen::<SensorData>(event_name).await {
                 Ok(s) => s,
                 Err(e) => {
-                    log!("Failed to subscribe to sensor-data: {}", e);
+                    log!("Failed to subscribe to water_temperature_sensor: {}", e);
                     return;
                 }
             };
@@ -109,8 +111,8 @@ pub fn AirTemperatureChart() -> impl IntoView {
     );
 
     view! {
-        <div node_ref=chart_container class="w-1/2 h-1/3">
-            <div node_ref=chart_node id="chart"></div>
+        <div node_ref=chart_container class="w-full h-full border border-red-100">
+            <div node_ref=chart_node id="water-temparature-gauge"></div>
         </div>
     }
 }
