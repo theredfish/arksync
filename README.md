@@ -4,7 +4,7 @@ An environmental control system for Raspberry Pi 4+. Curious about the project? 
 
 ## Getting Started
 
-̀```bash
+```bash
 docker-compose up -d
 
 docker exec influxdb influx setup \
@@ -21,11 +21,20 @@ docker exec influxdb influx setup \
 
 ## Troubleshooting
 
+### GBM Buffer
+
 > Failed to create GBM buffer of size 800x600: Invalid argument
 
 WebKitGTK’s DMABUF renderer can conflict with NVIDIA drivers. You can disable it by setting an environment variable:
 
+```bash
+WEBKIT_DISABLE_DMABUF_RENDERER=1 cargo tauri dev
 ```
-export WEBKIT_DISABLE_DMABUF_RENDERER=1
-cargo tauri dev
+
+### Nvidia explicit sync and Wayland
+
+> Error 71 (Protocol error) dispatching to Wayland display.
+
+```bash
+__NV_DISABLE_EXPLICIT_SYNC=1 cargo tauri dev
 ```
