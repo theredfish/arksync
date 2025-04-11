@@ -1,7 +1,8 @@
+use leptos::html::Div;
 use leptos::{logging::log, prelude::*};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::sync::LazyLock;
+use std::{collections::HashMap, i32};
 use wasm_bindgen::prelude::*;
 use web_sys::{DragEvent, MouseEvent};
 
@@ -56,7 +57,7 @@ trait IntoTailwind {
 pub struct GridElement {
     id: i32,
     col_start: i32,
-    col_span: i32, // Base span (adjusted by viewport)
+    col_span: i32,
     row_start: i32,
     row_span: i32,
 }
@@ -72,6 +73,8 @@ impl IntoTailwind for GridElement {
         } = self;
 
         let md_col_span = MD_COL_SPAN_MAP.get(col_span).unwrap_or(&"md:col-span-12");
+        // start-span needs to be redefined when col-span is used for a specific
+        // viewport. https://github.com/tailwindlabs/tailwindcss/issues/2989#issuecomment-738764372
         let md_start_span = MD_COL_START_MAP.get(col_start).unwrap_or(&"md:col-start-1");
 
         format!(
@@ -108,10 +111,12 @@ pub fn Grid() -> impl IntoView {
         },
     ]);
 
+    let resize_button_ref = NodeRef::<Div>::new();
+
     // Track the element being resized
     let resizing_id = RwSignal::new(None::<i32>);
-    let resize_start_x = RwSignal::new(0);
-    let resize_start_y = RwSignal::new(0);
+    let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
+    let is_resizing = RwSignal::new(false);
 
     // Drag start handler
     let on_drag_start = move |ev: DragEvent| {
@@ -132,86 +137,43 @@ pub fn Grid() -> impl IntoView {
         }
     };
 
-    // Drag over handler
-    let on_drag_over = move |ev: DragEvent| {
-        ev.prevent_default();
-    };
-
-    // Drop handler
-    let on_drop = move |ev: DragEvent| {
-        ev.prevent_default();
-        if let Ok(id) = ev
-            .data_transfer()
-            .unwrap()
-            .get_data("text/plain")
-            .unwrap()
-            .parse::<i32>()
-        {
-            let client_x = ev.client_x();
-            let client_y = ev.client_y();
-            // Simplified: Map mouse coords to grid position (assuming 12-column grid)
-            let new_col_start = ((client_x / 50) as i32).max(1).min(12); // Rough estimate: 50px per column
-            let new_row_start = ((client_y / 50) as i32).max(1); // Rough estimate: 50px per row
-            elements.update(|elems| {
-                if let Some(elem) = elems.iter_mut().find(|e| e.id == id) {
-                    elem.col_start = new_col_start;
-                    elem.row_start = new_row_start;
-                }
-            });
-        }
-    };
-
-    // Resize handlers
-    let on_resize_start = move |ev: MouseEvent| {
-        ev.prevent_default();
-        if let Some(target) = ev
-            .target()
-            .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
-        {
-            if let Ok(id) = target
-                .get_attribute("data-id")
-                .unwrap_or_default()
-                .parse::<i32>()
-            {
-                resizing_id.set(Some(id));
-                resize_start_x.set(ev.client_x());
-                resize_start_y.set(ev.client_y());
+    // Handle mousedown on the resize handle
+    Effect::new(move || {
+        let handle = resize_button_ref.get().expect("resize handle should exist");
+        let mousedown_handler = Closure::<dyn FnMut(MouseEvent)>::new(move |ev: MouseEvent| {
+            ev.prevent_default();
+            if !is_resizing.get() {
+                resize_start_pos.set(Some((ev.client_x(), ev.client_y())));
+                is_resizing.set(true);
             }
-        }
-    };
+        });
 
-    let on_resize_move = move |ev: MouseEvent| {
-        if let Some(id) = resizing_id.get() {
-            let delta_x = ev.client_x() - resize_start_x.get();
-            let delta_y = ev.client_y() - resize_start_y.get();
-            log!("Resize move {id}: x({delta_x}),y({delta_y})");
-            elements.update(|elems| {
-                if let Some(elem) = elems.iter_mut().find(|e| e.id == id) {
-                    // Update spans based on mouse movement (50px grid units)
-                    elem.col_span = (elem.col_span + delta_x).clamp(1, 12);
-                    // .max(1)
-                    // .min(12 - elem.col_start + 1);
-                    log!("div col-span: {}", elem.col_span);
-                    elem.row_span = (elem.row_span + delta_y).clamp(1, 12);
-                    log!("div row-span: {}", elem.row_span);
-                }
-            });
-            resize_start_x.set(ev.client_x());
-            resize_start_y.set(ev.client_y());
-        }
-    };
+        handle
+            .add_event_listener_with_callback(
+                "mousedown",
+                mousedown_handler.as_ref().unchecked_ref(),
+            )
+            .expect("mousedown listener should be attached");
 
-    let on_resize_end = move |_| {
-        resizing_id.set(None);
-    };
+        let mousedown_handler_ref: &JsValue = mousedown_handler.as_ref().unchecked_ref();
+
+        // on_cleanup(move || {
+        //     handle
+        //         .remove_event_listener_with_callback(
+        //             "mousedown",
+        //             ,
+        //         )
+        //         .expect("mousedown listener should be removed");
+        // });
+    });
 
     view! {
         <div
             class="w-full grid grid-cols-12 gap-4"
-            on:dragover=on_drag_over
-            on:drop=on_drop
-            on:mousemove=on_resize_move
-            on:mouseup=on_resize_end
+            // on:dragover=on_drag_over
+            // on:drop=on_drop
+            // on:mousemove=on_resize_move
+            // on:mouseup=on_resize_end
         >
             {move || elements.get().into_iter().map(|elem| {
                 // Responsive column span: full width on mobile, custom on desktop
@@ -233,9 +195,9 @@ pub fn Grid() -> impl IntoView {
                     >
                         {format!("Div {id} - {col_start},{col_span}")}
                         <div
+                            node_ref=resize_button_ref
                             class="absolute bottom-0 right-0 w-4 h-4 bg-gray-500 cursor-se-resize"
                             data-id=id.to_string()
-                            on:mousedown=on_resize_start
                         ></div>
                     </div>
                 }
