@@ -1,5 +1,6 @@
 use leptos::html::Div;
 use leptos::{logging::log, prelude::*};
+use leptos_use::use_event_listener;
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 use std::{collections::HashMap, i32};
@@ -90,7 +91,7 @@ pub fn Grid() -> impl IntoView {
     let elements = RwSignal::new(vec![
         GridElement {
             id: 1,
-            col_start: 2,
+            col_start: 1,
             col_span: 4,
             row_start: 1,
             row_span: 4,
@@ -111,69 +112,54 @@ pub fn Grid() -> impl IntoView {
         },
     ]);
 
+    let window = window();
     let resize_button_ref = NodeRef::<Div>::new();
+    let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
+    let resize_offset = RwSignal::new((0, 0));
 
     // Track the element being resized
     let resizing_id = RwSignal::new(None::<i32>);
-    let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
     let is_resizing = RwSignal::new(false);
 
-    // Drag start handler
-    let on_drag_start = move |ev: DragEvent| {
-        if let Some(target) = ev
-            .target()
-            .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
-        {
-            if let Ok(id) = target
-                .get_attribute("data-id")
-                .unwrap_or_default()
-                .parse::<i32>()
-            {
-                ev.data_transfer()
-                    .unwrap()
-                    .set_data("text/plain", &id.to_string())
-                    .unwrap();
-            }
-        }
-    };
-
-    // Handle mousedown on the resize handle
-    Effect::new(move || {
-        let handle = resize_button_ref.get().expect("resize handle should exist");
-        let mousedown_handler = Closure::<dyn FnMut(MouseEvent)>::new(move |ev: MouseEvent| {
-            ev.prevent_default();
-            if !is_resizing.get() {
-                resize_start_pos.set(Some((ev.client_x(), ev.client_y())));
-                is_resizing.set(true);
-            }
+    let _resize_starts_ev =
+        use_event_listener(resize_button_ref, leptos::ev::pointerdown, move |evt| {
+            evt.prevent_default();
+            let (client_x, client_y) = (evt.client_x(), evt.client_y());
+            resize_start_pos.set(Some((client_x, client_y)));
+            log!("Resize started: {:#?}", resize_start_pos.get());
         });
 
-        handle
-            .add_event_listener_with_callback(
-                "mousedown",
-                mousedown_handler.as_ref().unchecked_ref(),
-            )
-            .expect("mousedown listener should be attached");
-
-        let mousedown_handler_ref: &JsValue = mousedown_handler.as_ref().unchecked_ref();
-
-        // on_cleanup(move || {
-        //     handle
-        //         .remove_event_listener_with_callback(
-        //             "mousedown",
-        //             ,
-        //         )
-        //         .expect("mousedown listener should be removed");
-        // });
+    let _resize_stops_ev = use_event_listener(window.clone(), leptos::ev::pointerup, move |_| {
+        if resize_start_pos.get().is_some() {
+            resize_start_pos.set(None);
+            log!("Resize stopped");
+        }
     });
+
+    let _resize_ev = use_event_listener(window, leptos::ev::pointermove, move |evt| {
+        if let Some((start_pos_x, start_pos_y)) = resize_start_pos.get() {
+            let (move_x, move_y) = (evt.client_x(), evt.client_y());
+            let (offset_x, offset_y) = ((move_x - start_pos_x), (move_y - start_pos_y));
+
+            resize_offset.set((offset_x, offset_y));
+        }
+    });
+
+    // Handle mousedown on the resize handle
+    let _resize = Effect::watch(
+        move || {
+            let (x, y) = resize_offset.get();
+            (x, y)
+        },
+        move |(x, y): &(i32, i32), _prev, _| {
+            log!("watching changes of move offset: ({x},{y})");
+        },
+        false,
+    );
 
     view! {
         <div
             class="w-full grid grid-cols-12 gap-4"
-            // on:dragover=on_drag_over
-            // on:drop=on_drop
-            // on:mousemove=on_resize_move
-            // on:mouseup=on_resize_end
         >
             {move || elements.get().into_iter().map(|elem| {
                 // Responsive column span: full width on mobile, custom on desktop
@@ -188,15 +174,12 @@ pub fn Grid() -> impl IntoView {
                             "relative p-4 bg-blue-200 cursor-move {}",
                             elem.into_tailwind()
                         )
-                        // class="relative p-4 bg-blue-200 cursor-move col-start-2 col-span-4"
-                        draggable=true
                         data-id=id.to_string()
-                        on:dragstart=on_drag_start
                     >
-                        {format!("Div {id} - {col_start},{col_span}")}
+                        {format!("Div {id} - {col_start},{col_span} {:#?}",resize_start_pos.get())}
                         <div
                             node_ref=resize_button_ref
-                            class="absolute bottom-0 right-0 w-4 h-4 bg-gray-500 cursor-se-resize"
+                            class="absolute bottom-0 right-0 w-4 h-4 bg-red-500 cursor-se-resize"
                             data-id=id.to_string()
                         ></div>
                     </div>

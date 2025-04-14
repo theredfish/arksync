@@ -6,7 +6,7 @@ use charming::{
     Animation, Chart, ChartResize, Easing, Echarts, WasmRenderer,
 };
 use futures_util::StreamExt as _;
-use leptos::{attr::Id, html::Div, prelude::*};
+use leptos::{html::Div, prelude::*};
 use leptos::{logging::log, IntoView};
 use leptos_use::use_element_size;
 use serde::Deserialize;
