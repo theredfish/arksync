@@ -1,4 +1,3 @@
-use crate::components::charts::{AirTemperatureGauge, WaterTemperatureChart};
 use crate::components::grid::Grid;
 use crate::components::sidebar::Sidebar;
 use leptos::prelude::*;
@@ -26,35 +25,6 @@ pub fn App() -> impl IntoView {
 pub fn Dashboards() -> impl IntoView {
     view! {
         <Grid />
-        // <div class="w-full grid grid-cols-12 gap-4 p-3 border border-green-600">
-        //     <div id="charts-container-air-temp-gauge" class="col-span-4 row-span-2 p-1 border border-red-600" draggable="true">
-        //         <AirTemperatureGauge />
-        //     </div>
-        //     <div id="charts-container-water-temp-gauge" class="col-span-8 row-span-3 p-1 border border-blue-600" draggable="true">
-        //         <WaterTemperatureChart />
-        //     </div>
-
-        //     <div id="charts-container-air-temp-gauge2" class="p-1 border border-red-600">
-        //         <div class="w-full h-full">more data</div>
-        //     </div>
-        //     <div id="charts-container-water-temp-gauge2" class="p-1 border border-blue-600">
-        //         <div class="w-full h-full">more data</div>
-        //     </div>
-
-        //     // HERE NEW ROW
-        //     <div id="charts-container-air-temp-gauge3" class="p-1 border border-red-600">
-        //         <div class="w-full h-full">more data</div>
-        //     </div>
-        //     <div id="charts-container-water-temp-gauge3" class="p-1 border border-blue-600">
-        //         <div class="w-full h-full">more data</div>
-        //     </div>
-        //     <div id="charts-container-air-temp-gauge3" class="p-1 border border-red-600">
-        //         <div class="w-full h-full">more data</div>
-        //     </div>
-        //     <div id="charts-container-water-temp-gauge3" class="p-1 border border-blue-600">
-        //         <div class="w-full h-full">more data</div>
-        //     </div>
-        // </div>
     }
 }
 
