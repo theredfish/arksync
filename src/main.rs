@@ -1,5 +1,6 @@
 mod app;
 mod components;
+mod core;
 
 use app::*;
 use leptos::prelude::{mount_to_body, view};

@@ -67,8 +67,8 @@ async fn water_temperature_sensor(app: AppHandle) {
             let mut rng = StdRng::from_os_rng();
             let mut air_temp_series: [f32; 7] = [0.0; 7];
 
-            for i in 0..7 {
-                air_temp_series[i] = rng.random_range(8.02..80.0);
+            for air_temp_metric in &mut air_temp_series {
+                *air_temp_metric = rng.random_range(8.02..80.0);
             }
 
             // TODO: retrieve the data from GPIO
