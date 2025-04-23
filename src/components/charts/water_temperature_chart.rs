@@ -111,7 +111,7 @@ pub fn WaterTemperatureChart() -> impl IntoView {
     );
 
     view! {
-        <div node_ref=chart_container class="w-full h-full border border-red-100">
+        <div node_ref=chart_container class="w-full h-full">
             <div node_ref=chart_node id="water-temparature-gauge"></div>
         </div>
     }

@@ -25,6 +25,7 @@ fn into_tailwind(col_start: i32, col_span: i32, row_start: i32, row_span: i32) -
 
 #[component]
 pub fn GridElement(
+    children: Children,
     id: i32,
     col_start: i32,
     col_span: i32,
@@ -102,13 +103,12 @@ pub fn GridElement(
     view! {
         <div
             class=move || {
-                format!("relative p-4 bg-blue-200 cursor-move row-start-1 row-span-7 {}",
+                format!("relative p-4 cursor-move border-2 border-gray-500 {}",
                 into_tailwind(col_start.get(), col_span.get(), row_start.get(), row_span.get()))
             }
             data-id=id.to_string()
         >
-
-            {format!("Div {id}")}
+            { children() }
             <div
                 node_ref=resize_button_ref
                 class="absolute bottom-0 right-0 w-4 h-4 bg-red-500 cursor-se-resize"

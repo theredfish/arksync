@@ -48,7 +48,7 @@ pub fn AirTemperatureGauge() -> impl IntoView {
                             .formatter("{value}")
                             .value_animation(true),
                     )
-                    .data(vec![(serie, "Water C°")]),
+                    .data(vec![(serie.round(), "Air temperature C°")]),
             );
 
         if let Some(echarts) = chart_ref.as_ref() {
@@ -111,7 +111,7 @@ pub fn AirTemperatureGauge() -> impl IntoView {
     );
 
     view! {
-        <div node_ref=chart_container class="w-full h-full border border-red-100">
+        <div node_ref=chart_container class="w-full h-full">
             <div node_ref=chart_node id="air-temperature-gauge"></div>
         </div>
     }
