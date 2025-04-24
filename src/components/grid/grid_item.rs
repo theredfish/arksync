@@ -1,5 +1,7 @@
+use crate::components::grid::{GridItemData, GridStorage};
 use crate::core::tailwind::*;
 use leptos::html::Div;
+use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_use::use_event_listener;
 
@@ -24,24 +26,44 @@ fn into_tailwind(col_start: i32, col_span: i32, row_start: i32, row_span: i32) -
 }
 
 #[component]
-pub fn GridElement(
+pub fn GridItem(
     children: Children,
     id: i32,
-    col_start: i32,
-    col_span: i32,
-    row_start: i32,
-    row_span: i32,
+    width: i32,
+    height: i32,
+    position_x: i32,
+    position_y: i32,
 ) -> impl IntoView {
-    let col_start = RwSignal::new(col_start);
-    let col_span = RwSignal::new(col_span);
-    let row_start = RwSignal::new(row_start);
-    let row_span = RwSignal::new(row_span);
+    // Context management with metadata
+    let update_grid =
+        use_context::<RwSignal<GridStorage>>().expect("to have found the setter provided");
+
+    let metadata = RwSignal::new(GridItemData {
+        width,
+        height,
+        position: (position_x, position_y),
+    });
+
+    // Rendering effect
+    Effect::new(move |_| {
+        let metadata = metadata.read_untracked();
+        log!("[GridItem][{id}]: {:#?}", metadata.clone());
+        update_grid.update(|grid| {
+            grid.items.insert(id, metadata.clone());
+        });
+    });
+
+    let width = RwSignal::new(width);
+    let height = RwSignal::new(height);
+    let position_x = RwSignal::new(position_x);
+    let position_y = RwSignal::new(position_y);
 
     let window = window();
     let resize_button_ref = NodeRef::<Div>::new();
     let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
     let resize_offset = RwSignal::new((0, 0));
 
+    // Event listeners
     let _resize_starts_ev =
         use_event_listener(resize_button_ref, leptos::ev::pointerdown, move |evt| {
             evt.prevent_default();
@@ -49,10 +71,23 @@ pub fn GridElement(
             resize_start_pos.set(Some((client_x, client_y)));
         });
 
+    // TODO: Bind the event in a unique way. We currently listen on the window
+    // which every GridItem is doing and leading to a duplication of the events.
+    // Could also lead to unexpected behaviours.
     let _resize_stops_ev = use_event_listener(window.clone(), leptos::ev::pointerup, move |_| {
+        log!("[GridItem][{id}] _resize_stops_ev");
         if resize_start_pos.get().is_some() {
             resize_start_pos.set(None);
         }
+
+        metadata.update(|data| {
+            data.width = width.get();
+            data.height = height.get();
+        });
+
+        update_grid.update(|grid| {
+            grid.items.insert(id, metadata.get().clone());
+        });
     });
 
     let _resize_ev = use_event_listener(window, leptos::ev::pointermove, move |evt| {
@@ -74,8 +109,8 @@ pub fn GridElement(
             let resize_start_pos_untracked = resize_start_pos.get_untracked();
 
             if x.abs() > 100 {
-                let new_col_span = (col_span.get_untracked() + (x / x.abs())).clamp(1, 12);
-                col_span.set(new_col_span);
+                let new_col_span = (height.get_untracked() + (x / x.abs())).clamp(1, 12);
+                height.set(new_col_span);
 
                 if let Some((resize_start_x, resize_start_y)) = resize_start_pos_untracked {
                     // Update the resize start position to the new one
@@ -86,8 +121,8 @@ pub fn GridElement(
             }
 
             if y.abs() > 100 {
-                let new_row_span = (row_span.get_untracked() + (y / y.abs())).clamp(0, 12);
-                row_span.set(new_row_span);
+                let new_row_span = (position_y.get_untracked() + (y / y.abs())).clamp(0, 12);
+                position_y.set(new_row_span);
 
                 if let Some((resize_start_x, resize_start_y)) = resize_start_pos_untracked {
                     // Update the resize start position to the new one
@@ -104,7 +139,7 @@ pub fn GridElement(
         <div
             class=move || {
                 format!("relative p-4 cursor-move border-2 border-gray-500 {}",
-                into_tailwind(col_start.get(), col_span.get(), row_start.get(), row_span.get()))
+                into_tailwind(width.get(), height.get(), position_x.get(), position_y.get()))
             }
             data-id=id.to_string()
         >
