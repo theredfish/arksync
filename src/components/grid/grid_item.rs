@@ -63,7 +63,7 @@ pub fn GridItem(
     let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
     let resize_offset = RwSignal::new((0, 0));
 
-    // Event listeners
+    // Resize event listeners
     let _resize_starts_ev =
         use_event_listener(resize_button_ref, leptos::ev::pointerdown, move |evt| {
             evt.prevent_default();
@@ -71,14 +71,14 @@ pub fn GridItem(
             resize_start_pos.set(Some((client_x, client_y)));
         });
 
-    // TODO: Bind the event in a unique way. We currently listen on the window
-    // which every GridItem is doing and leading to a duplication of the events.
-    // Could also lead to unexpected behaviours.
     let _resize_stops_ev = use_event_listener(window.clone(), leptos::ev::pointerup, move |_| {
-        log!("[GridItem][{id}] _resize_stops_ev");
-        if resize_start_pos.get().is_some() {
-            resize_start_pos.set(None);
+        // Pointerup event isn't associated to a resize event for this component
+        if resize_start_pos.get().is_none() {
+            return;
         }
+
+        log!("[GridItem][{id}] _resize_stops_ev");
+        resize_start_pos.set(None);
 
         metadata.update(|data| {
             data.width = width.get();
