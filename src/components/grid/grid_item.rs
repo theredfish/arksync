@@ -1,29 +1,7 @@
 use crate::components::grid::{GridItemData, GridStorage};
-use crate::core::tailwind::*;
 use leptos::html::Div;
-use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_use::use_event_listener;
-
-fn into_tailwind(col_start: i32, col_span: i32, row_start: i32, row_span: i32) -> String {
-    let md_col_span = MD_COL_SPAN_MAP.get(&col_span).unwrap_or(&"md:col-span-12");
-    // start-span needs to be redefined when col-span is used for a specific
-    // viewport. https://github.com/tailwindlabs/tailwindcss/issues/2989#issuecomment-738764372
-    let md_col_start = MD_COL_START_MAP
-        .get(&col_start)
-        .unwrap_or(&"md:col-start-1");
-
-    let row_start_str = match row_start {
-        0 => "row-start-auto".to_string(),
-        _ => format!("row-start-{row_start}"),
-    };
-    let md_row_start = MD_ROW_START_MAP
-        .get(&row_start)
-        .unwrap_or(&"md:row-start-1");
-    let md_row_span = MD_ROW_SPAN_MAP.get(&row_span).unwrap_or(&"md:row-span-12");
-
-    format!("col-start-{col_start} {md_col_start} col-span-{col_span} {md_col_span} {row_start_str} {md_row_start} row-span-{row_span} {md_row_span}")
-}
 
 #[component]
 pub fn GridItem(
@@ -47,23 +25,18 @@ pub fn GridItem(
     // Rendering effect
     Effect::new(move |_| {
         let metadata = metadata.read_untracked();
-        log!("[GridItem][{id}]: {:#?}", metadata.clone());
+        // log!("[GridItem][{id}]: {:#?}", metadata.clone());
         update_grid.update(|grid| {
             grid.items.insert(id, metadata.clone());
         });
     });
-
-    let width = RwSignal::new(width);
-    let height = RwSignal::new(height);
-    let position_x = RwSignal::new(position_x);
-    let position_y = RwSignal::new(position_y);
 
     let window = window();
     let resize_button_ref = NodeRef::<Div>::new();
     let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
     let resize_offset = RwSignal::new((0, 0));
 
-    // Resize event listeners
+    // Resize starts: set the resize start position with the mouse position
     let _resize_starts_ev =
         use_event_listener(resize_button_ref, leptos::ev::pointerdown, move |evt| {
             evt.prevent_default();
@@ -71,18 +44,20 @@ pub fn GridItem(
             resize_start_pos.set(Some((client_x, client_y)));
         });
 
+    // Resize stops: Update the metadata with the offset
     let _resize_stops_ev = use_event_listener(window.clone(), leptos::ev::pointerup, move |_| {
         // Pointerup event isn't associated to a resize event for this component
         if resize_start_pos.get().is_none() {
             return;
         }
 
-        log!("[GridItem][{id}] _resize_stops_ev");
+        let offset = resize_offset.get();
         resize_start_pos.set(None);
 
+        let prev_metadata = metadata.get_untracked();
         metadata.update(|data| {
-            data.width = width.get();
-            data.height = height.get();
+            data.width = prev_metadata.width + offset.0;
+            data.height = prev_metadata.height + offset.1;
         });
 
         update_grid.update(|grid| {
@@ -90,6 +65,7 @@ pub fn GridItem(
         });
     });
 
+    // Resize in progress: we update the offset (mouse_pos - client_pos)
     let _resize_ev = use_event_listener(window, leptos::ev::pointermove, move |evt| {
         if let Some((start_pos_x, start_pos_y)) = resize_start_pos.get() {
             let (move_x, move_y) = (evt.client_x(), evt.client_y());
@@ -99,48 +75,27 @@ pub fn GridItem(
         }
     });
 
-    // Handle mousedown on the resize handle
-    let _resize = Effect::watch(
-        move || {
-            let (x, y) = resize_offset.get();
-            (x, y)
-        },
-        move |(x, y): &(i32, i32), _prev, _| {
-            let resize_start_pos_untracked = resize_start_pos.get_untracked();
+    let styles = move || {
+        let GridItemData {
+            width,
+            height,
+            position: (pos_x, pos_y),
+        } = metadata.get();
 
-            if x.abs() > 100 {
-                let new_col_span = (height.get_untracked() + (x / x.abs())).clamp(1, 12);
-                height.set(new_col_span);
-
-                if let Some((resize_start_x, resize_start_y)) = resize_start_pos_untracked {
-                    // Update the resize start position to the new one
-                    resize_start_pos.set(Some((resize_start_x + x, resize_start_y)));
-                    // Reset the offset
-                    resize_offset.set((0, 0));
-                }
-            }
-
-            if y.abs() > 100 {
-                let new_row_span = (position_y.get_untracked() + (y / y.abs())).clamp(0, 12);
-                position_y.set(new_row_span);
-
-                if let Some((resize_start_x, resize_start_y)) = resize_start_pos_untracked {
-                    // Update the resize start position to the new one
-                    resize_start_pos.set(Some((resize_start_x, resize_start_y + y)));
-                    // Reset the offset
-                    resize_offset.set((0, 0));
-                }
-            }
-        },
-        false,
-    );
+        format!(
+            r#"
+            width: {width}px;
+            height: {height}px;
+            transition: width 0.2s ease-out, height 0.2s ease-in;
+            transform: translate({pos_x}px, {pos_y}px)
+        "#
+        )
+    };
 
     view! {
         <div
-            class=move || {
-                format!("relative p-4 cursor-move border-2 border-gray-500 {}",
-                into_tailwind(width.get(), height.get(), position_x.get(), position_y.get()))
-            }
+            style={styles}
+            class="absolute p-4 cursor-move border-2 border-gray-500"
             data-id=id.to_string()
         >
             { children() }
