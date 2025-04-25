@@ -1,6 +1,5 @@
-use std::collections::HashMap;
-
 use leptos::{logging::log, prelude::*};
+use std::collections::HashMap;
 
 use crate::components::grid::GridStorage;
 
@@ -20,7 +19,7 @@ pub fn Grid(children: Children) -> impl IntoView {
     );
 
     view! {
-        <div class="h-full">
+        <div class="relative h-full">
             { children() }
         </div>
     }

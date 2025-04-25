@@ -10,7 +10,7 @@ struct GridStorage {
 struct GridItemData {
     width: i32,
     height: i32,
-    position: (i32, i32),
+    position: (f64, f64),
 }
 
 use std::collections::HashMap;

@@ -27,13 +27,13 @@ pub fn Dashboards() -> impl IntoView {
     view! {
         <div class="w-full p-4">
             <Grid>
-                <GridItem id=1 width=300 height=300 position_x=400 position_y=100>
+                <GridItem id=1 width=300 height=300 position_x=400. position_y=100.>
                     <AirTemperatureGauge />
                 </GridItem>
-                <GridItem id=2 width=800 height=400 position_x=500 position_y=200>
+                <GridItem id=2 width=800 height=400 position_x=500. position_y=200.>
                     <WaterTemperatureChart />
                 </GridItem>
-                <GridItem id=3 width=100 height=100 position_x=0 position_y=0>
+                <GridItem id=3 width=100 height=100 position_x=0. position_y=0.>
                     No data yet
                 </GridItem>
             </Grid>
