@@ -1,10 +1,13 @@
+use std::sync::Arc;
+
 use crate::components::grid::{GridItemData, GridStorage};
 use leptos::html::Div;
-use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_use::{
-    core::Position, use_draggable_with_options, use_event_listener, UseDraggableOptions,
+    core::Position, use_draggable_with_options, use_element_bounding, use_event_listener,
+    UseDraggableOptions, UseDraggableReturn, UseElementBoundingReturn,
 };
+use wasm_bindgen::JsCast;
 
 #[component]
 pub fn GridItem(
@@ -35,7 +38,7 @@ pub fn GridItem(
     });
 
     let window = window();
-    let component_ref = NodeRef::<Div>::new();
+    let grid_item_ref = NodeRef::<Div>::new();
     let resize_button_ref = NodeRef::<Div>::new();
 
     // resize events
@@ -85,37 +88,66 @@ pub fn GridItem(
     }
 
     // Drag events
-    let draggable_return = use_draggable_with_options(
-        component_ref,
+
+    // TODO: pass width/height signals from parent so we can listen on the
+    // responsive changes. Or observe the resize event maybe.
+    let UseElementBoundingReturn {
+        width: absolute_parent_w,
+        height: absolute_parent_h,
+        ..
+    } = use_element_bounding(absolute_parent_el);
+
+    let UseDraggableReturn { x, y, .. } = use_draggable_with_options(
+        grid_item_ref,
         UseDraggableOptions::default()
             .initial_value(Position {
-                x: metadata.get().position.0,
-                y: metadata.get().position.1,
+                // x: metadata.get().position.0,
+                // y: metadata.get().position.1,
+                x: 40.,
+                y: 40.,
             })
+            .target_offset(Arc::new(move |event_target| {
+                let target: web_sys::HtmlElement = event_target.unchecked_into();
+                let (x, y): (f64, f64) = (target.offset_left().into(), target.offset_top().into());
+
+                (x, y)
+            }))
             .prevent_default(true),
     );
 
+    // TODO: adapt with reactive parent information
+    let left = move || {
+        let max = absolute_parent_w.get() - x.get();
+        x.get().clamp(0.0, max.round())
+    };
+    let top = move || {
+        let max = absolute_parent_h.get() - y.get();
+        y.get().clamp(0.0, max.round())
+    };
+
     let styles = move || {
         let GridItemData { width, height, .. } = metadata.get();
-        let (pos_x, pos_y) = (draggable_return.x.get(), draggable_return.y.get());
 
         format!(
-            r#"
-            width: {width}px;
+            r#"width: {width}px;
             height: {height}px;
             transition: width 0.2s ease-out, height 0.2s ease-in;
-            transform: translate({pos_x}px, {pos_y}px)
-        "#
+            touch-action: none;
+            left: {}px;
+            top: {}px;"#,
+            left(),
+            top()
         )
     };
 
     view! {
         <div
-            node_ref=component_ref
+            node_ref=grid_item_ref
             style={styles}
             class="absolute p-4 cursor-move border-2 border-gray-500"
             data-id=id.to_string()
         >
+            { move || x.get() };{ move || y.get() }
             { children() }
             <div
                 node_ref=resize_button_ref

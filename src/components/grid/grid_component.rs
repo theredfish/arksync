@@ -19,7 +19,7 @@ pub fn Grid(children: Children) -> impl IntoView {
     );
 
     view! {
-        <div class="relative h-full">
+        <div class="relative h-full border border-red-300">
             { children() }
         </div>
     }
