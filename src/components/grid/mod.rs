@@ -2,8 +2,15 @@ mod grid_component;
 mod grid_item;
 
 #[derive(Clone, Debug)]
-struct GridStorage {
-    items: HashMap<i32, GridItemData>,
+struct GridBounding {
+    width: f64,
+    height: f64,
+}
+
+#[derive(Clone, Debug)]
+struct GridContext {
+    storage: HashMap<i32, GridItemData>,
+    boundaries: GridBounding,
 }
 
 #[derive(Clone, Debug)]

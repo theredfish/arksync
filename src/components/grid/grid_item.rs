@@ -1,12 +1,11 @@
-use std::sync::Arc;
-
-use crate::components::grid::{GridItemData, GridStorage};
+use crate::components::grid::{GridContext, GridItemData};
 use leptos::html::Div;
 use leptos::prelude::*;
 use leptos_use::{
-    core::Position, use_draggable_with_options, use_element_bounding, use_event_listener,
-    UseDraggableOptions, UseDraggableReturn, UseElementBoundingReturn,
+    core::Position, use_draggable_with_options, use_event_listener, UseDraggableOptions,
+    UseDraggableReturn,
 };
+use leptos_use::{use_element_bounding, UseElementBoundingReturn};
 use wasm_bindgen::JsCast;
 
 #[component]
@@ -18,9 +17,14 @@ pub fn GridItem(
     position_x: f64,
     position_y: f64,
 ) -> impl IntoView {
-    // Context management with metadata
-    let update_grid =
-        use_context::<RwSignal<GridStorage>>().expect("to have found the setter provided");
+    let grid_ctx =
+        use_context::<RwSignal<GridContext>>().expect("to have found the setter provided");
+    let window = window();
+    let grid_item_ref = NodeRef::<Div>::new();
+    let resize_button_ref = NodeRef::<Div>::new();
+
+    let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
+    let resize_offset = RwSignal::new((0, 0));
 
     let metadata = RwSignal::new(GridItemData {
         width,
@@ -31,21 +35,17 @@ pub fn GridItem(
     // Rendering effect
     Effect::new(move |_| {
         let metadata = metadata.read_untracked();
-        // log!("[GridItem][{id}]: {:#?}", metadata.clone());
-        update_grid.update(|grid| {
-            grid.items.insert(id, metadata.clone());
+        grid_ctx.update(|ctx| {
+            ctx.storage.insert(id, metadata.clone());
         });
     });
 
-    let window = window();
-    let grid_item_ref = NodeRef::<Div>::new();
-    let resize_button_ref = NodeRef::<Div>::new();
-
+    // TODO: bug: the last resize operation is saved and when the button is clicked (no mouse movement), the the last
+    // operation is applied again.
+    // TODO: When I click the resize button my component move to the center of the screen and it's certainly connected
+    // to the draggable options and the initial value.
     // resize events
     {
-        let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
-        let resize_offset = RwSignal::new((0, 0));
-
         // Resize starts: set the resize start position with the mouse position
         let _resize_starts_ev =
             use_event_listener(resize_button_ref, leptos::ev::pointerdown, move |evt| {
@@ -71,8 +71,8 @@ pub fn GridItem(
                     data.height = prev_metadata.height + offset.1;
                 });
 
-                update_grid.update(|grid| {
-                    grid.items.insert(id, metadata.get().clone());
+                grid_ctx.update(|grid| {
+                    grid.storage.insert(id, metadata.get().clone());
                 });
             });
 
@@ -88,44 +88,61 @@ pub fn GridItem(
     }
 
     // Drag events
-
-    // TODO: pass width/height signals from parent so we can listen on the
-    // responsive changes. Or observe the resize event maybe.
-    let UseElementBoundingReturn {
-        width: absolute_parent_w,
-        height: absolute_parent_h,
-        ..
-    } = use_element_bounding(absolute_parent_el);
-
     let UseDraggableReturn { x, y, .. } = use_draggable_with_options(
         grid_item_ref,
         UseDraggableOptions::default()
             .initial_value(Position {
-                // x: metadata.get().position.0,
-                // y: metadata.get().position.1,
-                x: 40.,
-                y: 40.,
+                x: metadata.get_untracked().position.0,
+                y: metadata.get_untracked().position.1,
             })
-            .target_offset(Arc::new(move |event_target| {
+            .target_offset(move |event_target: web_sys::EventTarget| {
                 let target: web_sys::HtmlElement = event_target.unchecked_into();
                 let (x, y): (f64, f64) = (target.offset_left().into(), target.offset_top().into());
 
                 (x, y)
-            }))
+            })
+            .on_start(move |_| {
+                // TODO: see to sync drag event with the resize event
+                if resize_start_pos.get().is_some() {
+                    return false;
+                }
+
+                true
+            })
             .prevent_default(true),
     );
 
-    // TODO: adapt with reactive parent information
+    // Absolute element width/height
+    let UseElementBoundingReturn {
+        width: item_width,
+        height: item_height,
+        ..
+    } = use_element_bounding(grid_item_ref);
+
     let left = move || {
-        let max = absolute_parent_w.get() - x.get();
-        x.get().clamp(0.0, max.round())
+        let x = x.get();
+        let grid_w = grid_ctx.get_untracked().boundaries.width;
+        let max = if grid_w <= 0. {
+            0.
+        } else {
+            grid_w - item_width.get()
+        };
+
+        x.clamp(0., max.round())
     };
     let top = move || {
-        let max = absolute_parent_h.get() - y.get();
-        y.get().clamp(0.0, max.round())
+        let y = y.get_untracked();
+        let grid_h = grid_ctx.get_untracked().boundaries.height;
+        let max = if grid_h <= 0. {
+            0.
+        } else {
+            grid_h - item_height.get()
+        };
+
+        y.clamp(0.0, max.round())
     };
 
-    let styles = move || {
+    let style = move || {
         let GridItemData { width, height, .. } = metadata.get();
 
         format!(
@@ -143,11 +160,10 @@ pub fn GridItem(
     view! {
         <div
             node_ref=grid_item_ref
-            style={styles}
+            style={style}
             class="absolute p-4 cursor-move border-2 border-gray-500"
             data-id=id.to_string()
         >
-            { move || x.get() };{ move || y.get() }
             { children() }
             <div
                 node_ref=resize_button_ref
