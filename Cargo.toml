@@ -3,9 +3,8 @@ name = "arksync-ui"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-leptos = { version = "0.7", features = ["csr"] }
+leptos = { version = "0.8.0-rc1", features = ["csr"] }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
@@ -13,11 +12,15 @@ serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1.7"
 charming = { features = ["wasm"], git = "https://github.com/yuankunzhang/charming.git", rev = "6c33db0f98690e3b12cba02db1ce51aa63e9d082" }
-leptos-use = "0.15.5"
-leptos_router = "0.7.5"
+# All features are available by default. Bug?
+leptos-use = "0.16.0-rc1"
+leptos_router = "0.8.0-rc1"
 web-sys = { version = "0.3", features = ["EventListener"] }
 tauri-sys = { git = "https://github.com/JonasKruckenberg/tauri-sys", branch = "v2", features = ["core", "event"]}
 futures-util = "0.3"
+
+[patch.crates-io]
+leptos-use = { path = "../leptos-use" }
 
 [workspace]
 members = ["src-tauri"]
