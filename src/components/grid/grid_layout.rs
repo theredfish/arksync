@@ -4,7 +4,7 @@ use leptos_use::{use_element_bounding, UseElementBoundingReturn};
 use std::collections::HashMap;
 
 #[component]
-pub fn Grid(children: Children) -> impl IntoView {
+pub fn GridLayout(children: Children) -> impl IntoView {
     let grid_layout = NodeRef::<Div>::new();
     let grid_context = GridContext {
         storage: HashMap::new(),

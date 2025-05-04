@@ -1,5 +1,5 @@
-mod grid_component;
 mod grid_item;
+mod grid_layout;
 
 #[derive(Clone, Debug)]
 struct GridBounding {
@@ -22,5 +22,5 @@ struct GridItemData {
 
 use std::collections::HashMap;
 
-pub use self::grid_component::Grid;
 pub use self::grid_item::GridItem;
+pub use self::grid_layout::GridLayout;
