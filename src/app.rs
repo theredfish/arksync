@@ -1,5 +1,5 @@
 use crate::components::charts::{AirTemperatureGauge, WaterTemperatureChart};
-use crate::components::grid::{Grid, GridItem};
+use crate::components::grid::{GridItem, GridLayout};
 use crate::components::sidebar::Sidebar;
 use leptos::prelude::*;
 use leptos_router::{
@@ -26,7 +26,7 @@ pub fn App() -> impl IntoView {
 pub fn Dashboards() -> impl IntoView {
     view! {
         <div class="w-full p-4">
-            <Grid>
+            <GridLayout>
                 <GridItem id=1 width=300 height=300 position_x=400. position_y=100.>
                     <AirTemperatureGauge />
                 </GridItem>
@@ -36,7 +36,7 @@ pub fn Dashboards() -> impl IntoView {
                 <GridItem id=3 width=100 height=100 position_x=0. position_y=0.>
                     No data yet
                 </GridItem>
-            </Grid>
+            </GridLayout>
         </div>
     }
 }
