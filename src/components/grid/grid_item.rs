@@ -121,7 +121,7 @@ pub fn GridItem(
 
     let left = move || {
         let x = x.get();
-        let grid_w = grid_ctx.get_untracked().boundaries.width;
+        let grid_w = grid_ctx.get().boundaries.width;
         let max = if grid_w <= 0. {
             0.
         } else {
@@ -131,8 +131,8 @@ pub fn GridItem(
         x.clamp(0., max.round())
     };
     let top = move || {
-        let y = y.get_untracked();
-        let grid_h = grid_ctx.get_untracked().boundaries.height;
+        let y = y.get();
+        let grid_h = grid_ctx.get().boundaries.height;
         let max = if grid_h <= 0. {
             0.
         } else {
