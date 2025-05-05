@@ -1,4 +1,4 @@
-use crate::components::grid::{GridContext, GridItemData};
+use crate::components::grid::{GridItemData, Layout, Size};
 use leptos::html::Div;
 use leptos::prelude::*;
 use leptos_use::{
@@ -11,14 +11,20 @@ use wasm_bindgen::JsCast;
 #[component]
 pub fn GridItem(
     children: Children,
-    id: i32,
-    width: i32,
-    height: i32,
-    position_x: f64,
-    position_y: f64,
+    id: u32,
+    width: u32,
+    height: u32,
+    x: f64,
+    y: f64,
 ) -> impl IntoView {
-    let grid_ctx =
-        use_context::<RwSignal<GridContext>>().expect("to have found the setter provided");
+    let layout = use_context::<RwSignal<Layout>>().expect("should retrieve the layout context");
+    let metadata = RwSignal::new(GridItemData {
+        size: Size {
+            width: width.into(),
+            height: height.into(),
+        },
+        position: Position { x, y },
+    });
     let window = window();
     let grid_item_ref = NodeRef::<Div>::new();
     let resize_button_ref = NodeRef::<Div>::new();
@@ -26,17 +32,9 @@ pub fn GridItem(
     let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
     let resize_offset = RwSignal::new((0, 0));
 
-    let metadata = RwSignal::new(GridItemData {
-        width,
-        height,
-        position: (position_x, position_y),
-    });
-
-    // Rendering effect
     Effect::new(move |_| {
-        let metadata = metadata.read_untracked();
-        grid_ctx.update(|ctx| {
-            ctx.storage.insert(id, metadata.clone());
+        layout.update(|layout| {
+            layout.add_item(id, metadata); // on the heap with a RwLock
         });
     });
 
@@ -67,12 +65,8 @@ pub fn GridItem(
 
                 let prev_metadata = metadata.get_untracked();
                 metadata.update(|data| {
-                    data.width = prev_metadata.width + offset.0;
-                    data.height = prev_metadata.height + offset.1;
-                });
-
-                grid_ctx.update(|grid| {
-                    grid.storage.insert(id, metadata.get().clone());
+                    data.size.width = prev_metadata.size.width + offset.0 as f64;
+                    data.size.height = prev_metadata.size.height + offset.1 as f64;
                 });
             });
 
@@ -92,8 +86,8 @@ pub fn GridItem(
         grid_item_ref,
         UseDraggableOptions::default()
             .initial_value(Position {
-                x: metadata.get_untracked().position.0,
-                y: metadata.get_untracked().position.1,
+                x: metadata.get_untracked().position.x,
+                y: metadata.get_untracked().position.y,
             })
             .target_offset(move |event_target: web_sys::EventTarget| {
                 let target: web_sys::HtmlElement = event_target.unchecked_into();
@@ -101,14 +95,13 @@ pub fn GridItem(
 
                 (x, y)
             })
-            .on_start(move |_| {
-                // TODO: see to sync drag event with the resize event
-                if resize_start_pos.get().is_some() {
-                    return false;
-                }
-
-                true
-            })
+            // .on_start(move |_| {
+            //     // TODO: see to sync drag event with the resize event
+            //     if resize_start_pos.get().is_some() {
+            //         return false;
+            //     }
+            //     true
+            // })
             .prevent_default(true),
     );
 
@@ -121,7 +114,7 @@ pub fn GridItem(
 
     let left = move || {
         let x = x.get();
-        let grid_w = grid_ctx.get().boundaries.width;
+        let grid_w = layout.get().size.width;
         let max = if grid_w <= 0. {
             0.
         } else {
@@ -132,7 +125,7 @@ pub fn GridItem(
     };
     let top = move || {
         let y = y.get();
-        let grid_h = grid_ctx.get().boundaries.height;
+        let grid_h = layout.get().size.height;
         let max = if grid_h <= 0. {
             0.
         } else {
@@ -143,7 +136,7 @@ pub fn GridItem(
     };
 
     let style = move || {
-        let GridItemData { width, height, .. } = metadata.get();
+        let Size { width, height } = metadata.get().size;
 
         format!(
             r#"width: {width}px;
