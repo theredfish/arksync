@@ -1,6 +1,7 @@
 use crate::components::grid::{GridItemData, Layout, Size};
 use crate::components::heroicons::ResizeIcon;
 use leptos::html::Div;
+use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_use::{
     core::Position, use_draggable_with_options, use_event_listener, UseDraggableOptions,
@@ -30,10 +31,10 @@ pub fn GridItem(
     let window = window();
     let grid_item_ref = NodeRef::<Div>::new();
     let drag_ref = NodeRef::<Div>::new();
-    let resize_button_ref = NodeRef::<Div>::new();
 
+    let resize_button_ref = NodeRef::<Div>::new();
     let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
-    let resize_offset = RwSignal::new((0, 0));
+    let resize_movement = RwSignal::new((0, 0));
 
     Effect::new(move |_| {
         layout.update(|layout| {
@@ -51,37 +52,39 @@ pub fn GridItem(
         let _resize_starts_ev =
             use_event_listener(resize_button_ref, leptos::ev::pointerdown, move |evt| {
                 evt.prevent_default();
-                let (client_x, client_y) = (evt.client_x(), evt.client_y());
-                resize_start_pos.set(Some((client_x, client_y)));
+                resize_start_pos.set(Some((evt.client_x(), evt.client_y())));
             });
 
         // Resize stops: Update the metadata with the offset
         let _resize_stops_ev =
             use_event_listener(window.clone(), leptos::ev::pointerup, move |_| {
-                // Pointerup event isn't associated to a resize event for this component
-                if resize_start_pos.get().is_none() {
-                    return;
+                if resize_start_pos.get().is_some() {
+                    resize_start_pos.set(None);
                 }
-
-                let offset = resize_offset.get();
-                resize_start_pos.set(None);
-
-                let prev_metadata = metadata.get_untracked();
-                metadata.update(|data| {
-                    data.size.width = prev_metadata.size.width + offset.0 as f64;
-                    data.size.height = prev_metadata.size.height + offset.1 as f64;
-                });
             });
 
         // Resize in progress: we update the offset (mouse_pos - client_pos)
         let _resize_ev = use_event_listener(window, leptos::ev::pointermove, move |evt| {
-            if let Some((start_pos_x, start_pos_y)) = resize_start_pos.get() {
-                let (move_x, move_y) = (evt.client_x(), evt.client_y());
-                let (offset_x, offset_y) = ((move_x - start_pos_x), (move_y - start_pos_y));
-
-                resize_offset.set((offset_x, offset_y));
+            if let Some((start_x, start_y)) = resize_start_pos.get() {
+                let (offset_x, offset_y) = ((evt.client_x() - start_x), (evt.client_y() - start_y));
+                log!("resize_movement : ({offset_x},{offset_y})");
+                resize_movement.update(move |movement| {
+                    *movement = (offset_x, offset_y);
+                });
+                resize_start_pos.update(move |pos| *pos = Some((evt.client_x(), evt.client_y())));
             }
         });
+
+        Effect::watch(
+            move || resize_movement.get(),
+            move |(offset_x, offset_y): &(i32, i32), _, _| {
+                metadata.update(|data| {
+                    data.size.width = data.size.width + *offset_x as f64;
+                    data.size.height = data.size.height + *offset_y as f64;
+                });
+            },
+            false,
+        );
     }
 
     // Drag events
@@ -99,13 +102,6 @@ pub fn GridItem(
 
                 (x, y)
             })
-            // .on_start(move |_| {
-            //     // TODO: see to sync drag event with the resize event
-            //     if resize_start_pos.get().is_some() {
-            //         return false;
-            //     }
-            //     true
-            // })
             .prevent_default(true),
     );
 
@@ -141,11 +137,15 @@ pub fn GridItem(
 
     let style = move || {
         let Size { width, height } = metadata.get().size;
+        let transition = match (resize_start_pos.get()) {
+            Some(_) => "width 0ms ease-in, height 0ms ease-in;",
+            None => "width 250ms ease-in, height 250ms ease-in;",
+        };
 
         format!(
             r#"width: {width}px;
             height: {height}px;
-            transition: width 0.2s ease-out, height 0.2s ease-in;
+            transition: {transition}
             touch-action: none;
             left: {}px;
             top: {}px;"#,
