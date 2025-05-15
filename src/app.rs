@@ -27,7 +27,7 @@ pub fn Dashboards() -> impl IntoView {
     view! {
         <div class="w-full p-4">
             <GridLayout columns=10>
-                <GridItem id=1 width=300 height=300 x=400. y=100.>
+                <GridItem id=1 width=300 height=300 x=400. y=100. label="Air temperature".to_string()>
                     <AirTemperatureGauge />
                 </GridItem>
                 // <GridItem id=2 width=800 height=400 x=800. y=500.>

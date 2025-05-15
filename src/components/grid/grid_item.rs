@@ -1,4 +1,5 @@
 use crate::components::grid::{GridItemData, Layout, Size};
+use crate::components::heroicons::ResizeIcon;
 use leptos::html::Div;
 use leptos::prelude::*;
 use leptos_use::{
@@ -16,6 +17,7 @@ pub fn GridItem(
     height: u32,
     x: f64,
     y: f64,
+    #[prop(optional)] label: String,
 ) -> impl IntoView {
     let layout = use_context::<RwSignal<Layout>>().expect("should retrieve the layout context");
     let metadata = RwSignal::new(GridItemData {
@@ -27,6 +29,7 @@ pub fn GridItem(
     });
     let window = window();
     let grid_item_ref = NodeRef::<Div>::new();
+    let drag_ref = NodeRef::<Div>::new();
     let resize_button_ref = NodeRef::<Div>::new();
 
     let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
@@ -85,6 +88,7 @@ pub fn GridItem(
     let UseDraggableReturn { x, y, .. } = use_draggable_with_options(
         grid_item_ref,
         UseDraggableOptions::default()
+            .handle(Some(drag_ref))
             .initial_value(Position {
                 x: metadata.get_untracked().position.x,
                 y: metadata.get_untracked().position.y,
@@ -154,15 +158,20 @@ pub fn GridItem(
         <div
             node_ref=grid_item_ref
             style={style}
-            class="absolute p-4 cursor-move border-2 border-gray-500"
+            class="absolute cursor-move border-2 border-gray-500"
             data-id=id.to_string()
         >
+            <div node_ref=drag_ref class="w-full p-2">
+                { label }
+            </div>
             { children() }
             <div
                 node_ref=resize_button_ref
-                class="absolute bottom-0 right-0 w-4 h-4 bg-red-500 cursor-se-resize"
+                class="absolute bottom-0 right-0 cursor-se-resize"
                 data-id=id.to_string()
-            ></div>
+            >
+                <ResizeIcon class="h-6 w-6" />
+            </div>
         </div>
     }
 }

@@ -1,5 +1,5 @@
 use crate::components::heroicons::{
-    CpuChip, PresentationChartBarIcon, RectangleGroup, ShieldExclamation,
+    CpuChipIcon, PresentationChartBarIcon, RectangleGroupIcon, ShieldExclamationIcon,
 };
 use leptos::prelude::*;
 use leptos::IntoView;
@@ -20,21 +20,21 @@ pub fn Sidebar(#[prop(into)] class: String) -> impl IntoView {
 
                 <li><A href="alerts">
                     <span class="inline-flex items-center">
-                        <ShieldExclamation class="h-6 w-6 mr-1" />
+                        <ShieldExclamationIcon class="h-6 w-6 mr-1" />
                         "Alerts"
                     </span>
                 </A></li>
 
                 <li><A href="sensors">
                     <span class="inline-flex items-center">
-                        <CpuChip class="h-6 w-6 mr-1" />
+                        <CpuChipIcon class="h-6 w-6 mr-1" />
                         "Sensors"
                     </span>
                 </A></li>
 
                 <li><A href="nodes">
                     <span class="inline-flex items-center">
-                        <RectangleGroup class="h-6 w-6 mr-1" />
+                        <RectangleGroupIcon class="h-6 w-6 mr-1" />
                         "Nodes"
                     </span>
                 </A></li>
