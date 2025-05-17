@@ -1,5 +1,7 @@
-use crate::components::grid::{GridItemData, Layout, Size};
+use crate::components::grid::{GridItemData, GridItemPosition, GridItemSpan, Layout, Size};
+use crate::components::heroicons::ResizeIcon;
 use leptos::html::Div;
+use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_use::{
     core::Position, use_draggable_with_options, use_event_listener, UseDraggableOptions,
@@ -8,31 +10,53 @@ use leptos_use::{
 use leptos_use::{use_element_bounding, UseElementBoundingReturn};
 use wasm_bindgen::JsCast;
 
+#[derive(Clone, Default)]
+pub struct ResizeMovement {
+    offset_x: i32,
+    offset_y: i32,
+    last_client_pos: (i32, i32),
+    last_item_size: Size,
+}
+
 #[component]
 pub fn GridItem(
     children: Children,
     id: u32,
-    width: u32,
-    height: u32,
-    x: f64,
-    y: f64,
+    col_span: u32,
+    row_span: u32,
+    col_start: u32,
+    row_start: u32,
+    #[prop(optional)] label: String,
 ) -> impl IntoView {
     let layout = use_context::<RwSignal<Layout>>().expect("should retrieve the layout context");
-    let metadata = RwSignal::new(GridItemData {
-        size: Size {
-            width: width.into(),
-            height: height.into(),
-        },
-        position: Position { x, y },
-    });
+    let metadata = RwSignal::new(GridItemData::default());
     let window = window();
     let grid_item_ref = NodeRef::<Div>::new();
-    let resize_button_ref = NodeRef::<Div>::new();
+    let drag_ref = NodeRef::<Div>::new();
 
-    let resize_start_pos = RwSignal::new(None::<(i32, i32)>);
-    let resize_offset = RwSignal::new((0, 0));
+    let resize_button_ref = NodeRef::<Div>::new();
+    let resize_start_pos = RwSignal::new((0, 0));
+    let resize_movement = RwSignal::new(ResizeMovement::default());
+    let is_resizing = RwSignal::new(false);
 
     Effect::new(move |_| {
+        let Size {
+            width: cell_w,
+            height: cell_h,
+        } = layout.get_untracked().cell_size;
+        let item_data = GridItemData {
+            position: GridItemPosition {
+                col_start,
+                row_start,
+            },
+            span: GridItemSpan { row_span, col_span },
+            size: Size {
+                width: col_span as f64 * cell_w,
+                height: row_span as f64 * cell_h,
+            },
+        };
+        metadata.set(item_data);
+
         layout.update(|layout| {
             layout.add_item(id, metadata); // on the heap with a RwLock
         });
@@ -48,46 +72,124 @@ pub fn GridItem(
         let _resize_starts_ev =
             use_event_listener(resize_button_ref, leptos::ev::pointerdown, move |evt| {
                 evt.prevent_default();
-                let (client_x, client_y) = (evt.client_x(), evt.client_y());
-                resize_start_pos.set(Some((client_x, client_y)));
+                let cursor_pos = (evt.client_x(), evt.client_y());
+                resize_start_pos.set(cursor_pos);
+                resize_movement.update(|movement| {
+                    movement.last_client_pos = cursor_pos;
+                    movement.last_item_size = metadata.get().size;
+                });
+                is_resizing.set(true);
             });
 
         // Resize stops: Update the metadata with the offset
         let _resize_stops_ev =
             use_event_listener(window.clone(), leptos::ev::pointerup, move |_| {
-                // Pointerup event isn't associated to a resize event for this component
-                if resize_start_pos.get().is_none() {
-                    return;
+                if is_resizing.get() {
+                    is_resizing.set(false);
                 }
-
-                let offset = resize_offset.get();
-                resize_start_pos.set(None);
-
-                let prev_metadata = metadata.get_untracked();
-                metadata.update(|data| {
-                    data.size.width = prev_metadata.size.width + offset.0 as f64;
-                    data.size.height = prev_metadata.size.height + offset.1 as f64;
-                });
             });
 
         // Resize in progress: we update the offset (mouse_pos - client_pos)
         let _resize_ev = use_event_listener(window, leptos::ev::pointermove, move |evt| {
-            if let Some((start_pos_x, start_pos_y)) = resize_start_pos.get() {
-                let (move_x, move_y) = (evt.client_x(), evt.client_y());
-                let (offset_x, offset_y) = ((move_x - start_pos_x), (move_y - start_pos_y));
+            if is_resizing.get() {
+                // The total offset from the beginning
 
-                resize_offset.set((offset_x, offset_y));
+                let last_client_pos = resize_movement.get().last_client_pos;
+
+                log!("last_client_pos: {last_client_pos:#?}");
+                let (curr_pos_x, curr_pos_y) = (evt.client_x(), evt.client_y());
+                let (offset_x, offset_y) = (
+                    (curr_pos_x - last_client_pos.0),
+                    (curr_pos_y - last_client_pos.1),
+                );
+
+                let last_client_pos = (evt.client_x(), evt.client_y());
+
+                resize_movement.update(move |movement| {
+                    movement.offset_x = offset_x;
+                    movement.offset_y = offset_y;
+                    movement.last_client_pos = last_client_pos;
+                });
             }
         });
+
+        Effect::watch(
+            move || {
+                (
+                    resize_movement.get(),
+                    resize_start_pos.get(),
+                    is_resizing.get(),
+                )
+            },
+            move |(resize_movement, resize_start_pos, is_resizing): &(
+                ResizeMovement,
+                (i32, i32),
+                bool,
+            ),
+                  _,
+                  _| {
+                let ResizeMovement {
+                    offset_x,
+                    offset_y,
+                    last_client_pos,
+                    last_item_size,
+                } = resize_movement;
+
+                if *is_resizing {
+                    metadata.update(|data| {
+                        data.size.width = data.size.width + (*offset_x as f64);
+                        data.size.height = data.size.height + *offset_y as f64;
+                    });
+                }
+
+                // We stopped to resize
+                if !*is_resizing {
+                    log!("We stopped");
+                    let (total_offset_x, total_offset_y) = (
+                        (last_client_pos.0 - resize_start_pos.0),
+                        (last_client_pos.1 - resize_start_pos.1),
+                    );
+                    log!("total_offset: {total_offset_x},{total_offset_y}");
+                    let cell_size = layout.get_untracked().cell_size;
+
+                    // 350px => 1 | 2 | 3 ^ | 4
+                    // 350 / 100 => 3.5 => 3 => fallback to the column 3
+                    // last step: we need to convert back to pixels (* cell_size)
+
+                    // 200 (2 cols).
+                    // ==> 250 ==> offset total should be 200
+                    metadata.update(|data| {
+                        let clamped_w =
+                            ((total_offset_x as f64) / cell_size.width).round() * cell_size.width;
+                        let clamped_h =
+                            (total_offset_y as f64 / cell_size.height).round() * cell_size.height;
+
+                        log!("clamped_w({clamped_w}), clamped_h({clamped_h})");
+                        log!("[before] data.size.width: {}", data.size.width);
+
+                        let layout = layout.get_untracked();
+                        // TODO: calculate the max based on the item location, not only the layout size
+                        data.size.width = (last_item_size.width + clamped_w)
+                            .clamp(cell_size.width, layout.size.width);
+                        log!("[after] data.size.width: {}", data.size.width);
+                        // data.size.height = clamped_h;
+                    });
+                }
+            },
+            false,
+        );
     }
 
     // Drag events
     let UseDraggableReturn { x, y, .. } = use_draggable_with_options(
         grid_item_ref,
         UseDraggableOptions::default()
+            .handle(Some(drag_ref))
             .initial_value(Position {
-                x: metadata.get_untracked().position.x,
-                y: metadata.get_untracked().position.y,
+                x: metadata.get_untracked().position.col_start as f64
+                    * layout.get_untracked().cell_size.width,
+                y: metadata.get_untracked().position.row_start as f64
+                    * layout.get_untracked().cell_size.height,
             })
             .target_offset(move |event_target: web_sys::EventTarget| {
                 let target: web_sys::HtmlElement = event_target.unchecked_into();
@@ -95,13 +197,6 @@ pub fn GridItem(
 
                 (x, y)
             })
-            // .on_start(move |_| {
-            //     // TODO: see to sync drag event with the resize event
-            //     if resize_start_pos.get().is_some() {
-            //         return false;
-            //     }
-            //     true
-            // })
             .prevent_default(true),
     );
 
@@ -137,11 +232,16 @@ pub fn GridItem(
 
     let style = move || {
         let Size { width, height } = metadata.get().size;
+        let transition = if is_resizing.get() {
+            "width 0ms ease-in, height 0ms ease-in;"
+        } else {
+            "width 250ms ease-in, height 250ms ease-in;"
+        };
 
         format!(
             r#"width: {width}px;
             height: {height}px;
-            transition: width 0.2s ease-out, height 0.2s ease-in;
+            transition: {transition}
             touch-action: none;
             left: {}px;
             top: {}px;"#,
@@ -154,15 +254,20 @@ pub fn GridItem(
         <div
             node_ref=grid_item_ref
             style={style}
-            class="absolute p-4 cursor-move border-2 border-gray-500"
+            class="absolute cursor-move border-2 border-gray-500"
             data-id=id.to_string()
         >
+            <div node_ref=drag_ref class="w-full p-2">
+                { label }
+            </div>
             { children() }
             <div
                 node_ref=resize_button_ref
-                class="absolute bottom-0 right-0 w-4 h-4 bg-red-500 cursor-se-resize"
+                class="absolute bottom-0 right-0 cursor-se-resize"
                 data-id=id.to_string()
-            ></div>
+            >
+                <ResizeIcon class="h-6 w-6" />
+            </div>
         </div>
     }
 }
