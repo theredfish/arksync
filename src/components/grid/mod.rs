@@ -84,15 +84,6 @@ pub struct LayoutBuilder {
 }
 
 impl LayoutBuilder {
-    fn new() -> Self {
-        LayoutBuilder {
-            size: Size::default(),
-            items: HashMap::new(),
-            columns: u8::default(),
-            cell_size: Size::default(),
-        }
-    }
-
     fn columns(mut self, quantity: u8) -> Self {
         self.columns = quantity;
         self
@@ -105,11 +96,6 @@ impl LayoutBuilder {
 
     pub fn cell_size(mut self, width: f64, height: f64) -> Self {
         self.cell_size = Size { width, height };
-        self
-    }
-
-    fn items(mut self, items: HashMap<u32, RwSignal<GridItemData>>) -> Self {
-        self.items = items;
         self
     }
 
