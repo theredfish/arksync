@@ -110,12 +110,14 @@ pub fn GridItem(
         Effect::watch(
             move || {
                 (
+                    layout.get(),
                     resize_movement.get(),
                     resize_start_pos.get(),
                     is_resizing.get(),
                 )
             },
-            move |(resize_movement, resize_start_pos, is_resizing): &(
+            move |(layout, resize_movement, resize_start_pos, is_resizing): &(
+                Layout,
                 ResizeMovement,
                 (i32, i32),
                 bool,
@@ -142,18 +144,27 @@ pub fn GridItem(
                         (last_client_pos.0 - resize_start_pos.0),
                         (last_client_pos.1 - resize_start_pos.1),
                     );
-                    let cell_size = layout.get_untracked().cell_size;
+                    let cell_size = &layout.cell_size;
+                    log!("cell size w = {}", cell_size.width.round());
 
                     metadata.update(|data| {
-                        let clamped_w =
-                            ((total_offset_x as f64) / cell_size.width).round() * cell_size.width;
+                        // If the last mouse position x is 253, and the resize
+                        // started at 100px, then we get a movement of 153px.
+                        // To stick the movement to the grid we need to know if
+                        // we reached the middle of the last cell in which case
+                        // we fill it, otherwise, we go back to the previous
+                        // cell. Here the calcul for a grid cell width of 100px is:
+                        // (153 / 100).round() => 1.53.round() => 2
+                        // We move by 2 times: 2 * 100px => 200px.
+                        // So we fill 2 new columns of 100px.
+                        let clamped_w = (total_offset_x as f64 / cell_size.width).round()
+                            * cell_size.width.round();
                         let clamped_h =
                             (total_offset_y as f64 / cell_size.height).round() * cell_size.height;
 
                         log!("clamped_w({clamped_w}), clamped_h({clamped_h})");
                         log!("[before] data.size.width: {}", data.size.width);
 
-                        let layout = layout.get_untracked();
                         // TODO: calculate the max based on the item location, not only the layout size
                         data.size.width = (last_item_size.width + clamped_w);
                         log!("[after] data.size.width: {}", data.size.width);
@@ -250,7 +261,7 @@ pub fn GridItem(
             data-id=id.to_string()
         >
             <div node_ref=drag_ref class="w-full p-2">
-                { label }
+                { label }: { move || left() }; { move || top() }
             </div>
             { children() }
             <div
