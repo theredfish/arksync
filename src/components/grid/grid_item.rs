@@ -1,4 +1,4 @@
-use crate::components::grid::{GridItemData, GridItemPosition, GridItemSpan, Layout, Size};
+use crate::components::grid::{GridItemData, GridItemPosition, Layout, Size, Span};
 use crate::components::heroicons::ResizeIcon;
 use leptos::html::Div;
 use leptos::logging::log;
@@ -18,6 +18,31 @@ pub struct ResizeMovement {
     last_item_size: Size,
 }
 
+// Define the ResizeState enum
+#[derive(Clone, Copy)]
+enum ResizeState {
+    Idle,
+    Resizing {
+        start_pos: (i32, i32),
+        offset_x: i32,
+        offset_y: i32,
+        last_client_pos: (i32, i32),
+        last_item_size: Size,
+    },
+    Ended {
+        start_pos: (i32, i32),
+        total_offset_x: i32,
+        total_offset_y: i32,
+        last_item_size: Size,
+    },
+}
+
+impl Default for ResizeState {
+    fn default() -> Self {
+        ResizeState::Idle
+    }
+}
+
 #[component]
 pub fn GridItem(
     children: Children,
@@ -35,11 +60,11 @@ pub fn GridItem(
     let drag_ref = NodeRef::<Div>::new();
 
     let resize_button_ref = NodeRef::<Div>::new();
-    let resize_start_pos = RwSignal::new((0, 0));
-    let resize_movement = RwSignal::new(ResizeMovement::default());
-    let is_resizing = RwSignal::new(false);
+    let resize_state = RwSignal::new(ResizeState::default());
 
-    Effect::new(move |_| {
+    Effect::new(move || {
+        // TODO: find a better way, this is causing a initial state immediately
+        // updated from watch effects when layout is tracked.
         let Size {
             width: cell_w,
             height: cell_h,
@@ -49,12 +74,16 @@ pub fn GridItem(
                 col_start,
                 row_start,
             },
-            span: GridItemSpan { row_span, col_span },
+            span: Span { row_span, col_span },
             size: Size {
                 width: col_span as f64 * cell_w,
                 height: row_span as f64 * cell_h,
             },
         };
+        log!(
+            "col_span: {col_span} and cell_w: {cell_w}. Computed width: {}",
+            col_span as f64 * cell_w
+        );
         metadata.set(item_data);
 
         layout.update(|layout| {
@@ -64,116 +93,134 @@ pub fn GridItem(
 
     // resize events
     {
-        // Resize starts: set the resize start position with the mouse position
-        let _resize_starts_ev =
+        let _resize_starts =
             use_event_listener(resize_button_ref, leptos::ev::pointerdown, move |evt| {
                 evt.prevent_default();
-                is_resizing.set(true);
-
                 let cursor_pos = (evt.client_x(), evt.client_y());
-                resize_start_pos.set(cursor_pos);
-                resize_movement.update(|movement| {
-                    movement.last_client_pos = cursor_pos;
-                    movement.last_item_size = metadata.get().size;
+                resize_state.set(ResizeState::Resizing {
+                    start_pos: cursor_pos,
+                    offset_x: 0,
+                    offset_y: 0,
+                    last_client_pos: cursor_pos,
+                    last_item_size: metadata.get().size,
                 });
             });
 
-        // Resize stops: Update the metadata with the offset
-        let _resize_stops_ev =
-            use_event_listener(window.clone(), leptos::ev::pointerup, move |_| {
-                if is_resizing.get() {
-                    is_resizing.set(false);
+        let _resize_in_progress =
+            use_event_listener(window.clone(), leptos::ev::pointermove, move |evt| {
+                evt.prevent_default();
+                if let ResizeState::Resizing {
+                    start_pos,
+                    last_client_pos,
+                    last_item_size,
+                    ..
+                } = resize_state.get()
+                {
+                    let cursor_pos = (evt.client_x(), evt.client_y());
+                    let (offset_x, offset_y) = (
+                        (cursor_pos.0 - last_client_pos.0),
+                        (cursor_pos.1 - last_client_pos.1),
+                    );
+
+                    resize_state.set(ResizeState::Resizing {
+                        start_pos,
+                        offset_x,
+                        offset_y,
+                        last_client_pos: cursor_pos,
+                        last_item_size,
+                    });
                 }
             });
 
-        // Resize in progress: we update the offset (mouse_pos - client_pos)
-        let _resize_ev = use_event_listener(window, leptos::ev::pointermove, move |evt| {
-            if is_resizing.get() {
-                let last_client_pos = resize_movement.get().last_client_pos;
-
-                let (curr_pos_x, curr_pos_y) = (evt.client_x(), evt.client_y());
-                let (offset_x, offset_y) = (
-                    (curr_pos_x - last_client_pos.0),
-                    (curr_pos_y - last_client_pos.1),
-                );
-
-                let last_client_pos = (evt.client_x(), evt.client_y());
-
-                resize_movement.update(move |movement| {
-                    movement.offset_x = offset_x;
-                    movement.offset_y = offset_y;
-                    movement.last_client_pos = last_client_pos;
+        let _resize_stops = use_event_listener(window, leptos::ev::pointerup, move |_| {
+            if let ResizeState::Resizing {
+                start_pos,
+                last_client_pos,
+                last_item_size,
+                ..
+            } = resize_state.get()
+            {
+                let total_offset_x = last_client_pos.0 - start_pos.0;
+                let total_offset_y = last_client_pos.1 - start_pos.1;
+                resize_state.set(ResizeState::Ended {
+                    start_pos,
+                    total_offset_x,
+                    total_offset_y,
+                    last_item_size,
                 });
             }
         });
 
+        // Handle pointer resize events
         Effect::watch(
-            move || {
-                (
-                    layout.get(),
-                    resize_movement.get(),
-                    resize_start_pos.get(),
-                    is_resizing.get(),
-                )
-            },
-            move |(layout, resize_movement, resize_start_pos, is_resizing): &(
-                Layout,
-                ResizeMovement,
-                (i32, i32),
-                bool,
-            ),
-                  _,
-                  _| {
-                let ResizeMovement {
-                    offset_x,
-                    offset_y,
-                    last_client_pos,
-                    last_item_size,
-                } = resize_movement;
+            move || resize_state.get(),
+            move |state, _, _| {
+                match state {
+                    ResizeState::Resizing {
+                        offset_x, offset_y, ..
+                    } => {
+                        metadata.update(|data| {
+                            data.size.width = data.size.width + (*offset_x as f64);
+                            data.size.height = data.size.height + (*offset_y as f64);
+                        });
+                    }
+                    ResizeState::Ended {
+                        total_offset_x,
+                        total_offset_y,
+                        last_item_size,
+                        ..
+                    } => {
+                        let cell_size = &layout.get_untracked().cell_size;
+                        log!("layout cell size: {cell_size:?}");
+                        metadata.update(|data| {
+                            // Grid-snapping when resizing ends.
+                            //
+                            // If the last mouse position x is 253, and the resize started at 100px, then we get a movement
+                            // of 153px. To stick the movement to the grid we need to know if we reached the middle of the
+                            // last cell in which case we fill it, otherwise, we go back to the previous cell.
+                            //
+                            // Here the calcul for a grid cell width of 100px is: (153 / 100).round() -> 1.53.round() -> 2
+                            // We move by 2 times: 2 * 100px => 200px. So we fill 2 new columns of 100px.
+                            let snapped_w = (*total_offset_x as f64 / cell_size.width).round()
+                                * cell_size.width;
+                            let snapped_h = (*total_offset_y as f64 / cell_size.height).round()
+                                * cell_size.height;
 
-                if *is_resizing {
-                    metadata.update(|data| {
-                        data.size.width = data.size.width + (*offset_x as f64);
-                        data.size.height = data.size.height + *offset_y as f64;
-                    });
-                }
+                            log!("snapped_w({snapped_w}), snapped_h({snapped_h})");
+                            log!("[before] data.size.width: {}", data.size.width);
 
-                // We stopped to resize
-                if !is_resizing {
-                    let (total_offset_x, total_offset_y) = (
-                        (last_client_pos.0 - resize_start_pos.0),
-                        (last_client_pos.1 - resize_start_pos.1),
-                    );
-                    let cell_size = &layout.cell_size;
-                    log!("cell size w = {}", cell_size.width.round());
-
-                    metadata.update(|data| {
-                        // If the last mouse position x is 253, and the resize
-                        // started at 100px, then we get a movement of 153px.
-                        // To stick the movement to the grid we need to know if
-                        // we reached the middle of the last cell in which case
-                        // we fill it, otherwise, we go back to the previous
-                        // cell. Here the calcul for a grid cell width of 100px is:
-                        // (153 / 100).round() => 1.53.round() => 2
-                        // We move by 2 times: 2 * 100px => 200px.
-                        // So we fill 2 new columns of 100px.
-                        let clamped_w = (total_offset_x as f64 / cell_size.width).round()
-                            * cell_size.width.round();
-                        let clamped_h =
-                            (total_offset_y as f64 / cell_size.height).round() * cell_size.height;
-
-                        log!("clamped_w({clamped_w}), clamped_h({clamped_h})");
-                        log!("[before] data.size.width: {}", data.size.width);
-
-                        // TODO: calculate the max based on the item location, not only the layout size
-                        data.size.width = (last_item_size.width + clamped_w);
-                        log!("[after] data.size.width: {}", data.size.width);
-                        // TODO: creates a bug
-                        //data.size.height = clamped_h;
-                    });
+                            // TODO: calculate the max based on the item location, not only the layout size
+                            data.size.width = last_item_size.width + snapped_w;
+                            log!("[after] data.size.width: {}", data.size.width);
+                            // TODO: creates a bug
+                            //data.size.height = snapped_h;
+                        });
+                        resize_state.set(ResizeState::Idle);
+                    }
+                    ResizeState::Idle => {}
                 }
             },
             false,
+        );
+
+        // Handle grid layout resize events
+        Effect::watch(
+            move || layout.get().cell_size,
+            move |cell_size, _, _| {
+                if matches!(resize_state.get_untracked(), ResizeState::Idle) {
+                    metadata.update(|data| {
+                        let expected_size = Size {
+                            width: (col_span as f64 * cell_size.width).round(),
+                            height: (row_span as f64 * cell_size.height).round(),
+                        };
+                        log!("expected_size: {:?}", expected_size);
+                        if data.size != expected_size {
+                            data.size = expected_size;
+                        }
+                    });
+                }
+            },
+            true,
         );
     }
 
@@ -183,10 +230,8 @@ pub fn GridItem(
         UseDraggableOptions::default()
             .handle(Some(drag_ref))
             .initial_value(Position {
-                x: metadata.get_untracked().position.col_start as f64
-                    * layout.get_untracked().cell_size.width,
-                y: metadata.get_untracked().position.row_start as f64
-                    * layout.get_untracked().cell_size.height,
+                x: col_start as f64,
+                y: row_start as f64,
             })
             .target_offset(move |event_target: web_sys::EventTarget| {
                 let target: web_sys::HtmlElement = event_target.unchecked_into();
@@ -235,10 +280,9 @@ pub fn GridItem(
 
     let style = move || {
         let Size { width, height } = metadata.get().size;
-        let transition = if is_resizing.get() {
-            "width 0ms ease-in, height 0ms ease-in;"
-        } else {
-            "width 250ms ease-in, height 250ms ease-in;"
+        let transition = match resize_state.get() {
+            ResizeState::Resizing { .. } => "width 0ms ease-in, height 0ms ease-in;",
+            _ => "width 250ms ease-in, height 250ms ease-in;",
         };
 
         format!(
@@ -261,7 +305,15 @@ pub fn GridItem(
             data-id=id.to_string()
         >
             <div node_ref=drag_ref class="w-full p-2">
-                { label }: { move || left() }; { move || top() }
+                { label }
+            </div>
+            <div>
+                { move || {
+                    let GridItemPosition { col_start, row_start } = metadata.get().position;
+                    let Size { width, height } = metadata.get().size;
+                    format!("position: {col_start};{row_start} | size: {width};{height} | left/top: : {}; {}", left(), top())
+                }
+                }
             </div>
             { children() }
             <div

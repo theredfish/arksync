@@ -24,12 +24,12 @@ impl Default for GridItemPosition {
 }
 
 #[derive(Clone, Debug)]
-pub struct GridItemSpan {
+pub struct Span {
     col_span: u32,
     row_span: u32,
 }
 
-impl Default for GridItemSpan {
+impl Default for Span {
     fn default() -> Self {
         Self {
             col_span: 1,
@@ -38,7 +38,7 @@ impl Default for GridItemSpan {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 pub struct Size {
     width: f64,
     height: f64,
@@ -114,6 +114,6 @@ impl LayoutBuilder {
 #[derive(Clone, Debug, Default)]
 struct GridItemData {
     pub position: GridItemPosition,
-    pub span: GridItemSpan,
+    pub span: Span,
     pub size: Size,
 }
