@@ -10,14 +10,6 @@ use leptos_use::{
 use leptos_use::{use_element_bounding, UseElementBoundingReturn};
 use wasm_bindgen::JsCast;
 
-#[derive(Clone, Default)]
-pub struct ResizeMovement {
-    offset_x: i32,
-    offset_y: i32,
-    last_client_pos: (i32, i32),
-    last_item_size: Size,
-}
-
 // Define the ResizeState enum
 #[derive(Clone, Copy)]
 enum ResizeState {
