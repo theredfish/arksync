@@ -30,12 +30,12 @@ pub fn Dashboards() -> impl IntoView {
                 <GridItem id=1 col_start=0 col_span=4 row_start=0 row_span=2 label="Air temperature".to_string()>
                     <AirTemperatureGauge />
                 </GridItem>
-                // <GridItem id=2 width=800 height=400 x=800. y=500.>
-                //     <WaterTemperatureChart />
-                // </GridItem>
-                // <GridItem id=3 width=100 height=100 x=0. y=0.>
-                //     No data yet
-                // </GridItem>
+                <GridItem id=2 col_start=2 col_span=5 row_start=2 row_span=4 label="Water temperature".to_string()>
+                    <WaterTemperatureChart />
+                </GridItem>
+                <GridItem id=3 col_start=0 col_span=3 row_start=6 row_span=4>
+                    No data yet
+                </GridItem>
             </GridLayout>
         </div>
     }

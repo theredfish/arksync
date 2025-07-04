@@ -67,6 +67,10 @@ pub fn GridItem(
             width: cell_w,
             height: cell_h,
         } = layout.get_untracked().cell_size;
+        drag_state.set(DragState::Dragging(Position {
+            x: col_start as f64 * cell_w,
+            y: row_start as f64 * cell_h,
+        }));
         let item_data = GridItemData {
             position: GridItemPosition {
                 col_start,
