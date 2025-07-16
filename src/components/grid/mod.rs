@@ -56,7 +56,7 @@ pub struct Layout {
     // TODO: see for detaching this global reactive state from the layout config
     // And use signals in the config so we can listen on different events
     items: HashMap<u32, RwSignal<GridItemData>>,
-    columns: u8,
+    columns: u32,
     cell_size: Size,
 }
 
@@ -81,12 +81,12 @@ impl Layout {
 pub struct LayoutBuilder {
     size: Size,
     items: HashMap<u32, RwSignal<GridItemData>>,
-    columns: u8,
+    columns: u32,
     cell_size: Size,
 }
 
 impl LayoutBuilder {
-    fn columns(mut self, quantity: u8) -> Self {
+    fn columns(mut self, quantity: u32) -> Self {
         self.columns = quantity;
         self
     }

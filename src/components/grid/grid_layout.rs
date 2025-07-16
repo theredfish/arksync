@@ -1,9 +1,9 @@
 use crate::components::grid::{LayoutBuilder, Size};
-use leptos::{html::Div, logging::log, prelude::*};
+use leptos::{html::Div, prelude::*};
 use leptos_use::{use_element_bounding, UseElementBoundingReturn};
 
 #[component]
-pub fn GridLayout(children: Children, columns: u8, display_grid: bool) -> impl IntoView {
+pub fn GridLayout(children: Children, columns: u32, display_grid: bool) -> impl IntoView {
     assert!(columns > 0, "The number of columns can't be zero");
     let grid_layout_node = NodeRef::<Div>::new();
     let last_size = RwSignal::new(Size::default());
@@ -78,24 +78,53 @@ pub fn GridLayout(children: Children, columns: u8, display_grid: bool) -> impl I
         false,
     );
 
-    let draw_grid = move |columns: u8| {
-        (0..columns)
-            .map(|idx| {
-                view! {
-                    <div style={move || format!("width: {}px", layout.get().cell_size.width)}
-                        class="inline-flex h-full -z-1 border-r border-slate-900 border-opacity-90">
-                            <span>{ idx }</span>
-                    </div>
+    let draw_grid = Memo::new(move |_| {
+        let layout = layout.get();
+        let Size { height: cell_h, .. } = layout.cell_size;
+        let rows = (height.get() / cell_h).floor() as u32;
 
-                }
-            })
-            .collect_view()
-    };
+        (0..columns)
+            .flat_map(move |x| (0..rows).map(move |y| (x, y)))
+            .collect::<Vec<_>>()
+    });
 
     view! {
         <div node_ref=grid_layout_node class="relative h-full">
-            { if display_grid { Some(draw_grid(columns)) } else { None }}
-            { children() }
+            {
+                move || {
+                    if display_grid {
+                        Some(draw_grid
+                            .get()
+                            .into_iter()
+                            .map(|(col, row)| {
+                                let Size { width: cell_w, height: cell_h } = layout.get().cell_size;
+                                let rows = (height.get() / cell_h).floor() as u32;
+                                let border_t_b = if row == rows - 1 { "border-t border-b" } else { "border-t" };
+                                let border_l_r = if col == columns -1 { "border-l border-r" } else { "border-l" };
+
+                                view! {
+                                    <div
+                                        class=move || format!("absolute {border_t_b} {border_l_r} border-gray-800")
+                                        style={ move || {
+                                            format!("left: {}px; top: {}px; width: {}px; height: {}px;", col * cell_w as u32, row * cell_h as u32, cell_w, cell_h)
+                                        }}
+                                    >
+                                        {
+                                            if row == 0 {
+                                                Some(view! { <span class="text-xs text-gray-400">{format!("{col}")}</span> })
+                                            } else {
+                                                None
+                                            }
+                                        }
+                                    </div>
+                                }
+                            }).collect_view())
+                    } else {
+                        None
+                    }
+                }
+            }
+            {children()}
         </div>
     }
 }
