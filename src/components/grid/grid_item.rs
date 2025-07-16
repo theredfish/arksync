@@ -173,7 +173,6 @@ pub fn GridItem(
                         ..
                     } => {
                         let cell_size = &layout.get_untracked().cell_size;
-                        log!("layout cell size: {cell_size:?}");
                         metadata.update(|data| {
                             // Grid-snapping when resizing ends.
                             //
@@ -188,14 +187,9 @@ pub fn GridItem(
                             let snapped_h = (*total_offset_y as f64 / cell_size.height).round()
                                 * cell_size.height;
 
-                            log!("snapped_w({snapped_w}), snapped_h({snapped_h})");
-                            log!("[before] data.size.width: {}", data.size.width);
-
                             // TODO: calculate the max based on the item location, not only the layout size
                             data.size.width = last_item_size.width + snapped_w;
-                            log!("[after] data.size.width: {}", data.size.width);
-                            // TODO: creates a bug
-                            //data.size.height = snapped_h;
+                            data.size.height = last_item_size.height + snapped_h;
                         });
                         resize_state.set(ResizeState::Idle);
                     }
@@ -215,7 +209,6 @@ pub fn GridItem(
                             width: (col_span as f64 * cell_size.width).round(),
                             height: (row_span as f64 * cell_size.height).round(),
                         };
-                        log!("expected_size: {:?}", expected_size);
                         if data.size != expected_size {
                             data.size = expected_size;
                         }
@@ -253,9 +246,7 @@ pub fn GridItem(
                     x: col_start as f64 * cell_size.width,
                     y: row_start as f64 * cell_size.height,
                 };
-                // position.set(final_position);
                 drag_state.set(DragState::DragEnded(final_position));
-                log!("position on_end: {:?}", final_position);
 
                 metadata.update(|data| {
                     data.position.col_start = col_start;
