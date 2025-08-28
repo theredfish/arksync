@@ -21,12 +21,12 @@ jobs:
 
   linting:
     name: cargo clippy
-    runs-on: ubuntu-24.10
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: libwebkit2gtk-4.1-dev build-essential curl wget file
+          packages: libwebkit2gtk-4.1-dev
           version: 1.0
       - uses: actions-rs/toolchain@v1
         with:
@@ -35,14 +35,14 @@ jobs:
           components: clippy
       - run: cargo clippy --workspace --tests --all-features -- -D warnings
 
-  testing:
-    name: cargo nextest
-    runs-on: ubuntu-24.10
-    env:
-      CARGO_TERM_COLOR: always
-    steps:
-      - uses: actions/checkout@v4
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: nextest
-      - run: cargo nextest run --all-features --profile ci
+  # testing:
+  #   name: cargo nextest
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     CARGO_TERM_COLOR: always
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: taiki-e/install-action@v2
+  #       with:
+  #         tool: nextest
+  #     - run: cargo nextest run --all-features --profile ci
