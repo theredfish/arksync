@@ -9,8 +9,9 @@ use leptos_use::{
 use leptos_use::{use_element_bounding, UseElementBoundingReturn};
 use wasm_bindgen::JsCast;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 enum ResizeState {
+    #[default]
     Idle,
     Resizing {
         start_pos: (i32, i32),
@@ -25,12 +26,6 @@ enum ResizeState {
         total_offset_y: i32,
         last_item_size: Size,
     },
-}
-
-impl Default for ResizeState {
-    fn default() -> Self {
-        ResizeState::Idle
-    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -162,8 +157,8 @@ pub fn GridItem(
                         offset_x, offset_y, ..
                     } => {
                         metadata.update(|data| {
-                            data.size.width = data.size.width + (*offset_x as f64);
-                            data.size.height = data.size.height + (*offset_y as f64);
+                            data.size.width += *offset_x as f64;
+                            data.size.height += *offset_y as f64;
                         });
                     }
                     ResizeState::Ended {
@@ -274,9 +269,9 @@ pub fn GridItem(
     // Avoid issues where min > max.
     let left = move || {
         // let x = metadata.get().position.col_start * layout.get().cell_size.width as u32;
-        let x = match drag_state.get() {
+        match drag_state.get() {
             DragState::Dragging(p) | DragState::DragEnded(p) => p.x,
-        };
+        }
         // let grid_w = layout.get().size.width;
         //     let max = if grid_w <= 0. {
         //         0.
@@ -285,14 +280,12 @@ pub fn GridItem(
         //     };
 
         //     x.clamp(0., max.round())
-
-        x
     };
     let top = move || {
         // let y = metadata.get().position.row_start * layout.get().cell_size.height as u32;
-        let y = match drag_state.get() {
+        match drag_state.get() {
             DragState::Dragging(p) | DragState::DragEnded(p) => p.y,
-        };
+        }
         // let grid_h = layout.get().size.height;
         // let max = if grid_h <= 0. {
         //     0.
@@ -301,8 +294,6 @@ pub fn GridItem(
         // };
 
         // y.clamp(0.0, max.round())
-
-        y
     };
 
     let style = move || {

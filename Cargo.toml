@@ -20,3 +20,9 @@ futures-util = "0.3"
 
 [workspace]
 members = ["src-tauri"]
+
+# Waiting for a more stable version of the software, we allow some dead code and
+# unused variables.
+[lints.rust]
+unused_variables = "allow"
+dead_code = "allow"
