@@ -1,7 +1,7 @@
 [package]
 name = "arksync"
 version = "0.1.0"
-description = "An environmental control system for Raspberry Pi 4+."
+description = "An environmental control system for farms, greenhouses and aquariums."
 authors = ["theredfish"]
 edition = "2021"
 
