@@ -4,10 +4,7 @@ name: 'Publish Linux Arm builds'
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
-  pull_request: #todo remove once confirmed.
-    types: [opened, synchronize, reopened]
-
+    branches: ["configure-me-later"]
 jobs:
   build:
     runs-on: ubuntu-latest

@@ -38,3 +38,13 @@ WEBKIT_DISABLE_DMABUF_RENDERER=1 cargo tauri dev
 ```bash
 __NV_DISABLE_EXPLICIT_SYNC=1 cargo tauri dev
 ```
+
+## Influxdb
+
+### Generate an admin token
+
+This will be used for adding a new server to InfluxDB Explorer UI, and other
+admin tasks later.
+
+- `docker exec -it [container] bash`
+- `influxdb3 create token --admin`
