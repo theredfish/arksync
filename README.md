@@ -48,3 +48,19 @@ admin tasks later.
 
 - `docker exec -it [container] bash`
 - `influxdb3 create token --admin`
+
+## Motion detection
+
+This is the setup to have a motion detection camera feed on Rpi and a feed on
+your Grafana dashboard:
+
+- `sudo apt update && sudo apt install motion`
+- Edit  `/etc/motion/motion.conf` and set `stream_localhost off`
+- Also set `stream_quality 75` or less for best performances
+- `sudo systemctl enable motion`
+- `sudo systemctl start motion`
+- http://<station_ip>:8081/
+
+For adding the feed in Grafana add a `Text` panel with `Html` and add the iframe:
+
+`<iframe src="http://<station_ip>:8081/" width="640" height="480"></iframe>`
