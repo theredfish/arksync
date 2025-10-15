@@ -1,81 +1,60 @@
-name: 'Publish Linux Arm builds'
-# https://tauri.app/distribute/pipelines/github/#arm-runner-compilation
+name: 'publish'
 
 on:
   workflow_dispatch:
   push:
-    branches: ["configure-me-later"]
+    branches:
+      - feat/publish-tauri
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
+  publish-tauri:
+    permissions:
+      contents: write
     strategy:
+      fail-fast: false
       matrix:
-        arch: [aarch64]
         include:
-          - arch: aarch64
-            cpu: cortex-a72
-            base_image: https://dietpi.com/downloads/images/DietPi_RPi234-ARMv8-Trixie.img.xz
-            deb: arm64
-            rpm: aarch64
-            appimage: aarch64
+          # - platform: 'macos-latest' # for Arm based macs (M1 and above).
+          #   args: '--target aarch64-apple-darwin'
+          # - platform: 'macos-latest' # for Intel based macs.
+          #   args: '--target x86_64-apple-darwin'
+          # - platform: 'ubuntu-22.04'
+          #   args: ''
+          - platform: 'ubuntu-24.04-arm' # Only available in public repos.
+            args: ''
+          # - platform: 'windows-latest'
+          #   args: ''
 
+    runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - name: Cache rust build artifacts
-        uses: Swatinem/rust-cache@v2
+      - name: install dependencies (ubuntu-24.04-arm)
+        if: matrix.platform == 'ubuntu-24.04-arm'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install Rust Nightly
+        uses: dtolnay/rust-toolchain@nightly
         with:
-          workspaces: src-tauri
-          cache-on-failure: true
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin,wasm32-unknown-unknown' || 'wasm32-unknown-unknown' }}
 
-      - name: Build app
-        uses: pguyot/arm-runner-action@v2.6.5
+      - name: Install Trunk
+        run: cargo install trunk --locked
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
         with:
-          base_image: ${{ matrix.base_image }}
-          cpu: ${{ matrix.cpu }}
-          bind_mount_repository: true
-          image_additional_mb: 10240
-          optimize_image: no
-          commands: |
-            # Prevent Rust from complaining about $HOME not matching eid home
-            export HOME=/root
+          workspaces: './src-tauri -> target'
 
-            # Workaround to CI worker being stuck on Updating crates.io index
-            export CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
-
-            # Install setup prerequisites
-            apt-get update -y --allow-releaseinfo-change
-            apt-get autoremove -y
-            apt-get install -y --no-install-recommends --no-install-suggests curl libwebkit2gtk-4.1-dev build-essential libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2 file
-            curl https://sh.rustup.rs -sSf | sh -s -- -y
-            . "$HOME/.cargo/env"
-            cargo install tauri-cli --version "^2.0.0" --locked
-
-            # Build the application
-            cargo tauri build -- --verbose
-
-      - name: Get app version
-        run: echo "APP_VERSION=$(jq -r .version src-tauri/tauri.conf.json)" >> $GITHUB_ENV
-
-      # TODO: Combine this with the basic workflow and upload the files to the Release.
-      - name: Upload deb bundle
-        uses: actions/upload-artifact@v4
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: Debian Bundle
-          path: ${{ github.workspace }}/src-tauri/target/release/bundle/deb/appname_${{ env.APP_VERSION }}_${{ matrix.deb }}.deb
-          overwrite: true
-
-      - name: Upload rpm bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: RPM Bundle
-          path: ${{ github.workspace }}/src-tauri/target/release/bundle/rpm/appname-${{ env.APP_VERSION }}-1.${{ matrix.rpm }}.rpm
-          overwrite: true
-
-      - name: Upload appimage bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: AppImage Bundle
-          path: ${{ github.workspace }}/src-tauri/target/release/bundle/appimage/appname_${{ env.APP_VERSION }}_${{ matrix.appimage }}.AppImage
-          overwrite: true
+          tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
+          releaseName: 'App v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
