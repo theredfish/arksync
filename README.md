@@ -64,3 +64,11 @@ your Grafana dashboard:
 For adding the feed in Grafana add a `Text` panel with `Html` and add the iframe:
 
 `<iframe src="http://<station_ip>:8081/" width="640" height="480"></iframe>`
+
+## Deploying
+
+### Development
+
+- `cargo tauri signer generate -w ~/.tauri/arksync_dev.key`
+- `export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=arksync-dev`
+- `export TAURI_SIGNING_PRIVATE_KEY=${cat ~/.tauri/arksync_dev.key}`

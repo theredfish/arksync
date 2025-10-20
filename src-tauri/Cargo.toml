@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "An environmental control system for farms, greenhouses and aquariums."
 authors = ["theredfish"]
 edition = "2021"
+license = "AGPL-3.0-or-later"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -26,3 +27,6 @@ rand = "0.9"
 tokio = { version = "1.44", features = ["time"] }
 tauri-plugin-log = "2"
 log = "0.4"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
