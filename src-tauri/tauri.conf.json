@@ -24,13 +24,27 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb", "rpm"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false,
+        "files": {}
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU4QzhFNTlDNDFCNkMwNTcKUldSWHdMWkJuT1hJV01xSUIzV1FWRVR4OEhkTHZMQ1g4Wlg0OHYyekxQejQ2Q2JHdmtwN0JiNzcK",
+      "endpoints": [
+        "https://github.com/theredfish/arksync/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

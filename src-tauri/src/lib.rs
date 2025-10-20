@@ -10,6 +10,7 @@ use tokio::time::{interval, Duration};
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             TauriLog::new()
                 .targets([
