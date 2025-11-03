@@ -8,8 +8,10 @@ use tauri::{AppHandle, Emitter};
 use tauri_plugin_log::{Builder as TauriLog, Target, TargetKind};
 use tokio::time::{interval, Duration};
 
-pub fn run() {
-    tauri::Builder::default()
+pub static SENSORS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+
+pub fn builder() -> tauri::Builder<tauri::Wry> {
+    tauri::Builder::<tauri::Wry>::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             TauriLog::new()
@@ -25,12 +27,11 @@ pub fn run() {
             air_temperature_sensor,
             water_temperature_sensor
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }
 
-static SPAWNED_SENSORS: LazyLock<Mutex<HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+pub fn run(context: tauri::Context) {
+    builder().run(context).expect("Failed to run ArkSync");
+}
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,14 +50,14 @@ struct SensorData<'a> {
 #[tauri::command]
 async fn water_temperature_sensor(app: AppHandle) {
     let sensor_name = "water_temperature_sensor";
-    let mut spawned = SPAWNED_SENSORS.lock().unwrap();
+    let mut sensors = SENSORS.lock().unwrap();
 
-    if spawned.contains(sensor_name) {
-        log::info!("Sensor '{sensor_name}' is already spawned.");
+    if sensors.contains(sensor_name) {
+        log::info!("Sensor '{sensor_name}' already registered.");
         return;
     }
 
-    spawned.insert(sensor_name.to_string());
+    sensors.insert(sensor_name.to_string());
 
     tauri::async_runtime::spawn(async move {
         log::info!("Spawning sensor '{sensor_name}'...");
@@ -88,14 +89,14 @@ async fn water_temperature_sensor(app: AppHandle) {
 #[tauri::command]
 async fn air_temperature_sensor(app: AppHandle) {
     let sensor_name = "air_temperature_sensor";
-    let mut spawned = SPAWNED_SENSORS.lock().unwrap();
+    let mut sensors = SENSORS.lock().unwrap();
 
-    if spawned.contains(sensor_name) {
-        log::info!("Sensor '{sensor_name}' is already spawned.");
+    if sensors.contains(sensor_name) {
+        log::info!("Sensor '{sensor_name}' is already registered.");
         return;
     }
 
-    spawned.insert(sensor_name.to_string());
+    sensors.insert(sensor_name.to_string());
 
     tauri::async_runtime::spawn(async move {
         log::info!("Spawning sensor '{sensor_name}'...");
@@ -118,4 +119,17 @@ async fn air_temperature_sensor(app: AppHandle) {
             app.emit("air_temperature_sensor", &sensor_data).unwrap();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eyre::Result;
+
+    #[test]
+    fn build_app() -> Result<()> {
+        builder();
+
+        Ok(())
+    }
 }
