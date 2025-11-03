@@ -1,8 +1,8 @@
 use charming::{
     component::{Axis, Title},
-    element::{AxisType, Color, TextStyle},
+    element::{AxisType, Color, Easing, TextStyle},
     series::Line,
-    Animation, Chart, ChartResize, Easing, Echarts, WasmRenderer,
+    Animation, Chart, ChartResize, Echarts, WasmRenderer,
 };
 use futures_util::StreamExt;
 use leptos::{html::Div, logging::log, prelude::*};
