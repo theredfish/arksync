@@ -35,14 +35,14 @@ jobs:
           components: clippy
       - run: cargo clippy --workspace --tests --all-features -- -D warnings
 
-  # testing:
-  #   name: cargo nextest
-  #   runs-on: ubuntu-latest
-  #   env:
-  #     CARGO_TERM_COLOR: always
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: taiki-e/install-action@v2
-  #       with:
-  #         tool: nextest
-  #     - run: cargo nextest run --all-features --profile ci
+  testing:
+    name: cargo nextest
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - run: cargo nextest run --all-features --profile ci

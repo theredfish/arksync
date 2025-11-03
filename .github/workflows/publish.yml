@@ -3,14 +3,17 @@ name: 'publish'
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    tags: ["v*"]
 
 jobs:
   publish-tauri:
     environment: production
     permissions:
       contents: write
+    needs:
+      - formatting
+      - linting
+      - testing
     strategy:
       fail-fast: false
       matrix:
