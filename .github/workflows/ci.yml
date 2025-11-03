@@ -45,4 +45,4 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
-      - run: cargo nextest run --all-features --profile ci
+      - run: cargo nextest run --workspace --all-features --profile ci
