@@ -1,9 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use charming::{
-    element::Tooltip,
+    element::{Easing, Tooltip},
     series::{Gauge, GaugeDetail, GaugeProgress},
-    Animation, Chart, ChartResize, Easing, Echarts, WasmRenderer,
+    Animation, Chart, ChartResize, Echarts, WasmRenderer,
 };
 use futures_util::StreamExt as _;
 use leptos::{html::Div, prelude::*};

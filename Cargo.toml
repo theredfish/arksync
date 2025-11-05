@@ -12,7 +12,7 @@ js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1.7"
-charming = { features = ["wasm"], git = "https://github.com/yuankunzhang/charming.git", rev = "6c33db0f98690e3b12cba02db1ce51aa63e9d082" }
+charming = { version = "0.6.0", features = ["wasm"] }
 leptos-use = "0.16.3"
 leptos_router = "0.8"
 web-sys = { version = "0.3", features = ["EventListener"] }
