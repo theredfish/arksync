@@ -1,13 +1,13 @@
+use crate::components::grid::utils::draggable_item::{
+    use_draggable_grid_item, UseDraggableGridItemOptions, UseDraggableGridItemReturn,
+};
 use crate::components::grid::{GridItemData, GridItemPosition, Layout, Size, Span};
 use crate::components::heroicons::ResizeIcon;
 use leptos::html::Div;
 use leptos::logging::log;
 use leptos::prelude::*;
-use leptos_use::{
-    core::Position, use_draggable_with_options, use_event_listener, UseDraggableOptions,
-};
+use leptos_use::{core::Position, use_event_listener};
 use leptos_use::{use_element_bounding, UseElementBoundingReturn};
-use wasm_bindgen::JsCast;
 
 #[derive(Clone, Copy, Debug, Default)]
 enum ResizeState {
@@ -215,48 +215,19 @@ pub fn GridItem(
     }
 
     // Drag events
-    let _ = use_draggable_with_options(
-        grid_item_ref,
-        UseDraggableOptions::default()
-            .handle(Some(drag_ref))
-            .initial_value({
-                let pos = match drag_state.get() {
-                    DragState::Dragging(p) | DragState::DragEnded(p) => p,
-                };
-                Position {
-                    x: pos.x * layout.get().cell_size.width,
-                    y: pos.y * layout.get().cell_size.height,
-                }
-            })
-            .on_move(move |drag_event| {
-                drag_state.set(DragState::Dragging(drag_event.position));
-                log!("position on_move: {:?}", drag_event.position);
-            })
-            .on_end(move |drag_event| {
-                let cell_size = layout.get().cell_size;
-                let drag_position = drag_event.position;
-                let col_start = (drag_position.x / cell_size.width).round() as u32;
-                let row_start = (drag_position.y / cell_size.height).round() as u32;
-                let final_position = Position {
-                    x: col_start as f64 * cell_size.width,
-                    y: row_start as f64 * cell_size.height,
-                };
-                drag_state.set(DragState::DragEnded(final_position));
-
-                metadata.update(|data| {
-                    data.position.col_start = col_start;
-                    data.position.row_start = row_start;
-                    log!("Update grid item position: {:?}", data.position);
-                });
-            })
-            .target_offset(move |event_target: web_sys::EventTarget| {
-                let target: web_sys::HtmlElement = event_target.unchecked_into();
-                let (x, y): (f64, f64) = (target.offset_left().into(), target.offset_top().into());
-
-                (x, y)
-            })
-            .prevent_default(true),
-    );
+    let draggable_options = UseDraggableGridItemOptions {
+        handle: Some(drag_ref),
+        col_start,
+        row_start,
+        snap_to_grid: true,
+        ..Default::default()
+    };
+    let UseDraggableGridItemReturn {
+        left,
+        top,
+        transition: drag_transition,
+        ..
+    } = use_draggable_grid_item(grid_item_ref, metadata, draggable_options);
 
     // Absolute element width/height
     let UseElementBoundingReturn {
@@ -267,34 +238,34 @@ pub fn GridItem(
 
     // TODO: clamp dragging event.
     // Avoid issues where min > max.
-    let left = move || {
-        // let x = metadata.get().position.col_start * layout.get().cell_size.width as u32;
-        match drag_state.get() {
-            DragState::Dragging(p) | DragState::DragEnded(p) => p.x,
-        }
-        // let grid_w = layout.get().size.width;
-        //     let max = if grid_w <= 0. {
-        //         0.
-        //     } else {
-        //         grid_w - item_width.get()
-        //     };
+    // let left = move || {
+    //     // let x = metadata.get().position.col_start * layout.get().cell_size.width as u32;
+    //     match drag_state.get() {
+    //         DragState::Dragging(p) | DragState::DragEnded(p) => p.x,
+    //     }
+    //     // let grid_w = layout.get().size.width;
+    //     //     let max = if grid_w <= 0. {
+    //     //         0.
+    //     //     } else {
+    //     //         grid_w - item_width.get()
+    //     //     };
 
-        //     x.clamp(0., max.round())
-    };
-    let top = move || {
-        // let y = metadata.get().position.row_start * layout.get().cell_size.height as u32;
-        match drag_state.get() {
-            DragState::Dragging(p) | DragState::DragEnded(p) => p.y,
-        }
-        // let grid_h = layout.get().size.height;
-        // let max = if grid_h <= 0. {
-        //     0.
-        // } else {
-        //     grid_h - item_height.get()
-        // };
+    //     //     x.clamp(0., max.round())
+    // };
+    // let top = move || {
+    //     // let y = metadata.get().position.row_start * layout.get().cell_size.height as u32;
+    //     match drag_state.get() {
+    //         DragState::Dragging(p) | DragState::DragEnded(p) => p.y,
+    //     }
+    //     // let grid_h = layout.get().size.height;
+    //     // let max = if grid_h <= 0. {
+    //     //     0.
+    //     // } else {
+    //     //     grid_h - item_height.get()
+    //     // };
 
-        // y.clamp(0.0, max.round())
-    };
+    //     // y.clamp(0.0, max.round())
+    // };
 
     let style = move || {
         let Size { width, height } = metadata.get().size;
@@ -302,20 +273,16 @@ pub fn GridItem(
             ResizeState::Resizing { .. } => "width 0ms ease-in, height 0ms ease-in",
             _ => "width 250ms ease-in, height 250ms ease-in",
         };
-        let transition_drag = match drag_state.get() {
-            DragState::Dragging(_) => "left 0ms ease-in, top 0ms ease-in",
-            DragState::DragEnded(_) => "left 250ms ease-in, top 250ms ease-in",
-        };
+
+        let (left, top, drag_transition) = (left.get(), top.get(), drag_transition.get());
 
         format!(
             r#"width: {width}px;
             height: {height}px;
-            transition: {transition_resize}, {transition_drag};
+            transition: {transition_resize}, {drag_transition};
             touch-action: none;
-            left: {}px;
-            top: {}px;"#,
-            left(),
-            top()
+            left: {left}px;
+            top: {top}px;"#
         )
     };
 
@@ -333,7 +300,7 @@ pub fn GridItem(
                 { move || {
                     let GridItemPosition { col_start, row_start } = metadata.get().position;
                     let Size { width, height } = metadata.get().size;
-                    format!("position: {col_start};{row_start} | size: {width};{height} | left/top: : {}; {}", left(), top())
+                    format!("position: {col_start};{row_start} | size: {width};{height} | left/top: : {}; {}", left.get(), top.get())
                 }
                 }
             </div>

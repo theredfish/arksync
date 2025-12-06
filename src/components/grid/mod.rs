@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 mod grid_item;
 mod grid_layout;
+mod utils;
 
 pub use self::grid_item::GridItem;
 pub use self::grid_layout::GridLayout;
@@ -112,7 +113,7 @@ impl LayoutBuilder {
 }
 
 #[derive(Clone, Debug, Default)]
-struct GridItemData {
+pub struct GridItemData {
     pub position: GridItemPosition,
     pub span: Span,
     pub size: Size,
