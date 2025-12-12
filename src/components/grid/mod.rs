@@ -8,10 +8,10 @@ mod utils;
 pub use self::grid_item::GridItem;
 pub use self::grid_layout::GridLayout;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct GridItemPosition {
-    col_start: u32,
-    row_start: u32,
+    pub col_start: u32,
+    pub row_start: u32,
 }
 
 impl Default for GridItemPosition {
@@ -23,10 +23,10 @@ impl Default for GridItemPosition {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Span {
-    col_span: u32,
-    row_span: u32,
+    pub col_span: u32,
+    pub row_span: u32,
 }
 
 impl Default for Span {
@@ -38,10 +38,11 @@ impl Default for Span {
     }
 }
 
+/// Size in pixels
 #[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd)]
 pub struct Size {
-    width: f64,
-    height: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 impl Size {
@@ -52,12 +53,12 @@ impl Size {
 
 #[derive(Clone, Debug, Default)]
 pub struct Layout {
-    size: Size,
+    pub size: Size,
     // TODO: see for detaching this global reactive state from the layout config
     // And use signals in the config so we can listen on different events
-    items: HashMap<u32, RwSignal<GridItemData>>,
-    columns: u32,
-    cell_size: Size,
+    pub items: HashMap<u32, RwSignal<GridItemData>>,
+    pub columns: u32,
+    pub cell_size: Size,
 }
 
 impl Layout {
@@ -74,10 +75,10 @@ impl Layout {
 
 #[derive(Clone, Debug, Default)]
 pub struct LayoutBuilder {
-    size: Size,
-    items: HashMap<u32, RwSignal<GridItemData>>,
-    columns: u32,
-    cell_size: Size,
+    pub size: Size,
+    pub items: HashMap<u32, RwSignal<GridItemData>>,
+    pub columns: u32,
+    pub cell_size: Size,
 }
 
 impl LayoutBuilder {
@@ -106,9 +107,79 @@ impl LayoutBuilder {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct GridItemData {
     pub position: GridItemPosition,
     pub span: Span,
-    // pub size: Size,
+    pub size: Size,
+}
+
+impl GridItemData {
+    pub fn min_x(&self) -> f64 {
+        // 2 => minx = 2-1 * 100 => 100
+        (self.position.col_start - 1) as f64 * self.size.width
+    }
+
+    pub fn max_x(&self) -> f64 {
+        (self.size.width * self.span.col_span as f64) + self.min_x()
+    }
+
+    pub fn min_y(&self) -> f64 {
+        (self.position.row_start - 1) as f64 * self.size.height
+    }
+
+    pub fn max_y(&self) -> f64 {
+        (self.size.height * self.span.row_span as f64) + self.min_y()
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    fn test_grid_item_data_min_max() {
+        let item = GridItemData {
+            position: GridItemPosition {
+                col_start: 2,
+                row_start: 3,
+            },
+            span: Span {
+                col_span: 2,
+                row_span: 2,
+            },
+            size: Size {
+                width: 100.0,
+                height: 100.0,
+            },
+        };
+
+        assert_eq!(item.min_x(), 100.0, "incorrect min_x calculation");
+        assert_eq!(item.max_x(), 300.0, "incorrect max_x calculation");
+        assert_eq!(item.min_y(), 200.0, "incorrect min_y calculation");
+        assert_eq!(item.max_y(), 400.0, "incorrect max_y calculation");
+    }
+
+    #[test]
+    fn test_grid_item_data_min_max_at_top_left_edge() {
+        let item = GridItemData {
+            position: GridItemPosition {
+                col_start: 1,
+                row_start: 1,
+            },
+            span: Span {
+                col_span: 2,
+                row_span: 2,
+            },
+            size: Size {
+                width: 100.0,
+                height: 100.0,
+            },
+        };
+
+        assert_eq!(item.min_x(), 0.0, "incorrect min_x calculation");
+        assert_eq!(item.max_x(), 200.0, "incorrect max_x calculation");
+        assert_eq!(item.min_y(), 0.0, "incorrect min_y calculation");
+        assert_eq!(item.max_y(), 200.0, "incorrect max_y calculation");
+    }
 }
