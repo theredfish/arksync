@@ -1,13 +1,19 @@
 use crate::components::grid::{LayoutBuilder, Size};
 use leptos::{html::Div, prelude::*};
-use leptos_use::{use_element_bounding, UseElementBoundingReturn};
+use leptos_use::{
+    use_element_bounding, use_element_bounding_with_options, UseElementBoundingOptions,
+    UseElementBoundingReturn,
+};
 
 #[component]
 pub fn GridLayout(children: Children, columns: u32, display_grid: bool) -> impl IntoView {
     assert!(columns > 0, "The number of columns can't be zero");
     let grid_layout_node = NodeRef::<Div>::new();
     let last_size = RwSignal::new(Size::default());
-    let UseElementBoundingReturn { width, height, .. } = use_element_bounding(grid_layout_node);
+    let UseElementBoundingReturn { width, height, .. } = use_element_bounding_with_options(
+        grid_layout_node,
+        UseElementBoundingOptions::default().immediate(true),
+    );
     let layout = RwSignal::new(
         LayoutBuilder::default()
             .columns(columns)
@@ -26,9 +32,10 @@ pub fn GridLayout(children: Children, columns: u32, display_grid: bool) -> impl 
             // Update the cell size
             let border_pixels = columns as f64;
             layout.update(|layout| {
+                let cell_width = (*width / (columns) as f64) - border_pixels;
                 layout.cell_size = Size {
-                    width: (*width / (columns) as f64) - border_pixels,
-                    height: 100.,
+                    width: cell_width,
+                    height: cell_width, // Same as width for square cells
                 }
             });
 

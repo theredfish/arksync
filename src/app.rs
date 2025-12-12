@@ -11,7 +11,7 @@ use leptos_router::{
 pub fn App() -> impl IntoView {
     view! {
         <Router>
-            <main class="bg-darcula-black text-gray-100 flex min-h-screen antialiased">
+            <main class="bg-darcula-black text-gray-100 flex h-screen antialiased">
                 <Sidebar class="w-2/12 bg-darcula-gray p-5" />
                 <Routes fallback=|| "Not found.">
                     <Route path=path!("/") view=Home/>
@@ -25,7 +25,7 @@ pub fn App() -> impl IntoView {
 #[component]
 pub fn Dashboards() -> impl IntoView {
     view! {
-        <div class="w-full">
+        <div class="flex-1 h-screen">
             <GridLayout columns=6 display_grid=true>
                 <GridItem id=1 col_start=0 col_span=4 row_start=0 row_span=2 label="Air temperature".to_string()>
                     <AirTemperatureGauge />

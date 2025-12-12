@@ -1,4 +1,4 @@
-use crate::components::grid::{GridItemData, Layout, Size};
+use crate::components::grid::{Layout, Size};
 use leptos::html::Div;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -19,8 +19,6 @@ pub struct UseDraggableGridItemOptions {
     pub col_start: u32,
     /// Initial row position
     pub row_start: u32,
-    /// Whether to snap to grid on drag end
-    pub snap_to_grid: bool,
     /// Callback when drag starts
     pub on_drag_start: Arc<dyn Fn(Position) + Send + Sync>,
     /// Callback during dragging
@@ -35,7 +33,6 @@ impl Default for UseDraggableGridItemOptions {
             handle: None,
             col_start: 0,
             row_start: 0,
-            snap_to_grid: true,
             on_drag_start: Arc::new(|_| {}),
             on_drag_move: Arc::new(|_| {}),
             on_drag_end: Arc::new(|_, _, _| {}),
@@ -45,8 +42,6 @@ impl Default for UseDraggableGridItemOptions {
 
 /// Return type for the draggable grid item hook
 pub struct UseDraggableGridItemReturn {
-    /// Current drag state
-    pub drag_state: RwSignal<DragState>,
     /// Computed left position in pixels
     pub left: Signal<f64>,
     /// Computed top position in pixels
@@ -57,7 +52,6 @@ pub struct UseDraggableGridItemReturn {
 
 pub fn use_draggable_grid_item(
     element_ref: NodeRef<Div>,
-    metadata: RwSignal<GridItemData>,
     options: UseDraggableGridItemOptions,
 ) -> UseDraggableGridItemReturn {
     let layout = use_context::<RwSignal<Layout>>().expect("Layout context must be provided");
@@ -66,7 +60,6 @@ pub fn use_draggable_grid_item(
         handle,
         col_start,
         row_start,
-        snap_to_grid,
         on_drag_start,
         on_drag_move,
         on_drag_end,
@@ -95,7 +88,7 @@ pub fn use_draggable_grid_item(
         UseDraggableOptions::default()
             .handle(options.handle)
             .initial_value({
-                let pos = match drag_state.get() {
+                let pos = match drag_state.get_untracked() {
                     DragState::Dragging(p) | DragState::DragEnded(p) => p,
                 };
                 Position { x: pos.x, y: pos.y }
@@ -109,8 +102,8 @@ pub fn use_draggable_grid_item(
                 let cell_size = layout.get().cell_size;
                 let drag_position = drag_event.position;
 
-                let (col_start, row_start, final_position) = if options.snap_to_grid {
-                    // Snap to grid
+                // Snap to grid
+                let (col_start, row_start, final_position) = {
                     let col = (drag_position.x / cell_size.width).round() as u32;
                     let row = (drag_position.y / cell_size.height).round() as u32;
                     let snapped_pos = Position {
@@ -118,11 +111,6 @@ pub fn use_draggable_grid_item(
                         y: row as f64 * cell_size.height,
                     };
                     (col, row, snapped_pos)
-                } else {
-                    // Keep exact position
-                    let col = (drag_position.x / cell_size.width) as u32;
-                    let row = (drag_position.y / cell_size.height) as u32;
-                    (col, row, drag_position)
                 };
 
                 drag_state.set(DragState::DragEnded(final_position));
@@ -159,7 +147,6 @@ pub fn use_draggable_grid_item(
     });
 
     UseDraggableGridItemReturn {
-        drag_state,
         left,
         top,
         transition,

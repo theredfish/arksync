@@ -1,5 +1,4 @@
-use leptos::logging::log;
-use leptos::prelude::{RwSignal, Update};
+use leptos::prelude::RwSignal;
 use std::collections::HashMap;
 
 mod grid_item;
@@ -67,14 +66,9 @@ impl Layout {
     }
 
     fn update_items_size(&mut self, (w_ratio, h_ratio): (f64, f64)) {
-        for item in self.items.values() {
-            item.update(|grid_item| {
-                log!("update item size responsiveness");
-                let Size { width, height } = grid_item.size;
-                let new_size = Size::new(width * w_ratio, height * h_ratio);
-                grid_item.size = new_size;
-            });
-        }
+        // we used to update the grid items size here, so we can prepare the
+        // collision detection and re-layout the items. But let's skip thos for
+        // now since we are not using that feature yet.
     }
 }
 
@@ -116,5 +110,5 @@ impl LayoutBuilder {
 pub struct GridItemData {
     pub position: GridItemPosition,
     pub span: Span,
-    pub size: Size,
+    // pub size: Size,
 }
