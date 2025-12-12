@@ -41,6 +41,10 @@ pub fn GridItem(
                 row_start,
             },
             span: Span { row_span, col_span },
+            size: Size {
+                width: col_span as f64 * cell_w,
+                height: row_span as f64 * cell_h,
+            },
         };
         log!(
             "col_span: {col_span} and cell_w: {cell_w}. Computed width: {}",
