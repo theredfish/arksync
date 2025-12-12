@@ -1,8 +1,7 @@
 use crate::components::grid::{LayoutBuilder, Size};
 use leptos::{html::Div, prelude::*};
 use leptos_use::{
-    use_element_bounding, use_element_bounding_with_options, UseElementBoundingOptions,
-    UseElementBoundingReturn,
+    use_element_bounding_with_options, UseElementBoundingOptions, UseElementBoundingReturn,
 };
 
 #[component]

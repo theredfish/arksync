@@ -101,7 +101,7 @@ pub fn use_resizable_grid_item(
         });
     });
 
-    let handle = handle.unwrap_or_else(|| target);
+    let handle = handle.unwrap_or(target);
 
     let _resize_starts = use_event_listener(handle, leptos::ev::pointerdown, move |evt| {
         evt.prevent_default();
@@ -182,7 +182,6 @@ pub fn use_resizable_grid_item(
     );
 
     let size = Signal::derive({
-        let resize_state = resize_state.clone();
         move || {
             let cell_size = &layout.get_untracked().cell_size;
 
