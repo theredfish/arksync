@@ -22,7 +22,7 @@ eyre = "0.6"
 ndarray = "0.17.1"
 
 [workspace]
-members = ["src-tauri"]
+members = ["src-tauri", "sensor"]
 
 # Waiting for a more stable version of the software, we allow some dead code and
 # unused variables.
