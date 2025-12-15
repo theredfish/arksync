@@ -109,6 +109,7 @@ impl LayoutBuilder {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct GridItemData {
+    pub id: u32,
     pub position: GridItemPosition,
     pub span: Span,
     pub size: Size,
@@ -140,6 +141,7 @@ pub mod tests {
     #[test]
     fn test_grid_item_data_min_max() {
         let item = GridItemData {
+            id: 1,
             position: GridItemPosition {
                 col_start: 2,
                 row_start: 3,
@@ -163,6 +165,7 @@ pub mod tests {
     #[test]
     fn test_grid_item_data_min_max_at_top_left_edge() {
         let item = GridItemData {
+            id: 1,
             position: GridItemPosition {
                 col_start: 1,
                 row_start: 1,

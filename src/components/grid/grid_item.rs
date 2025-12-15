@@ -36,6 +36,7 @@ pub fn GridItem(
             height: cell_h,
         } = layout.get_untracked().cell_size;
         let item_data = GridItemData {
+            id,
             position: GridItemPosition {
                 col_start,
                 row_start,

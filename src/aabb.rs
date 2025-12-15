@@ -1,7 +1,11 @@
 use crate::components::grid::GridItemData;
 
-trait Aabb {
+pub trait Aabb {
     fn collides_with(&self, other: &Self) -> bool;
+
+    fn collides_with_optional(&self, other: Option<&Self>) -> bool {
+        other.map_or(false, |other| self.collides_with(other))
+    }
 }
 
 impl Aabb for GridItemData {
@@ -57,6 +61,7 @@ mod tests {
         };
 
         let mut item1 = GridItemData {
+            id: 1,
             position: GridItemPosition {
                 col_start: 1,
                 row_start: 1,
@@ -66,6 +71,7 @@ mod tests {
         };
 
         let mut item2 = GridItemData {
+            id: 2,
             position: GridItemPosition {
                 col_start: 2,
                 row_start: 1,
@@ -146,6 +152,7 @@ mod tests {
         };
 
         let mut item1 = GridItemData {
+            id: 1,
             position: GridItemPosition {
                 col_start: 1,
                 row_start: 1,
@@ -155,6 +162,7 @@ mod tests {
         };
 
         let mut item2 = GridItemData {
+            id: 2,
             position: GridItemPosition {
                 col_start: 1,
                 row_start: 2,
@@ -193,6 +201,50 @@ mod tests {
         assert!(
             item2.collides_with(&item1),
             "Item2 should collide with Item1"
+        );
+    }
+
+    #[test]
+    fn test_aabb_collides_with_optional() {
+        let size = Size {
+            width: 100.0,
+            height: 100.0,
+        };
+        let span = Span {
+            col_span: 1,
+            row_span: 1,
+        };
+
+        let item1 = GridItemData {
+            id: 1,
+            position: GridItemPosition {
+                col_start: 1,
+                row_start: 1,
+            },
+            span,
+            size,
+        };
+
+        let item2 = GridItemData {
+            id: 2,
+            position: GridItemPosition {
+                col_start: 2,
+                row_start: 1,
+            },
+            span,
+            size,
+        };
+
+        // Test with Some(other)
+        assert!(
+            !item1.collides_with_optional(Some(&item2)),
+            "Item1 should not collide with Item2"
+        );
+
+        // Test with None
+        assert!(
+            !item1.collides_with_optional(None),
+            "Item1 should not collide with None"
         );
     }
 }
