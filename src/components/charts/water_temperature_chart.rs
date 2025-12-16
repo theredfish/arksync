@@ -2,6 +2,7 @@ use charming::{
     component::{Axis, Title},
     element::{AxisType, Color, Easing, TextStyle},
     series::Line,
+    theme::Theme,
     Animation, Chart, ChartResize, Echarts, WasmRenderer,
 };
 use futures_util::StreamExt;
@@ -12,6 +13,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use tauri_sys::event::listen;
 use wasm_bindgen_futures::spawn_local;
+
+use crate::theme::THEME;
 
 #[derive(Clone, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -67,7 +70,7 @@ pub fn WaterTemperatureChart() -> impl IntoView {
                 },
             );
         } else {
-            let renderer = WasmRenderer::new(width, height);
+            let renderer = WasmRenderer::new(width, height).theme(THEME.clone());
             let echarts = renderer
                 .render("water-temparature-gauge", &chart_config)
                 .unwrap();
