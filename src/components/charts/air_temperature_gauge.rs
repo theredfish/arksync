@@ -3,6 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use charming::{
     element::{Easing, Tooltip},
     series::{Gauge, GaugeDetail, GaugeProgress},
+    theme::Theme,
     Animation, Chart, ChartResize, Echarts, WasmRenderer,
 };
 use futures_util::StreamExt as _;
@@ -12,6 +13,8 @@ use leptos_use::use_element_size;
 use serde::Deserialize;
 use tauri_sys::event::listen;
 use wasm_bindgen_futures::spawn_local;
+
+use crate::theme::{register_theme, THEME};
 
 #[derive(Clone, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -67,10 +70,17 @@ pub fn AirTemperatureGauge() -> impl IntoView {
                 },
             );
         } else {
-            let renderer = WasmRenderer::new(width, height);
+            log!(
+                "Rendering air temperature gauge with size: {}x{}",
+                width,
+                height
+            );
+
+            let renderer = WasmRenderer::new(width, height).theme(THEME.clone());
             let echarts = renderer
                 .render("air-temperature-gauge", &chart_config)
                 .unwrap();
+
             *chart_ref = Some(echarts);
         }
     };
