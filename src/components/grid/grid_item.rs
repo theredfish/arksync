@@ -147,7 +147,7 @@ pub fn GridItem(
                 { move || {
                     let Size { width, height } = resize_size.get();
                     let GridItemPosition { col_start, row_start } = metadata.get().position;
-                    format!("position: {col_start};{row_start} | size: {width};{height} | left/top: : {}; {}", left.get(), top.get())
+                    // format!("position: {col_start};{row_start} | size: {width};{height} | left/top: : {}; {}", left.get(), top.get())
                 }
                 }
             </div>

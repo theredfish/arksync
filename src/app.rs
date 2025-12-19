@@ -26,7 +26,7 @@ pub fn App() -> impl IntoView {
 pub fn Dashboards() -> impl IntoView {
     view! {
         <div class="flex-1 h-screen">
-            <GridLayout columns=12 display_grid=true>
+            <GridLayout columns=12 display_grid=false>
                 <GridItem id=1 col_start=0 col_span=4 row_start=0 row_span=2 label="Air temperature".to_string()>
                     <AirTemperatureGauge />
                 </GridItem>
