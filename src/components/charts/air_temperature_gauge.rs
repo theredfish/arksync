@@ -3,7 +3,6 @@ use std::{cell::RefCell, rc::Rc};
 use charming::{
     element::{Easing, Tooltip},
     series::{Gauge, GaugeDetail, GaugeProgress},
-    theme::Theme,
     Animation, Chart, ChartResize, Echarts, WasmRenderer,
 };
 use futures_util::StreamExt as _;
@@ -14,7 +13,7 @@ use serde::Deserialize;
 use tauri_sys::event::listen;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::theme::{register_theme, THEME};
+use crate::theme::ArkSyncTheme;
 
 #[derive(Clone, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -76,7 +75,8 @@ pub fn AirTemperatureGauge() -> impl IntoView {
                 height
             );
 
-            let renderer = WasmRenderer::new(width, height).theme(THEME.clone());
+            let renderer = WasmRenderer::new(width, height)
+                .theme(ArkSyncTheme::Roma.as_wrapper().charming_theme);
             let echarts = renderer
                 .render("air-temperature-gauge", &chart_config)
                 .unwrap();
