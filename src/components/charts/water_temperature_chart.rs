@@ -23,7 +23,7 @@ struct SensorData {
 }
 
 #[component]
-pub fn WaterTemperatureChart() -> impl IntoView {
+pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> impl IntoView {
     let chart_container = NodeRef::<Div>::new();
     let chart_node = NodeRef::<Div>::new();
     let chart_container_size = use_element_size(chart_container);
@@ -69,8 +69,8 @@ pub fn WaterTemperatureChart() -> impl IntoView {
                 },
             );
         } else {
-            let renderer = WasmRenderer::new(width, height)
-                .theme(ArkSyncTheme::Walden.as_wrapper().charming_theme);
+            let theme = theme.unwrap_or_default().as_wrapper().charming_theme;
+            let renderer = WasmRenderer::new(width, height).theme(theme);
             let echarts = renderer
                 .render("water-temparature-gauge", &chart_config)
                 .unwrap();

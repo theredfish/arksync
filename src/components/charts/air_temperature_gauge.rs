@@ -23,7 +23,7 @@ struct SensorData {
 }
 
 #[component]
-pub fn AirTemperatureGauge() -> impl IntoView {
+pub fn AirTemperatureGauge(#[prop(optional)] theme: Option<ArkSyncTheme>) -> impl IntoView {
     let chart_container = NodeRef::<Div>::new();
     let chart_node = NodeRef::<Div>::new();
     let chart_container_size = use_element_size(chart_container);
@@ -75,8 +75,8 @@ pub fn AirTemperatureGauge() -> impl IntoView {
                 height
             );
 
-            let renderer = WasmRenderer::new(width, height)
-                .theme(ArkSyncTheme::Roma.as_wrapper().charming_theme);
+            let theme = theme.unwrap_or_default().as_wrapper().charming_theme;
+            let renderer = WasmRenderer::new(width, height).theme(theme);
             let echarts = renderer
                 .render("air-temperature-gauge", &chart_config)
                 .unwrap();
