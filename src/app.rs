@@ -1,6 +1,7 @@
 use crate::components::charts::{AirTemperatureGauge, WaterTemperatureChart};
 use crate::components::grid::{GridItem, GridLayout};
 use crate::components::sidebar::Sidebar;
+use crate::theme::ArkSyncTheme;
 use leptos::prelude::*;
 use leptos_router::{
     components::{Route, Router, Routes},
@@ -28,10 +29,10 @@ pub fn Dashboards() -> impl IntoView {
         <div class="flex-1 h-screen">
             <GridLayout columns=12 display_grid=false>
                 <GridItem id=1 col_start=0 col_span=4 row_start=0 row_span=2 label="Air temperature".to_string()>
-                    <AirTemperatureGauge />
+                    <AirTemperatureGauge theme=ArkSyncTheme::Roma />
                 </GridItem>
                 <GridItem id=2 col_start=2 col_span=5 row_start=4 row_span=4>
-                    <WaterTemperatureChart />
+                    <WaterTemperatureChart theme=ArkSyncTheme::Walden />
                 </GridItem>
                 // <GridItem id=3 col_start=0 col_span=3 row_start=0 row_span=4>
                 //     No data yet

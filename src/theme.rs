@@ -1,18 +1,18 @@
-use charming::{theme::Theme, Echarts};
+use crate::theme::sealed::JsValueSealed;
+use charming::theme::Theme;
 use eyre::{eyre, Result};
 use js_sys::{Reflect, JSON};
 use leptos::logging::log;
 use std::sync::atomic::{AtomicBool, Ordering};
-use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
-
-use crate::theme::sealed::JsValueSealed;
+use wasm_bindgen::prelude::*;
 
 type Themes = Vec<ArkSyncTheme>;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ArkSyncTheme {
     Westeros,
     Chalk,
+    #[default]
     Roma,
     Wonderland,
     Walden,
@@ -56,14 +56,12 @@ impl ArkSyncTheme {
     }
 }
 
-// pub static THEME_JSON: &str = include_str!("../styles/chart_themes/westeros.json");
-// pub static WESTEROS_THEME: Theme = Theme::Custom("westeros", "");
-static THEME_REGISTERED: AtomicBool = AtomicBool::new(false);
+static THEMES_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 #[wasm_bindgen]
 extern "C" {
     // Access the global echarts object
-    #[wasm_bindgen(js_namespace = window, js_name = echarts)]
+    #[wasm_bindgen(thread_local_v2, js_namespace = window, js_name = echarts)]
     static ECHARTS: JsValue;
 
     // Or access it via the type directly
@@ -94,11 +92,13 @@ impl JsValueExists for JsValue {
 }
 
 pub fn register_theme(themes: Themes) -> Result<()> {
-    if !THEME_REGISTERED.swap(true, Ordering::SeqCst) {
+    if !THEMES_REGISTERED.swap(true, Ordering::SeqCst) {
         // Check if echarts is available
-        ECHARTS.exists_or_err("ECharts is not loaded yet!")?;
+        let echarts = ECHARTS
+            .with(JsValue::clone)
+            .exists_or_err("ECharts is not loaded yet!")?;
 
-        let Ok(register_theme) = Reflect::get(&ECHARTS, &JsValue::from_str("registerTheme")) else {
+        let Ok(register_theme) = Reflect::get(&echarts, &JsValue::from_str("registerTheme")) else {
             eyre::bail!("ECharts registerTheme function not found!");
         };
 
