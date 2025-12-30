@@ -1,4 +1,4 @@
-use crate::components::grid::GridItemData;
+use crate::components::grid::core::item::GridItemData;
 
 pub trait Aabb {
     fn collides_with(&self, other: &Self) -> bool;
@@ -20,7 +20,7 @@ impl Aabb for GridItemData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::grid::*;
+    use crate::components::grid::core::{item::GridItemPosition, size::Size, span::Span};
 
     /// Test AABB collision detection on the **x-axis**.
     ///
