@@ -19,6 +19,7 @@ web-sys = { version = "0.3", features = ["EventListener"] }
 tauri-sys = { git = "https://github.com/JonasKruckenberg/tauri-sys", branch = "v2", features = ["core", "event"]}
 futures-util = "0.3"
 eyre = "0.6"
+ndarray = "0.17.1"
 
 [workspace]
 members = ["src-tauri"]

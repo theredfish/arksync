@@ -1,10 +1,10 @@
-use crate::components::grid::{Layout, Size};
 use leptos::html::Div;
-use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_use::{core::Position, use_draggable_with_options, UseDraggableOptions};
 use std::sync::Arc;
 use wasm_bindgen::JsCast;
+
+use crate::components::grid::core::{layout::Layout, size::Size};
 
 #[derive(Clone, Copy, Debug)]
 pub enum DragState {
@@ -16,15 +16,15 @@ pub struct UseDraggableGridItemOptions {
     /// The drag handle element (if None, the entire element is draggable)
     pub handle: Option<NodeRef<Div>>,
     /// Initial column position
-    pub col_start: u32,
+    pub col_start: usize,
     /// Initial row position
-    pub row_start: u32,
+    pub row_start: usize,
     /// Callback when drag starts
     pub on_drag_start: Arc<dyn Fn(Position) + Send + Sync>,
     /// Callback during dragging
     pub on_drag_move: Arc<dyn Fn(Position) + Send + Sync>,
     /// Callback when drag ends with final grid position
-    pub on_drag_end: Arc<dyn Fn(u32, u32, Position) + Send + Sync>,
+    pub on_drag_end: Arc<dyn Fn(usize, usize, Position) + Send + Sync>,
 }
 
 impl Default for UseDraggableGridItemOptions {
@@ -42,10 +42,8 @@ impl Default for UseDraggableGridItemOptions {
 
 /// Return type for the draggable grid item hook
 pub struct UseDraggableGridItemReturn {
-    /// Computed left position in pixels
-    pub left: Signal<f64>,
-    /// Computed top position in pixels
-    pub top: Signal<f64>,
+    /// Computed position in pixels
+    pub position: Signal<Position>,
     /// CSS transition string for drag animations
     pub transition: Signal<&'static str>,
 }
@@ -73,8 +71,8 @@ pub fn use_draggable_grid_item(
         } = layout.get_untracked().cell_size;
 
         let initial_position = Position {
-            x: options.col_start as f64 * cell_w,
-            y: options.row_start as f64 * cell_h,
+            x: (options.col_start.saturating_sub(1)) as f64 * cell_w,
+            y: (options.row_start.saturating_sub(1)) as f64 * cell_h,
         };
 
         drag_state.set(DragState::Dragging(initial_position));
@@ -95,17 +93,16 @@ pub fn use_draggable_grid_item(
             })
             .on_move(move |drag_event| {
                 drag_state.set(DragState::Dragging(drag_event.position));
-                log!("Dragging position: {:?}", drag_event.position);
                 on_drag_move(drag_event.position);
             })
             .on_end(move |drag_event| {
-                let cell_size = layout.get().cell_size;
+                let cell_size = layout.get_untracked().cell_size;
                 let drag_position = drag_event.position;
 
                 // Snap to grid
                 let (col_start, row_start, final_position) = {
-                    let col = (drag_position.x / cell_size.width).round() as u32;
-                    let row = (drag_position.y / cell_size.height).round() as u32;
+                    let col = (drag_position.x / cell_size.width).round() as usize;
+                    let row = (drag_position.y / cell_size.height).round() as usize;
                     let snapped_pos = Position {
                         x: col as f64 * cell_size.width,
                         y: row as f64 * cell_size.height,
@@ -114,12 +111,6 @@ pub fn use_draggable_grid_item(
                 };
 
                 drag_state.set(DragState::DragEnded(final_position));
-
-                log!(
-                    "Drag ended at grid position: col={}, row={}",
-                    col_start,
-                    row_start
-                );
 
                 on_drag_end(col_start, row_start, final_position);
             })
@@ -131,13 +122,8 @@ pub fn use_draggable_grid_item(
             .prevent_default(true),
     );
 
-    // Computed position signals
-    let left = Signal::derive(move || match drag_state.get() {
-        DragState::Dragging(p) | DragState::DragEnded(p) => p.x,
-    });
-
-    let top = Signal::derive(move || match drag_state.get() {
-        DragState::Dragging(p) | DragState::DragEnded(p) => p.y,
+    let position = Signal::derive(move || match drag_state.get() {
+        DragState::Dragging(p) | DragState::DragEnded(p) => p,
     });
 
     // Transition for smooth animations
@@ -147,8 +133,7 @@ pub fn use_draggable_grid_item(
     });
 
     UseDraggableGridItemReturn {
-        left,
-        top,
         transition,
+        position,
     }
 }

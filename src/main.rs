@@ -1,4 +1,3 @@
-mod aabb;
 mod app;
 mod components;
 mod theme;
