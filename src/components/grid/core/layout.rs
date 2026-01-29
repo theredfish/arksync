@@ -219,8 +219,11 @@ impl Layout {
         for _ in 0..untracked_item.span.row_span {
             let mut row = vec![None; self.columns];
             // Fill cells based on col_span (starting from col 0, 0-indexed)
-            for col_idx in 0..untracked_item.span.col_span.min(self.columns) {
-                row[col_idx] = Some(untracked_item.id);
+            for cell in row
+                .iter_mut()
+                .take(untracked_item.span.col_span.min(self.columns))
+            {
+                *cell = Some(untracked_item.id);
             }
             new_rows.push(row);
         }
@@ -259,7 +262,7 @@ impl Layout {
         new_col_start: usize,
     ) {
         let mut untracked_item = item.get_untracked();
-        let old_position = untracked_item.grid_pos.clone();
+        let old_position = untracked_item.grid_pos;
 
         // If position hasn't changed, nothing to do
         if old_position.row_start == new_row_start && old_position.col_start == new_col_start {

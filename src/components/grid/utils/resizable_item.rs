@@ -1,6 +1,5 @@
 use leptos::prelude::*;
 use leptos::{html::Div, prelude::NodeRef};
-use leptos_use::core::Position;
 use leptos_use::use_event_listener;
 use std::default::Default;
 use std::sync::Arc;

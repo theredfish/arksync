@@ -45,8 +45,8 @@ pub fn GridItem(
     let grid_item_data = RwSignal::new(GridItemData {
         id,
         grid_pos: GridPosition {
-            col_start: col_start,
-            row_start: row_start,
+            col_start,
+            row_start,
         },
         px_pos: Position {
             x: col_start as f64 * cell_h,
@@ -79,8 +79,8 @@ pub fn GridItem(
     // Drag events
     let draggable_options = UseDraggableGridItemOptions {
         handle: Some(drag_ref),
-        col_start: col_start,
-        row_start: row_start,
+        col_start,
+        row_start,
         on_drag_move: Arc::new(move |drag_px_pos| {
             grid_item_data.update(|item| {
                 item.px_pos = drag_px_pos;
