@@ -1,56 +1,79 @@
+use crate::components::grid::core::item::{GridItemData, GridPosition};
+use crate::components::grid::core::layout::Layout;
+use crate::components::grid::core::size::Size;
+use crate::components::grid::core::span::Span;
 use crate::components::grid::utils::draggable_item::{
     use_draggable_grid_item, UseDraggableGridItemOptions, UseDraggableGridItemReturn,
 };
 use crate::components::grid::utils::resizable_item::{
     use_resizable_grid_item, UseResizableGridItemOptions, UseResizableGridItemReturn,
 };
-use crate::components::grid::{GridItemData, GridItemPosition, Layout, Size, Span};
 use crate::components::heroicons::ResizeIcon;
 use leptos::html::Div;
 use leptos::logging::log;
 use leptos::prelude::*;
+use leptos_use::core::Position;
 use leptos_use::{use_element_bounding, UseElementBoundingReturn};
+use std::sync::Arc;
 
 #[component]
 pub fn GridItem(
     children: Children,
     id: u32,
-    col_span: u32,
-    row_span: u32,
-    col_start: u32,
-    row_start: u32,
+    col_span: usize,
+    row_span: usize,
+    col_start: usize,
+    row_start: usize,
     #[prop(optional)] label: String,
+    /// If true, adds item at top and pushes others down. If false, registers at specified position.
+    #[prop(optional, default = false)]
+    dynamic: bool,
 ) -> impl IntoView {
     let layout = use_context::<RwSignal<Layout>>().expect("should retrieve the layout context");
-    let metadata = RwSignal::new(GridItemData::default());
+    let untracked_layout = layout.get_untracked();
     let window = window();
     let grid_item_ref = NodeRef::<Div>::new();
     let drag_ref = NodeRef::<Div>::new();
     let resize_button_ref = NodeRef::<Div>::new();
 
-    Effect::new(move || {
-        // TODO: find a better way, this is causing a initial state immediately
-        // updated from watch effects when layout is tracked.
-        let Size {
-            width: cell_w,
-            height: cell_h,
-        } = layout.get_untracked().cell_size;
-        let item_data = GridItemData {
-            position: GridItemPosition {
-                col_start,
-                row_start,
-            },
-            span: Span { row_span, col_span },
-        };
-        log!(
-            "col_span: {col_span} and cell_w: {cell_w}. Computed width: {}",
-            col_span as f64 * cell_w
-        );
-        metadata.set(item_data);
+    // Initializing the grid item data
+    let Size {
+        width: cell_w,
+        height: cell_h,
+    } = untracked_layout.cell_size;
 
-        layout.update(|layout| {
-            layout.add_item(id, metadata);
-        });
+    let grid_item_data = RwSignal::new(GridItemData {
+        id,
+        grid_pos: GridPosition {
+            col_start,
+            row_start,
+        },
+        px_pos: Position {
+            x: col_start as f64 * cell_h,
+            y: row_start as f64 * cell_w,
+        },
+        span: Span { row_span, col_span },
+        size: Size {
+            width: col_span as f64 * cell_w,
+            height: row_span as f64 * cell_h,
+        },
+    });
+
+    layout.update(|layout| {
+        // Check if item is already registered (prevent duplicate registration)
+        if layout.items.contains_key(&id) {
+            return;
+        }
+
+        log!("Update the layout with item {id}");
+
+        if dynamic {
+            // Dynamic items push others down and go to top
+            layout.add_item_at_top(grid_item_data);
+        } else {
+            // Declarative items register at their specified position
+            layout.register_item(grid_item_data);
+        }
     });
 
     // Drag events
@@ -58,13 +81,39 @@ pub fn GridItem(
         handle: Some(drag_ref),
         col_start,
         row_start,
+        on_drag_move: Arc::new(move |drag_px_pos| {
+            grid_item_data.update(|item| {
+                item.px_pos = drag_px_pos;
+                log!("Update item with new px_pos: {drag_px_pos:?}");
+            })
+        }),
+        on_drag_end: Arc::new(move |col_start, row_start, snapped_px_pos| {
+            grid_item_data.update(|item| {
+                item.px_pos = snapped_px_pos;
+                item.grid_pos = GridPosition {
+                    col_start,
+                    row_start,
+                };
+            });
+
+            // Move item with collision detection and push other items down
+            layout.update(|layout| {
+                // TODO: drag & detect collisions
+                // layout.move_item_with_collision(grid_item_data, new_row, new_col);
+            });
+        }),
         ..Default::default()
     };
 
+    // Compute position from grid_item_data signal (source of truth from layout)
     let UseDraggableGridItemReturn {
-        left,
-        top,
+        // We can't use this position because the layout is also pushing back the
+        // elements and update the items position data. Using this position would
+        // prevent the UI to update on the pixel position updated from the layout.
+        // TODO: see to remove this from the UseDraggableGridItemReturn? Or keep for API if open sourced?
+        // position: drag_position,
         transition: drag_transition,
+        ..
     } = use_draggable_grid_item(grid_item_ref, draggable_options);
 
     // Absolute element width/height
@@ -79,6 +128,11 @@ pub fn GridItem(
         handle: Some(resize_button_ref),
         col_span,
         row_span,
+        on_resize_end: Arc::new(move |size| {
+            grid_item_data.update(|item| {
+                item.size = size;
+            });
+        }),
         ..Default::default()
     };
 
@@ -86,6 +140,8 @@ pub fn GridItem(
         size: resize_size,
         transition: resize_transition,
     } = use_resizable_grid_item(grid_item_ref, resize_options);
+
+    // TODO: Handle collisions
 
     // TODO: clamp dragging event.
     // Avoid issues where min > max.
@@ -120,9 +176,14 @@ pub fn GridItem(
 
     let style = move || {
         // let Size { width, height } = metadata.get().size;
-        let (left, top, drag_transition) = (left.get(), top.get(), drag_transition.get());
+        let drag_transition = drag_transition.get();
+        let Position { x: left, y: top } = grid_item_data.get().px_pos;
+        // let Position { x: left, y: top } = drag_position.get();
         let resize_transition = resize_transition.get();
         let Size { width, height } = resize_size.get();
+
+        log!("resize: {width};{height}");
+
         format!(
             r#"width: {width}px;
             height: {height}px;
@@ -146,10 +207,10 @@ pub fn GridItem(
             <div>
                 { move || {
                     let Size { width, height } = resize_size.get();
-                    let GridItemPosition { col_start, row_start } = metadata.get().position;
-                    // format!("position: {col_start};{row_start} | size: {width};{height} | left/top: : {}; {}", left.get(), top.get())
-                }
-                }
+                    let GridPosition { col_start, row_start } = grid_item_data.get().grid_pos;
+                    let Position { x: left, y: top } = grid_item_data.get().px_pos;
+                    format!("position: {col_start};{row_start} | size: {width};{height} | left/top: : {left}; {top}")
+                }}
             </div>
             { children() }
             <div
