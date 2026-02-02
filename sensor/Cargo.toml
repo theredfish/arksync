@@ -11,3 +11,4 @@ license = "AGPL-3.0-or-later"
 [dependencies]
 serialport = "4.8.1"
 tokio = { version = "1.49.0", features = ["full"] }
+chrono = "0.4"
