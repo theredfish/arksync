@@ -1,30 +1,30 @@
+mod commands;
 mod sensor;
 mod serial_port;
 
-use sensor::Sensor;
+use chrono::{Duration as ChronoDuration, Utc};
+use sensor::{Sensor, SensorState};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, oneshot};
-use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, Duration as TokioDuration};
 
-use serial_port::*;
-
-// pub type SensorList = Arc<Mutex<HashMap<String, Sensor>>>;
+pub type SensorList = HashMap<String, Sensor>;
 
 enum ServiceCommand {
-    AddSensor {
-        uuid: String,
-        sensor: Sensor,
+    RemoveSensors {
+        uuids: Vec<String>,
     },
-    RemoveSensor {
-        uuid: String,
-    },
-    GetSensor {
-        uuid: String,
+    FindSensor {
+        serial_number: String,
         respond_to: oneshot::Sender<Option<Sensor>>,
     },
-    GetActiveSensors {
-        respond_to: oneshot::Sender<Vec<(String, Sensor)>>,
+    AllSensors {
+        respond_to: oneshot::Sender<Arc<SensorList>>,
+    },
+    UpsertSensors {
+        sensors: Vec<(String, Sensor)>,
     },
 }
 
@@ -34,7 +34,7 @@ pub struct CommandChannel {
 }
 
 pub struct UartService {
-    sensors: HashMap<String, Sensor>,
+    sensors: SensorList,
     cmd_channel: CommandChannel,
 }
 
@@ -73,21 +73,33 @@ impl UartService {
         }
     }
 
-    fn handle_cmd(&self, cmd: ServiceCommand) {
+    fn handle_cmd(&mut self, cmd: ServiceCommand) {
         match cmd {
-            ServiceCommand::AddSensor { uuid, sensor } => {
-                println!("Adding sensor: {} - {:?}", uuid, sensor);
+            ServiceCommand::RemoveSensors { uuids } => {
+                println!("RemoveSensors: {} sensors", uuids.len());
+                for uuid in uuids {
+                    self.sensors.remove(&uuid);
+                }
             }
-            ServiceCommand::RemoveSensor { uuid } => {
-                println!("Removing sensor: {}", uuid);
+            ServiceCommand::FindSensor {
+                serial_number,
+                respond_to,
+            } => {
+                println!("FindSensor: {}", serial_number);
+                let sensor = self.sensors.get(&serial_number);
+                let _ = respond_to.send(sensor.cloned());
             }
-            ServiceCommand::GetSensor { uuid, respond_to } => {
-                println!("Getting sensor: {}", uuid);
-                let _ = respond_to.send(None);
+            ServiceCommand::AllSensors { respond_to } => {
+                println!("AllSensors: {:#?}", self.sensors);
+                let _ = respond_to.send(Arc::new(self.sensors.clone()));
             }
-            ServiceCommand::GetActiveSensors { respond_to } => {
-                println!("Getting active sensors");
-                let _ = respond_to.send(vec![]);
+            ServiceCommand::UpsertSensors { sensors } => {
+                println!("UpsertSensors: {} sensors", sensors.len());
+                for (uuid, mut sensor) in sensors {
+                    sensor.last_activity = Utc::now();
+                    sensor.state = SensorState::Active;
+                    self.sensors.insert(uuid, sensor);
+                }
             }
         }
     }
@@ -96,17 +108,57 @@ impl UartService {
         tokio::spawn(async move {
             loop {
                 println!("Checking for sensors...");
-                let atlas_sc_ports = serial_port::find_atlas_sc_port();
-                println!("{atlas_sc_ports:#?}");
-                sleep(Duration::from_secs(60)).await;
+                let asc_ports = serial_port::find_asc_port();
+                println!("Found {} ASC ports: {:#?}", asc_ports.len(), asc_ports);
+
+                // Get current sensor list
+                let (respond_to, rx) = oneshot::channel();
+                let _ = cmd_tx.send(ServiceCommand::AllSensors { respond_to }).await;
+
+                if let Ok(current_sensors) = rx.await {
+                    // Find new sensors (not in the current list)
+                    let mut new_sensors: Vec<(String, Sensor)> = Vec::new();
+
+                    for port in asc_ports.iter() {
+                        if !current_sensors.contains_key(&port.serial_number) {
+                            // Try to connect and query device info
+                            match Sensor::from_device(port.clone()) {
+                                Ok(sensor) => {
+                                    println!(
+                                        "Successfully connected to sensor: {:?} v{} ({})",
+                                        sensor.kind, sensor.firmware, port.serial_number
+                                    );
+                                    new_sensors.push((port.serial_number.clone(), sensor));
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "Failed to connect to sensor {}: {}",
+                                        port.serial_number, e
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    if !new_sensors.is_empty() {
+                        println!("Adding {} new sensors", new_sensors.len());
+                        let _ = cmd_tx
+                            .send(ServiceCommand::UpsertSensors {
+                                sensors: new_sensors,
+                            })
+                            .await;
+                    }
+                }
+
+                sleep(TokioDuration::from_secs(5)).await;
             }
         });
     }
 
-    fn spawn_reader_manager(&self, cmd_tx: Sender<ServiceCommand>) {
+    fn spawn_reader_manager(&self, _cmd_tx: Sender<ServiceCommand>) {
         tokio::spawn(async move {
             println!("Reading sensors...");
-            sleep(Duration::from_secs(60)).await;
+            sleep(TokioDuration::from_secs(60)).await;
         });
     }
 
@@ -115,16 +167,53 @@ impl UartService {
             loop {
                 let (respond_to, rx) = oneshot::channel();
 
-                // TODO: warn on error
-                let _ = cmd_tx
-                    .send(ServiceCommand::GetActiveSensors { respond_to })
-                    .await;
+                // Request snapshot of all sensors
+                let _ = cmd_tx.send(ServiceCommand::AllSensors { respond_to }).await;
 
                 if let Ok(sensors) = rx.await {
                     println!("Health check: {} sensors", sensors.len());
+
+                    let now = Utc::now();
+                    let timeout_duration = ChronoDuration::minutes(2);
+
+                    // Collect sensors to remove: Unreachable AND last_activity > 2 minutes
+                    let sensors_to_remove: Vec<String> = sensors
+                        .iter()
+                        .filter(|(_, sensor)| {
+                            matches!(sensor.state, SensorState::Unreachable)
+                                && (now - sensor.last_activity) > timeout_duration
+                        })
+                        .map(|(uuid, _)| uuid.clone())
+                        .collect();
+
+                    // Collect sensors to update: all others
+                    let sensors_to_update: Vec<(String, Sensor)> = sensors
+                        .iter()
+                        .filter(|(uuid, _)| !sensors_to_remove.contains(uuid))
+                        .map(|(uuid, sensor)| (uuid.clone(), sensor.clone()))
+                        .collect();
+
+                    // Remove timed-out unreachable sensors
+                    if !sensors_to_remove.is_empty() {
+                        println!("Removing {} unreachable sensors", sensors_to_remove.len());
+                        let _ = cmd_tx
+                            .send(ServiceCommand::RemoveSensors {
+                                uuids: sensors_to_remove,
+                            })
+                            .await;
+                    }
+
+                    // Update active sensors with current timestamp and Active state
+                    if !sensors_to_update.is_empty() {
+                        let _ = cmd_tx
+                            .send(ServiceCommand::UpsertSensors {
+                                sensors: sensors_to_update,
+                            })
+                            .await;
+                    }
                 }
 
-                sleep(Duration::from_secs(20)).await;
+                sleep(TokioDuration::from_secs(20)).await;
             }
         });
     }
