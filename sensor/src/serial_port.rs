@@ -4,19 +4,20 @@ use std::time::Duration;
 
 // Atlas Scientific RTD Sensor Configuration
 // Based on datasheet specifications
-pub const RTD_BAUD_RATE: u32 = 9600;
-pub const RTD_TIMEOUT_MS: u64 = 1000; // Timeout acts as safety net for response-based reading
+pub const DEFAULT_BAUD_RATE: u32 = 9600;
+pub const SERIAL_PORT_CONN_TIMEOUT: u64 = 1000; // Timeout acts as safety net for response-based reading
 
 /// Metadata about a serial port (no active connection)
 #[derive(Debug, Clone)]
 pub struct SerialPort {
     pub port_name: String,
     pub serial_number: String,
+    pub baud_rate: u32,
 }
 
 /// Active serial port connection for communication
 pub struct SerialPortConnection {
-    port: Box<dyn serialport::SerialPort>,
+    pub port: Box<dyn serialport::SerialPort>,
 }
 
 impl SerialPortConnection {
@@ -27,12 +28,16 @@ impl SerialPortConnection {
     /// - Terminator: Carriage return (\r)
     /// - Decimal places: 3
     /// - Temperature unit: Celsius (default)
-    pub fn open(port_info: &SerialPort) -> Result<Self, serialport::Error> {
-        let port = serialport::new(&port_info.port_name, RTD_BAUD_RATE)
-            .timeout(Duration::from_millis(RTD_TIMEOUT_MS))
-            .open()?;
+    pub fn open(serial_port: &SerialPort) -> Result<Self, serialport::Error> {
+        let SerialPort {
+            port_name,
+            baud_rate,
+            ..
+        } = serial_port;
 
-        let mut port = port;
+        let port = serialport::new(port_name, *baud_rate)
+            .timeout(Duration::from_millis(SERIAL_PORT_CONN_TIMEOUT))
+            .open()?;
 
         // Flush any stale data in the input buffer
         // Atlas Scientific sensors might have leftover readings or responses
@@ -42,9 +47,13 @@ impl SerialPortConnection {
     }
 
     /// Write a command to the sensor
-    pub fn write_command(&mut self, command: &str) -> std::io::Result<()> {
-        self.port.write_all(command.as_bytes())?;
+    pub fn write_command(&mut self, command: &[u8]) -> std::io::Result<()> {
+        // Flush any stale data before writing
+        self.flush_input()?;
+
+        self.port.write_all(command)?;
         self.port.write_all(b"\r")?; // Atlas Scientific expects carriage return
+
         self.port.flush()?;
         Ok(())
     }
@@ -53,19 +62,24 @@ impl SerialPortConnection {
     ///
     /// Atlas Scientific sensors terminate responses with \r
     /// This method blocks until \r is received or timeout occurs
-    pub fn read_response(&mut self) -> std::io::Result<String> {
+    pub fn read_until_carrier(&mut self) -> std::io::Result<String> {
         let mut buffer = Vec::new();
         let mut single_byte = [0u8; 1];
 
         // Read byte-by-byte until carriage return
         loop {
+            if self.port.read_carrier_detect()? {
+                break;
+            }
+
             match self.port.read_exact(&mut single_byte) {
-                Ok(_) => {
-                    if single_byte[0] == b'\r' {
-                        break;
-                    }
-                    buffer.push(single_byte[0]);
-                }
+                Ok(_) => buffer.push(single_byte[0]),
+                // {
+                // if single_byte[0] == b'\r' {
+                //     break;
+                // }
+
+                // }
                 Err(e) => return Err(e),
             }
         }
@@ -90,11 +104,11 @@ impl SerialPortConnection {
     ///
     /// # Arguments
     /// * `command` - The command string to send
+    ///
+    /// TODO: deprecate this in favor of uart/i2c driver impl
     pub fn send_command(&mut self, command: &str) -> io::Result<String> {
-        // Flush any stale data before sending command
-        self.flush_input()?;
-        self.write_command(command)?;
-        self.read_response()
+        self.write_command(command.as_bytes())?;
+        self.read_until_carrier()
     }
 }
 
@@ -141,15 +155,6 @@ fn filter_map_usb_serial(port: SerialPortInfo) -> Option<SerialPort> {
     usb_port.serial_number.map(|serial_number| SerialPort {
         port_name,
         serial_number,
+        baud_rate: DEFAULT_BAUD_RATE,
     })
 }
-
-// We need to maintain a list of opened serial ports
-//
-// DP065KS3 + serial port
-// DK0HFBFB + serial port
-// pub fn collect_atlas_sc_sensors(serial_ports: Vec<SerialPortInfo>) -> Vec<Sensor> {
-//     serial_ports.iter().map(|serial_port| {
-//         serial_port.
-//     }).collect()
-// }
