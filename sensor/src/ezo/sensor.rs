@@ -16,9 +16,14 @@ pub enum SensorState {
     Unreachable,
 }
 
+#[derive(Debug, Clone)]
 pub struct SensorData {
     pub firmware: f64,
     pub name: SensorName,
     pub state: SensorState,
     pub last_activity: DateTime<Utc>,
+}
+
+pub trait Sensor: Send + Sync {
+    fn data(&self) -> SensorData;
 }

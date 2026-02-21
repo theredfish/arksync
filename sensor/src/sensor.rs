@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use std::sync::{Arc, Mutex};
 
-use crate::commands::UartCommand;
+use crate::commands::uart::UartCommand;
 use crate::serial_port::{SerialPort, SerialPortConnection};
 
 #[derive(Debug, Clone, Copy)]
