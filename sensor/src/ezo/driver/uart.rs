@@ -2,20 +2,20 @@ use super::{DeviceInfo, DeviceType, Driver, DriverError, ReadWriteCmd, Result};
 use crate::serial_port::SerialPort;
 use crate::{ezo::driver::Status, serial_port::SerialPortConnection};
 
-pub struct Uart {
+pub struct UartDriver {
     connection: SerialPortConnection,
 }
 
-impl Uart {
-    pub fn new(serial_port: SerialPort) -> Result<Self> {
+impl UartDriver {
+    pub fn new(serial_port: &SerialPort) -> Result<Self> {
         let connection = SerialPortConnection::open(&serial_port)
             .map_err(|err| DriverError::Connection(err.to_string()))?;
 
-        Ok(Uart { connection })
+        Ok(UartDriver { connection })
     }
 }
 
-impl ReadWriteCmd for Uart {
+impl ReadWriteCmd for UartDriver {
     fn read(&mut self) -> Result<String> {
         self.connection
             .read_until_carrier()
@@ -29,7 +29,7 @@ impl ReadWriteCmd for Uart {
     }
 }
 
-impl Driver for Uart {
+impl Driver for UartDriver {
     /// Get device information (firmware version, device type)
     ///
     /// Retries up to 3 times if we get unexpected data (like temperature readings)

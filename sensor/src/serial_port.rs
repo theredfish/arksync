@@ -68,18 +68,13 @@ impl SerialPortConnection {
 
         // Read byte-by-byte until carriage return
         loop {
-            if self.port.read_carrier_detect()? {
-                break;
-            }
-
             match self.port.read_exact(&mut single_byte) {
-                Ok(_) => buffer.push(single_byte[0]),
-                // {
-                // if single_byte[0] == b'\r' {
-                //     break;
-                // }
-
-                // }
+                Ok(_) => {
+                    if single_byte[0] == b'\r' {
+                        break;
+                    }
+                    buffer.push(single_byte[0]);
+                }
                 Err(e) => return Err(e),
             }
         }

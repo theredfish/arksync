@@ -1,30 +1,34 @@
 mod commands;
-mod sensor;
+mod ezo;
 mod serial_port;
 
-use chrono::{Duration as ChronoDuration, Utc};
-use sensor::{Sensor, SensorState};
+use ezo::driver::uart::UartDriver;
+use ezo::driver::{DeviceType, Driver};
+use ezo::rtd::Rtd;
+use ezo::sensor::Sensor;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{sleep, Duration as TokioDuration};
 
-pub type SensorList = HashMap<String, Sensor>;
+pub type SensorList = HashMap<String, Arc<dyn Sensor>>;
 
 enum ServiceCommand {
-    RemoveSensors {
-        uuids: Vec<String>,
+    /// Add or update sensors in the registry
+    UpsertSensors {
+        sensors: Vec<(String, Arc<dyn Sensor>)>,
     },
+    /// Remove sensors from the registry
+    RemoveSensors { uuids: Vec<String> },
+    /// Get a specific sensor by serial number
     FindSensor {
         serial_number: String,
-        respond_to: oneshot::Sender<Option<Sensor>>,
+        respond_to: oneshot::Sender<Option<Arc<dyn Sensor>>>,
     },
+    /// Get all sensors (snapshot)
     AllSensors {
         respond_to: oneshot::Sender<Arc<SensorList>>,
-    },
-    UpsertSensors {
-        sensors: Vec<(String, Sensor)>,
     },
 }
 
@@ -33,6 +37,7 @@ pub struct CommandChannel {
     rx: mpsc::Receiver<ServiceCommand>,
 }
 
+/// Supervisor service that maintains the list of sensors
 pub struct UartService {
     sensors: SensorList,
     cmd_channel: CommandChannel,
@@ -48,91 +53,107 @@ impl UartService {
         }
     }
 
-    /// Supervisor loop
+    /// Main supervisor loop - maintains sensor registry
     pub async fn run(mut self) {
         let cmd_tx = self.cmd_channel.tx.clone();
 
-        // Spawn background tasks
-        self.spawn_detector(cmd_tx.clone());
-        self.spawn_healthcheck(cmd_tx.clone());
-        self.spawn_reader_manager(cmd_tx.clone());
+        // Spawn detector task (detects new sensors and adds them to registry)
+        self.detect_sensors(cmd_tx.clone());
 
-        // Main supervisor loop
+        println!("UartService started - maintaining sensor registry");
+
+        // Main event loop - just manages the HashMap
         loop {
             tokio::select! {
                 Some(cmd) = self.cmd_channel.rx.recv() => {
                     self.handle_cmd(cmd);
                 }
 
-                // Graceful termination signal (Ctrl+C)
                 _ = tokio::signal::ctrl_c() => {
-                    println!("Shutting down...");
+                    println!("Shutting down sensor registry...");
                     break;
                 }
             }
         }
     }
 
+    /// Handle commands to maintain sensor list
     fn handle_cmd(&mut self, cmd: ServiceCommand) {
         match cmd {
-            ServiceCommand::RemoveSensors { uuids } => {
-                println!("RemoveSensors: {} sensors", uuids.len());
-                for uuid in uuids {
-                    self.sensors.remove(&uuid);
+            ServiceCommand::UpsertSensors { sensors } => {
+                println!("Registry: Upserting {} sensors", sensors.len());
+                for (uuid, sensor) in sensors {
+                    self.sensors.insert(uuid, sensor);
                 }
+                println!("Registry: Total sensors = {}", self.sensors.len());
             }
+
+            ServiceCommand::RemoveSensors { uuids } => {
+                println!("Registry: Removing {} sensors", uuids.len());
+                for uuid in &uuids {
+                    self.sensors.remove(uuid);
+                }
+                println!("Registry: Total sensors = {}", self.sensors.len());
+            }
+
             ServiceCommand::FindSensor {
                 serial_number,
                 respond_to,
             } => {
-                println!("FindSensor: {}", serial_number);
-                let sensor = self.sensors.get(&serial_number);
-                let _ = respond_to.send(sensor.cloned());
+                let sensor = self.sensors.get(&serial_number).cloned();
+                let _ = respond_to.send(sensor);
             }
+
             ServiceCommand::AllSensors { respond_to } => {
-                println!("AllSensors: {:#?}", self.sensors);
+                println!(
+                    "Registry: Providing snapshot of all sensors ({} total)",
+                    self.sensors.len()
+                );
                 let _ = respond_to.send(Arc::new(self.sensors.clone()));
-            }
-            ServiceCommand::UpsertSensors { sensors } => {
-                println!("UpsertSensors: {} sensors", sensors.len());
-                for (uuid, mut sensor) in sensors {
-                    sensor.last_activity = Utc::now();
-                    sensor.state = SensorState::Active;
-                    self.sensors.insert(uuid, sensor);
-                }
             }
         }
     }
 
-    fn spawn_detector(&self, cmd_tx: Sender<ServiceCommand>) {
+    /// Detector task - finds new USB sensors and adds them to registry
+    fn detect_sensors(&self, cmd_tx: Sender<ServiceCommand>) {
         tokio::spawn(async move {
             loop {
-                println!("Checking for sensors...");
+                println!("Detector: Scanning for sensors...");
                 let asc_ports = serial_port::find_asc_port();
-                println!("Found {} ASC ports: {:#?}", asc_ports.len(), asc_ports);
+
+                if !asc_ports.is_empty() {
+                    println!("Detector: Found {} ASC ports", asc_ports.len());
+                }
 
                 // Get current sensor list
                 let (respond_to, rx) = oneshot::channel();
                 let _ = cmd_tx.send(ServiceCommand::AllSensors { respond_to }).await;
+                let current_sensors = rx.await;
 
-                if let Ok(current_sensors) = rx.await {
-                    // Find new sensors (not in the current list)
-                    let mut new_sensors: Vec<(String, Sensor)> = Vec::new();
+                if let Ok(current_sensors) = current_sensors {
+                    let mut new_sensors: Vec<(String, Arc<dyn Sensor>)> = Vec::new();
 
                     for port in asc_ports.iter() {
                         if !current_sensors.contains_key(&port.serial_number) {
-                            // Try to connect and query device info
-                            match Sensor::from_device(port.clone()) {
+                            let sensor = create_sensor_from_port(&port);
+                            println!(
+                                "Detector: Created sensor {}: {:#?}",
+                                port.serial_number,
+                                sensor.as_ref().map(|s| s.data())
+                            );
+
+                            match sensor {
                                 Ok(sensor) => {
+                                    let data = sensor.data();
                                     println!(
-                                        "Successfully connected to sensor: {:?} v{} ({})",
-                                        sensor.kind, sensor.firmware, port.serial_number
+                                        "Detector: Created sensor - firmware v{}",
+                                        data.firmware
                                     );
                                     new_sensors.push((port.serial_number.clone(), sensor));
                                 }
                                 Err(e) => {
                                     eprintln!(
-                                        "Failed to connect to sensor {}: {}",
+                                        "Detector: Failed to create sensor {}: {}",
                                         port.serial_number, e
                                     );
                                 }
@@ -141,7 +162,6 @@ impl UartService {
                     }
 
                     if !new_sensors.is_empty() {
-                        println!("Adding {} new sensors", new_sensors.len());
                         let _ = cmd_tx
                             .send(ServiceCommand::UpsertSensors {
                                 sensors: new_sensors,
@@ -154,89 +174,38 @@ impl UartService {
             }
         });
     }
+}
 
-    fn spawn_reader_manager(&self, _cmd_tx: Sender<ServiceCommand>) {
-        tokio::spawn(async move {
-            println!("Reading sensors...");
-            sleep(TokioDuration::from_secs(60)).await;
-        });
-    }
+/// Factory function to create a sensor from a serial port
+///
+/// This function:
+/// 1. Creates a temporary UART driver
+/// 2. Queries device info to determine sensor type
+/// 3. Creates the appropriate sensor with the correct driver
+/// 4. Returns it as Arc<dyn Sensor>
+fn create_sensor_from_port(
+    port: &serial_port::SerialPort,
+) -> Result<Arc<dyn Sensor>, Box<dyn std::error::Error>> {
+    // Create temporary driver to query device type
+    let mut uart_driver = UartDriver::new(port)?;
+    let device_info = uart_driver.device_info()?;
 
-    fn spawn_healthcheck(&self, cmd_tx: Sender<ServiceCommand>) {
-        tokio::spawn(async move {
-            loop {
-                let (respond_to, rx) = oneshot::channel();
+    println!(
+        "Factory: Detected {:?} sensor v{}",
+        device_info.device_type, device_info.firmware_version
+    );
 
-                // Request snapshot of all sensors
-                let _ = cmd_tx.send(ServiceCommand::AllSensors { respond_to }).await;
-
-                if let Ok(sensors) = rx.await {
-                    println!("Health check: {} sensors", sensors.len());
-
-                    let now = Utc::now();
-                    let timeout_duration = ChronoDuration::minutes(2);
-
-                    // Collect sensors to remove: Unreachable AND last_activity > 2 minutes
-                    let sensors_to_remove: Vec<String> = sensors
-                        .iter()
-                        .filter(|(_, sensor)| {
-                            matches!(sensor.state, SensorState::Unreachable)
-                                && (now - sensor.last_activity) > timeout_duration
-                        })
-                        .map(|(uuid, _)| uuid.clone())
-                        .collect();
-
-                    // Collect sensors to update: all others
-                    let sensors_to_update: Vec<(String, Sensor)> = sensors
-                        .iter()
-                        .filter(|(uuid, _)| !sensors_to_remove.contains(uuid))
-                        .map(|(uuid, sensor)| (uuid.clone(), sensor.clone()))
-                        .collect();
-
-                    // Remove timed-out unreachable sensors
-                    if !sensors_to_remove.is_empty() {
-                        println!("Removing {} unreachable sensors", sensors_to_remove.len());
-                        let _ = cmd_tx
-                            .send(ServiceCommand::RemoveSensors {
-                                uuids: sensors_to_remove,
-                            })
-                            .await;
-                    }
-
-                    // Update active sensors with current timestamp and Active state
-                    if !sensors_to_update.is_empty() {
-                        let _ = cmd_tx
-                            .send(ServiceCommand::UpsertSensors {
-                                sensors: sensors_to_update,
-                            })
-                            .await;
-                    }
-                }
-
-                sleep(TokioDuration::from_secs(20)).await;
-            }
-        });
+    // Create appropriate sensor based on device type
+    match device_info.device_type {
+        DeviceType::Rtd => {
+            let rtd = Rtd::<UartDriver>::from_uart(uart_driver, device_info.firmware_version);
+            Ok(Arc::new(rtd) as Arc<dyn Sensor>)
+        }
     }
 }
 
-// - A UartSensorService: this service is in charge of managing all kind of
-// Atlas Scientific sensors.
-//
-// - A task to manage sensors among existing ones with filtering. When a new
-// sensor is detected, it is added to the list. When the current USB ports don't
-// include one of the sensors, it is removed from the list. This task only track
-// some kind of unique information.
-//
-// - A task to healthcheck sensors and update their status. Healthy, Unhealthy,
-// Lost. The status tracks the last status updated_at which helps to determine
-// the state machine for passing from one state to another.
-//
-// - A task per healthy sensor to handle sensor values. A cancellation token
-// should be used to terminate the task when a sensor status is Lost.
-//
-// - A task to handle commands sent to sensors and handle responses.
-
 #[tokio::main]
 async fn main() {
-    UartService::new().run().await
+    println!("Starting ArkSync Sensor Service...");
+    UartService::new().run().await;
 }
