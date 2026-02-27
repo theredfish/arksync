@@ -8,26 +8,38 @@ use crate::ezo::{
 };
 
 pub struct Rtd<D: Driver> {
-    data: Mutex<SensorData>,
+    data: SensorData,
     driver: Mutex<D>,
 }
 
-impl Sensor for Rtd<UartDriver> {
-    fn data(&self) -> SensorData {
-        self.data.lock().unwrap().clone()
+impl<D: Driver + Send + 'static> Sensor for Rtd<D> {
+    type DriverType = D;
+
+    fn data(&self) -> &SensorData {
+        &self.data
+    }
+
+    fn driver(&self) -> &Mutex<Self::DriverType> {
+        &self.driver
+    }
+}
+
+impl<D: Driver> Rtd<D> {
+    pub fn new(driver: D, firmware: f64) -> Self {
+        Self {
+            data: SensorData {
+                firmware,
+                name: SensorName::Unnamed,
+                state: SensorState::Initializing,
+                last_activity: Utc::now(),
+            },
+            driver: Mutex::new(driver),
+        }
     }
 }
 
 impl Rtd<UartDriver> {
     pub fn from_uart(driver: UartDriver, firmware: f64) -> Self {
-        Self {
-            data: Mutex::new(SensorData {
-                firmware,
-                name: SensorName::Unnamed,
-                state: SensorState::Initializing,
-                last_activity: Utc::now(),
-            }),
-            driver: Mutex::new(driver),
-        }
+        Self::new(driver, firmware)
     }
 }
