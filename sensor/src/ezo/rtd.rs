@@ -1,11 +1,9 @@
 use chrono::Utc;
 use std::sync::Mutex;
 
-use crate::ezo::sensor::*;
-use crate::ezo::{
-    driver::{uart::UartDriver, Driver},
-    sensor::SensorInfo,
-};
+use crate::ezo::driver::{uart::UartDriver, Driver};
+use crate::ezo::ezo_sensor::EzoSensor;
+use crate::sensor::{SensorInfo, SensorName, SensorState};
 
 pub struct Rtd<D: Driver> {
     data: SensorInfo,
