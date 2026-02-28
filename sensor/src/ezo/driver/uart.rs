@@ -1,4 +1,4 @@
-use super::{DeviceInfo, DeviceType, Driver, DriverError, ReadWriteCmd, Result};
+use super::{CommandTransport, DeviceInfo, DeviceType, Driver, DriverError, Result};
 use crate::serial_port::SerialPort;
 use crate::{ezo::driver::Status, serial_port::SerialPortConnection};
 
@@ -15,7 +15,7 @@ impl UartDriver {
     }
 }
 
-impl ReadWriteCmd for UartDriver {
+impl CommandTransport for UartDriver {
     fn read(&mut self) -> Result<String> {
         self.connection
             .read_until_carrier()
@@ -38,8 +38,7 @@ impl Driver for UartDriver {
 
         for attempt in 1..=MAX_RETRIES {
             // Send "i" command to get device information
-            self.write(b"i")?;
-            let response = self.read()?;
+            let response = self.send_command(b"i")?;
 
             // Atlas Scientific response format: ?I,RTD,1.0
             // Format: ?I,<device_type>,<firmware_version>
@@ -70,8 +69,7 @@ impl Driver for UartDriver {
     }
 
     fn status(&mut self) -> Result<Status> {
-        self.write(b"Status")?;
-        let response = self.read()?;
+        let response = self.send_command(b"Status")?;
 
         // Atlas Scientific status response format: ?STATUS,<code>
         // Codes: P (powered off and restarted), S (software reset), B (brown out), W (watchdog), U (unknown)
