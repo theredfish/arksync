@@ -163,12 +163,12 @@ impl UartService {
                             println!(
                                 "Detector: Created sensor {}: {:#?}",
                                 port.serial_number,
-                                sensor.as_ref().map(|s| s.data())
+                                sensor.as_ref().map(|s| s.info())
                             );
 
                             match sensor {
                                 Ok(sensor) => {
-                                    let data = sensor.data();
+                                    let data = sensor.info();
                                     println!(
                                         "Detector: Created sensor - firmware v{}",
                                         data.firmware
