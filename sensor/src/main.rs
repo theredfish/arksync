@@ -1,4 +1,3 @@
-mod commands;
 mod error;
 mod ezo;
 mod sensor;
@@ -17,6 +16,7 @@ use tokio::time::{interval, Duration as TokioDuration};
 
 pub type SensorList = HashMap<String, Arc<dyn Sensor>>;
 
+#[allow(unused)]
 enum ServiceCommand {
     /// Add sensors in the registry (no replacement)
     AddSensors {
@@ -45,6 +45,12 @@ pub struct UartService {
     sensors: SensorList,
     sensor_tasks: HashMap<String, JoinHandle<()>>,
     cmd_channel: CommandChannel,
+}
+
+impl Default for UartService {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl UartService {
@@ -161,7 +167,7 @@ impl UartService {
 
                     for port in asc_ports.iter() {
                         if !current_sensors.contains_key(&port.serial_number) {
-                            let sensor = create_sensor_from_port(&port);
+                            let sensor = create_sensor_from_port(port);
                             println!(
                                 "Detector: Created sensor {}: {:#?}",
                                 port.serial_number,
