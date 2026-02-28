@@ -35,13 +35,18 @@ pub enum Status {
     Unknown,
 }
 
-pub trait ReadWriteCmd {
+pub trait CommandTransport {
     fn read(&mut self) -> Result<String>;
     fn write(&mut self, buf: &[u8]) -> Result<()>;
+
+    fn send_command(&mut self, command: &[u8]) -> Result<String> {
+        self.write(command)?;
+        self.read()
+    }
 }
 
 /// Commands common to both UART and I2C drivers.
-pub trait Driver: ReadWriteCmd {
+pub trait Driver: CommandTransport {
     fn device_info(&mut self) -> Result<DeviceInfo>;
     fn status(&mut self) -> Result<Status>;
 }
