@@ -32,6 +32,27 @@ pub struct SensorData {
 }
 
 pub trait Sensor: Send + Sync + 'static {
+    fn data(&self) -> &SensorData;
+    fn read_measurement(&self) -> Result<f64>;
+
+    /// Spawn the main background task for this sensor.
+    fn run(self: Arc<Self>) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut ticker = interval(Duration::from_millis(1500));
+
+            loop {
+                ticker.tick().await;
+
+                match self.read_measurement() {
+                    Ok(value) => println!("Sensor reading: {value:.3}"),
+                    Err(err) => eprintln!("Sensor read error: {err}"),
+                }
+            }
+        })
+    }
+}
+
+pub trait EzoSensor: Send + Sync + 'static {
     type DriverType: Driver;
 
     fn data(&self) -> &SensorData;
@@ -60,20 +81,17 @@ pub trait Sensor: Send + Sync + 'static {
 
         driver.send_command(command).map_err(Into::into)
     }
+}
 
-    /// Spawn the main background task for this sensor.
-    fn run(self: Arc<Self>) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_millis(1500));
+impl<T> Sensor for T
+where
+    T: EzoSensor,
+{
+    fn data(&self) -> &SensorData {
+        EzoSensor::data(self)
+    }
 
-            loop {
-                ticker.tick().await;
-
-                match self.read_measurement() {
-                    Ok(value) => println!("Sensor reading: {value:.3}"),
-                    Err(err) => eprintln!("Sensor read error: {err}"),
-                }
-            }
-        })
+    fn read_measurement(&self) -> Result<f64> {
+        EzoSensor::read_measurement(self)
     }
 }
