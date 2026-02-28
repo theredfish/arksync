@@ -13,19 +13,19 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration as TokioDuration};
 
-pub type SensorList = HashMap<String, Arc<dyn Sensor<DriverType = UartDriver>>>;
+pub type SensorList = HashMap<String, Arc<dyn Sensor>>;
 
 enum ServiceCommand {
     /// Add sensors in the registry (no replacement)
     AddSensors {
-        sensors: Vec<(String, Arc<dyn Sensor<DriverType = UartDriver>>)>,
+        sensors: Vec<(String, Arc<dyn Sensor>)>,
     },
     /// Remove sensors from the registry
     RemoveSensors { uuids: Vec<String> },
     /// Get a specific sensor by serial number
     FindSensor {
         serial_number: String,
-        respond_to: oneshot::Sender<Option<Arc<dyn Sensor<DriverType = UartDriver>>>>,
+        respond_to: oneshot::Sender<Option<Arc<dyn Sensor>>>,
     },
     /// Get all sensors (snapshot)
     AllSensors {
@@ -155,8 +155,7 @@ impl UartService {
                 let current_sensors = rx.await;
 
                 if let Ok(current_sensors) = current_sensors {
-                    let mut new_sensors: Vec<(String, Arc<dyn Sensor<DriverType = UartDriver>>)> =
-                        Vec::new();
+                    let mut new_sensors: Vec<(String, Arc<dyn Sensor>)> = Vec::new();
 
                     for port in asc_ports.iter() {
                         if !current_sensors.contains_key(&port.serial_number) {
@@ -208,7 +207,7 @@ impl UartService {
 /// 4. Returns it as Arc<dyn Sensor>
 fn create_sensor_from_port(
     port: &serial_port::SerialPort,
-) -> Result<Arc<dyn Sensor<DriverType = UartDriver>>, Box<dyn std::error::Error>> {
+) -> Result<Arc<dyn Sensor>, Box<dyn std::error::Error>> {
     // Create temporary driver to query device type
     let mut uart_driver = UartDriver::new(port)?;
     let device_info = uart_driver.device_info()?;
@@ -222,7 +221,7 @@ fn create_sensor_from_port(
     match device_info.device_type {
         DeviceType::Rtd => {
             let rtd = Rtd::<UartDriver>::from_uart(uart_driver, device_info.firmware_version);
-            Ok(Arc::new(rtd) as Arc<dyn Sensor<DriverType = UartDriver>>)
+            Ok(Arc::new(rtd) as Arc<dyn Sensor>)
         }
     }
 }

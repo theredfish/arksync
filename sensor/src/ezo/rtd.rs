@@ -12,7 +12,7 @@ pub struct Rtd<D: Driver> {
     driver: Mutex<D>,
 }
 
-impl<D: Driver + Send + 'static> Sensor for Rtd<D> {
+impl<D: Driver + Send + 'static> EzoSensor for Rtd<D> {
     type DriverType = D;
 
     fn data(&self) -> &SensorData {
