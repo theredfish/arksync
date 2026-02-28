@@ -8,7 +8,7 @@ pub struct UartDriver {
 
 impl UartDriver {
     pub fn new(serial_port: &SerialPort) -> Result<Self> {
-        let connection = SerialPortConnection::open(&serial_port)
+        let connection = SerialPortConnection::open(serial_port)
             .map_err(|err| DriverError::Connection(err.to_string()))?;
 
         Ok(UartDriver { connection })

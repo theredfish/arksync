@@ -26,6 +26,7 @@ pub struct DeviceInfo {
     pub firmware_version: f64,
 }
 
+#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     PoweredOn,
@@ -48,5 +49,6 @@ pub trait CommandTransport {
 /// Commands common to both UART and I2C drivers.
 pub trait Driver: CommandTransport {
     fn device_info(&mut self) -> Result<DeviceInfo>;
+    #[allow(unused)]
     fn status(&mut self) -> Result<Status>;
 }

@@ -1,5 +1,5 @@
 use serialport::{SerialPortInfo, SerialPortType};
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::time::Duration;
 
 // Atlas Scientific RTD Sensor Configuration
@@ -89,21 +89,7 @@ impl SerialPortConnection {
     pub fn flush_input(&mut self) -> std::io::Result<()> {
         self.port
             .clear(serialport::ClearBuffer::Input)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-    }
-
-    /// Send a command and read the response
-    ///
-    /// Flushes input buffer first to clear stale data, then sends command and waits for response.
-    /// The serialport timeout (1000ms) acts as a safety net if the sensor doesn't respond.
-    ///
-    /// # Arguments
-    /// * `command` - The command string to send
-    ///
-    /// TODO: deprecate this in favor of uart/i2c driver impl
-    pub fn send_command(&mut self, command: &str) -> io::Result<String> {
-        self.write_command(command.as_bytes())?;
-        self.read_until_carrier()
+            .map_err(std::io::Error::other)
     }
 }
 
@@ -117,7 +103,7 @@ impl std::fmt::Debug for SerialPortConnection {
 
 pub fn find_asc_port() -> Vec<SerialPort> {
     serialport::available_ports()
-        .unwrap_or(Vec::new())
+        .unwrap_or_default()
         .into_iter()
         .filter(filter_asc_device)
         .filter_map(filter_map_usb_serial)
