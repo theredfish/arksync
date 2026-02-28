@@ -1,5 +1,4 @@
 pub mod driver;
-pub mod error;
+pub mod ezo_sensor;
 pub mod ph;
 pub mod rtd;
-pub mod sensor;

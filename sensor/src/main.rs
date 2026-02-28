@@ -1,11 +1,13 @@
 mod commands;
+mod error;
 mod ezo;
+mod sensor;
 mod serial_port;
 
 use ezo::driver::uart::UartDriver;
 use ezo::driver::{DeviceType, Driver};
 use ezo::rtd::Rtd;
-use ezo::sensor::Sensor;
+use sensor::Sensor;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
