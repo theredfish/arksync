@@ -4,18 +4,18 @@ use std::sync::Mutex;
 use crate::ezo::sensor::*;
 use crate::ezo::{
     driver::{uart::UartDriver, Driver},
-    sensor::SensorData,
+    sensor::SensorInfo,
 };
 
 pub struct Rtd<D: Driver> {
-    data: SensorData,
+    data: SensorInfo,
     driver: Mutex<D>,
 }
 
 impl<D: Driver + Send + 'static> EzoSensor for Rtd<D> {
     type DriverType = D;
 
-    fn data(&self) -> &SensorData {
+    fn data(&self) -> &SensorInfo {
         &self.data
     }
 
@@ -27,7 +27,7 @@ impl<D: Driver + Send + 'static> EzoSensor for Rtd<D> {
 impl<D: Driver> Rtd<D> {
     pub fn new(driver: D, firmware: f64) -> Self {
         Self {
-            data: SensorData {
+            data: SensorInfo {
                 firmware,
                 name: SensorName::Unnamed,
                 state: SensorState::Initializing,

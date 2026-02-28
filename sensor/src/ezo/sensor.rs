@@ -24,7 +24,7 @@ pub enum SensorState {
 }
 
 #[derive(Debug, Clone)]
-pub struct SensorData {
+pub struct SensorInfo {
     pub firmware: f64,
     pub name: SensorName,
     pub state: SensorState,
@@ -32,7 +32,7 @@ pub struct SensorData {
 }
 
 pub trait Sensor: Send + Sync + 'static {
-    fn data(&self) -> &SensorData;
+    fn info(&self) -> &SensorInfo;
     fn read_measurement(&self) -> Result<f64>;
 
     /// Spawn the main background task for this sensor.
@@ -55,7 +55,7 @@ pub trait Sensor: Send + Sync + 'static {
 pub trait EzoSensor: Send + Sync + 'static {
     type DriverType: Driver;
 
-    fn data(&self) -> &SensorData;
+    fn data(&self) -> &SensorInfo;
     fn driver(&self) -> &Mutex<Self::DriverType>;
 
     /// Measurement command for this sensor.
@@ -87,7 +87,7 @@ impl<T> Sensor for T
 where
     T: EzoSensor,
 {
-    fn data(&self) -> &SensorData {
+    fn info(&self) -> &SensorInfo {
         EzoSensor::data(self)
     }
 
