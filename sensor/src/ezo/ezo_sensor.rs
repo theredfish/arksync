@@ -18,21 +18,17 @@ pub trait EzoSensor: Send + Sync + 'static {
 
     /// EZO measurement command (`R`) parsed as `f64`.
     fn read_measurement(&self) -> Result<f64> {
-        let response = self.read_command_response(self.measurement_command())?;
-
-        response
-            .trim()
-            .parse::<f64>()
-            .map_err(|err| SensorError::source(DriverError::Read(err.to_string())))
-    }
-
-    fn read_command_response(&self, command: &[u8]) -> Result<String> {
         let mut driver = self
             .driver()
             .lock()
             .map_err(|err| SensorError::source(DriverError::Read(err.to_string())))?;
 
-        driver.send_command(command).map_err(SensorError::source)
+        driver
+            .send_command(self.measurement_command())
+            .map_err(SensorError::source)?
+            .trim()
+            .parse::<f64>()
+            .map_err(|err| SensorError::source(DriverError::Read(err.to_string())))
     }
 }
 

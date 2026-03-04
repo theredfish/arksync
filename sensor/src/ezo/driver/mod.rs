@@ -2,6 +2,8 @@ mod error;
 pub mod i2c;
 pub mod uart;
 
+use crate::sensor::SensorConnection;
+
 pub use self::error::*;
 
 #[derive(Debug, Clone, Copy)]
@@ -48,6 +50,7 @@ pub trait CommandTransport {
 
 /// Commands common to both UART and I2C drivers.
 pub trait Driver: CommandTransport {
+    fn connection_info(&self) -> SensorConnection;
     fn device_info(&mut self) -> Result<DeviceInfo>;
     #[allow(unused)]
     fn status(&mut self) -> Result<Status>;
