@@ -30,6 +30,7 @@ impl<D: Driver> Rtd<D> {
                 name: SensorName::Unnamed,
                 state: SensorState::Initializing,
                 last_activity: Utc::now(),
+                connection: driver.connection_info(),
             },
             driver: Mutex::new(driver),
         }

@@ -9,7 +9,7 @@ pub const SERIAL_PORT_CONN_TIMEOUT: u64 = 1000; // Timeout acts as safety net fo
 
 /// Metadata about a serial port (no active connection)
 #[derive(Debug, Clone)]
-pub struct SerialPort {
+pub struct SerialPortMetadata {
     pub port_name: String,
     pub serial_number: String,
     pub baud_rate: u32,
@@ -18,6 +18,7 @@ pub struct SerialPort {
 /// Active serial port connection for communication
 pub struct SerialPortConnection {
     pub port: Box<dyn serialport::SerialPort>,
+    pub metadata: SerialPortMetadata,
 }
 
 impl SerialPortConnection {
@@ -28,12 +29,12 @@ impl SerialPortConnection {
     /// - Terminator: Carriage return (\r)
     /// - Decimal places: 3
     /// - Temperature unit: Celsius (default)
-    pub fn open(serial_port: &SerialPort) -> Result<Self, serialport::Error> {
-        let SerialPort {
+    pub fn open(serial_port_metadata: &SerialPortMetadata) -> Result<Self, serialport::Error> {
+        let SerialPortMetadata {
             port_name,
             baud_rate,
             ..
-        } = serial_port;
+        } = serial_port_metadata;
 
         let port = serialport::new(port_name, *baud_rate)
             .timeout(Duration::from_millis(SERIAL_PORT_CONN_TIMEOUT))
@@ -43,7 +44,10 @@ impl SerialPortConnection {
         // Atlas Scientific sensors might have leftover readings or responses
         let _ = port.clear(serialport::ClearBuffer::Input);
 
-        Ok(Self { port })
+        Ok(Self {
+            port,
+            metadata: serial_port_metadata.clone(),
+        })
     }
 
     /// Write a command to the sensor
@@ -101,13 +105,13 @@ impl std::fmt::Debug for SerialPortConnection {
     }
 }
 
-pub fn find_asc_port() -> Vec<SerialPort> {
+pub fn find_asc_port() -> Vec<SerialPortMetadata> {
     serialport::available_ports()
         .unwrap_or_default()
         .into_iter()
         .filter(filter_asc_device)
         .filter_map(filter_map_usb_serial)
-        .collect::<Vec<SerialPort>>()
+        .collect::<Vec<SerialPortMetadata>>()
 }
 
 /// Checks if a port is an Atlas Scientific device
@@ -123,7 +127,7 @@ fn filter_asc_device(port: &SerialPortInfo) -> bool {
     }
 }
 
-fn filter_map_usb_serial(port: SerialPortInfo) -> Option<SerialPort> {
+fn filter_map_usb_serial(port: SerialPortInfo) -> Option<SerialPortMetadata> {
     let SerialPortInfo {
         port_name,
         port_type,
@@ -133,9 +137,11 @@ fn filter_map_usb_serial(port: SerialPortInfo) -> Option<SerialPort> {
         return None;
     };
 
-    usb_port.serial_number.map(|serial_number| SerialPort {
-        port_name,
-        serial_number,
-        baud_rate: DEFAULT_BAUD_RATE,
-    })
+    usb_port
+        .serial_number
+        .map(|serial_number| SerialPortMetadata {
+            port_name,
+            serial_number,
+            baud_rate: DEFAULT_BAUD_RATE,
+        })
 }

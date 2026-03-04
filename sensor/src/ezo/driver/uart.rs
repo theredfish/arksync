@@ -1,13 +1,16 @@
 use super::{CommandTransport, DeviceInfo, DeviceType, Driver, DriverError, Result};
-use crate::serial_port::SerialPort;
-use crate::{ezo::driver::Status, serial_port::SerialPortConnection};
+use crate::{
+    ezo::driver::Status,
+    sensor::SensorConnection,
+    serial_port::{SerialPortConnection, SerialPortMetadata},
+};
 
 pub struct UartDriver {
-    connection: SerialPortConnection,
+    pub connection: SerialPortConnection,
 }
 
 impl UartDriver {
-    pub fn new(serial_port: &SerialPort) -> Result<Self> {
+    pub fn new(serial_port: &SerialPortMetadata) -> Result<Self> {
         let connection = SerialPortConnection::open(serial_port)
             .map_err(|err| DriverError::Connection(err.to_string()))?;
 
@@ -30,6 +33,10 @@ impl CommandTransport for UartDriver {
 }
 
 impl Driver for UartDriver {
+    fn connection_info(&self) -> SensorConnection {
+        SensorConnection::Uart(self.connection.metadata.clone())
+    }
+
     /// Get device information (firmware version, device type)
     ///
     /// Retries up to 3 times if we get unexpected data (like temperature readings)

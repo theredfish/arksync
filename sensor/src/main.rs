@@ -1,5 +1,6 @@
 mod error;
 mod ezo;
+mod i2c_bus;
 mod sensor;
 mod serial_port;
 
@@ -7,13 +8,17 @@ use ezo::driver::uart::UartDriver;
 use ezo::driver::{DeviceType, Driver};
 use ezo::rtd::Rtd;
 use sensor::Sensor;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration as TokioDuration};
 
+use crate::sensor::SensorConnection;
+use crate::serial_port::SerialPortMetadata;
+
+/// A sensor list compatible with both UART and I2C protocols.
 pub type SensorList = HashMap<String, Arc<dyn Sensor>>;
 
 #[allow(unused)]
@@ -68,8 +73,9 @@ impl UartService {
     pub async fn run(mut self) {
         let cmd_tx = self.cmd_channel.tx.clone();
 
-        // Spawn detector task (detects new sensors and adds them to registry)
-        self.detect_sensors(cmd_tx.clone());
+        // Spawn tasks to detect (un)plugged sensors and update the registry
+        self.detect_plugged_sensors(cmd_tx.clone());
+        self.detect_unplugged_sensors(cmd_tx.clone());
 
         println!("UartService started - maintaining sensor registry");
 
@@ -142,10 +148,12 @@ impl UartService {
         }
     }
 
-    /// Detector task - finds new USB sensors and adds them to registry
-    fn detect_sensors(&self, cmd_tx: Sender<ServiceCommand>) {
+    /// Listen for plugged sensors.
+    ///
+    /// Finds new USB sensors and adds them to registry.
+    fn detect_plugged_sensors(&self, cmd_tx: Sender<ServiceCommand>) {
         tokio::spawn(async move {
-            let mut interval = interval(TokioDuration::from_secs(5));
+            let mut interval = interval(TokioDuration::from_secs(2));
 
             loop {
                 interval.tick().await;
@@ -204,6 +212,56 @@ impl UartService {
             }
         });
     }
+
+    /// Listen for unplugged sensors.
+    ///
+    /// Compare the list of sensors'connection with OS connections for both
+    /// UART and I2C and remove stale sensor from the list.
+    fn detect_unplugged_sensors(&self, cmd_tx: Sender<ServiceCommand>) {
+        tokio::spawn(async move {
+            let mut interval = interval(TokioDuration::from_secs(2));
+
+            loop {
+                interval.tick().await;
+
+                let available_asc_ports = serial_port::find_asc_port();
+                let available_port_serials: HashSet<_> = available_asc_ports
+                    .iter()
+                    .map(|port| &port.serial_number)
+                    .collect();
+
+                // Get current sensor list
+                let (respond_to, rx) = oneshot::channel();
+                let _ = cmd_tx.send(ServiceCommand::AllSensors { respond_to }).await;
+                let current_sensors = rx.await;
+
+                if let Ok(sensors) = current_sensors {
+                    for sensor in sensors.values() {
+                        let connection_info = &sensor.info().connection;
+
+                        match connection_info {
+                            SensorConnection::Uart(port_metadata) => {
+                                if !available_port_serials.contains(&port_metadata.serial_number) {
+                                    println!(
+                                        "Detector: Sensor {} is unplugged, removing from registry",
+                                        port_metadata.serial_number
+                                    );
+                                    let _ = cmd_tx
+                                        .send(ServiceCommand::RemoveSensors {
+                                            uuids: vec![port_metadata.serial_number.clone()],
+                                        })
+                                        .await;
+                                }
+                            }
+                            SensorConnection::I2c(_) => {
+                                unimplemented!("No I2C sensor handling yet");
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
 }
 
 /// Factory function to create a sensor from a serial port
@@ -214,7 +272,7 @@ impl UartService {
 /// 3. Creates the appropriate sensor with the correct driver
 /// 4. Returns it as Arc<dyn Sensor>
 fn create_sensor_from_port(
-    port: &serial_port::SerialPort,
+    port: &SerialPortMetadata,
 ) -> Result<Arc<dyn Sensor>, Box<dyn std::error::Error>> {
     // Create temporary driver to query device type
     let mut uart_driver = UartDriver::new(port)?;
