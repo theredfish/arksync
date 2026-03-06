@@ -1,3 +1,4 @@
+pub mod core;
 pub mod error;
 pub mod ezo;
 pub mod i2c_bus;
