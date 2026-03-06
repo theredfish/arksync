@@ -30,7 +30,7 @@ where
 {
     fn eq(&self, other: &Temperature<Unit2>) -> bool {
         // avoid precision loss, although partialeq on floats is probably a pretty bad idea anyways
-        if const { Unit2::KELVIN_FACTOR > Unit1::KELVIN_FACTOR } {
+        if const { Unit2::SCALING_FACTOR > Unit1::SCALING_FACTOR } {
             other.convert::<Unit1>().0 == self.0
         } else {
             self.convert::<Unit2>().0 == other.0
@@ -45,7 +45,7 @@ where
 {
     fn partial_cmp(&self, other: &Temperature<Unit2>) -> Option<std::cmp::Ordering> {
         // avoid precision loss
-        if const { Unit2::KELVIN_FACTOR > Unit1::KELVIN_FACTOR } {
+        if const { Unit2::SCALING_FACTOR > Unit1::SCALING_FACTOR } {
             other
                 .convert::<Unit1>()
                 .0
@@ -67,10 +67,10 @@ where
 
     pub fn convert<TargetUnit: TemperatureUnit>(self) -> Temperature<TargetUnit> {
         // this is essentially a f(g^-1(x)) composition in normal form. The factors get calculated at compile time, eliminating overhead.
-        let result = self.0 * const { TargetUnit::KELVIN_FACTOR / Unit::KELVIN_FACTOR }
+        let result = self.0 * const { TargetUnit::SCALING_FACTOR / Unit::SCALING_FACTOR }
             + const {
-                TargetUnit::KELVIN_OFFSET
-                    - Unit::KELVIN_OFFSET * (TargetUnit::KELVIN_FACTOR / Unit::KELVIN_FACTOR)
+                TargetUnit::ZERO_OFFSET
+                    - Unit::ZERO_OFFSET * (TargetUnit::SCALING_FACTOR / Unit::SCALING_FACTOR)
             };
 
         Temperature(result, PhantomData)
