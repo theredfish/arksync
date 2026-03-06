@@ -10,6 +10,7 @@ pub trait EzoSensor: Send + Sync + 'static {
 
     fn data(&self) -> &SensorInfo;
     fn driver(&self) -> &Mutex<Self::DriverType>;
+    fn data_range(&self) -> (f32, f32);
 
     /// Measurement command for this sensor.
     fn measurement_command(&self) -> &'static [u8] {
