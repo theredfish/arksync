@@ -28,7 +28,6 @@ pub struct DeviceInfo {
     pub firmware_version: f64,
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     PoweredOn,
@@ -52,6 +51,5 @@ pub trait CommandTransport {
 pub trait Driver: CommandTransport {
     fn connection_info(&self) -> SensorConnection;
     fn device_info(&mut self) -> Result<DeviceInfo>;
-    #[allow(unused)]
     fn status(&mut self) -> Result<Status>;
 }

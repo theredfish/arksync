@@ -1,5 +1,4 @@
 use chrono::Utc;
-use std::fmt;
 use std::sync::Mutex;
 
 use crate::ezo::driver::{uart::UartDriver, Driver};
@@ -22,6 +21,7 @@ impl<D: Driver + Send + 'static> EzoSensor for Rtd<D> {
         &self.driver
     }
 
+    // TODO: set the TemperatureOutput solution here
     fn data_range(&self) -> (f32, f32) {
         (-126.0, 1254.0)
     }

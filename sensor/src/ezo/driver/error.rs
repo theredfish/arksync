@@ -1,6 +1,5 @@
 use std::fmt;
 
-#[allow(unused)]
 #[derive(Debug)]
 pub enum DriverError {
     Connection(String),
