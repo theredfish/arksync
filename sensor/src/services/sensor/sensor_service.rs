@@ -1,10 +1,11 @@
 use super::detect_plugged_sensors_task;
 use crate::sensor::Sensor;
-use crate::services::sensor::detect_unplugged_sensors;
+use crate::services::sensor::{detect_unplugged_sensors, healthcheck};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 /// A sensor list compatible with both UART and I2C protocols.
 pub type SensorList = HashMap<String, Arc<dyn Sensor>>;
@@ -60,22 +61,30 @@ impl SensorService {
     /// Main supervisor loop - maintains sensor registry
     pub async fn run(mut self) {
         let cmd_tx = self.cmd_channel.tx.clone();
+        let shutdown = CancellationToken::new();
+        println!("Sensor service started - maintaining sensor registry");
 
-        println!("UartService started - maintaining sensor registry");
+        let main_loop = {
+            let shutdown = shutdown.clone();
 
-        let main_loop = async move {
-            loop {
-                tokio::select! {
-                    Some(cmd) = self.cmd_channel.rx.recv() => {
-                        self.handle_cmd(cmd);
-                    }
+            async move {
+                loop {
+                    tokio::select! {
+                        Some(cmd) = self.cmd_channel.rx.recv() => {
+                            self.handle_cmd(cmd);
+                        }
 
-                    // healthcheck => if this one dies then we stop the process
+                        _ = tokio::signal::ctrl_c() => {
+                            println!("Shutting down sensor registry...");
+                            shutdown.cancel();
+                            self.abort_all_sensor_tasks();
+                            break;
+                        }
 
-                    _ = tokio::signal::ctrl_c() => {
-                        println!("Shutting down sensor registry...");
-                        self.abort_all_sensor_tasks();
-                        break;
+                        _ = shutdown.cancelled() => {
+                            self.abort_all_sensor_tasks();
+                            break;
+                        }
                     }
                 }
             }
@@ -84,8 +93,9 @@ impl SensorService {
         // TODO: check for mutex contention across awaits
         tokio::join!(
             main_loop,
-            detect_plugged_sensors_task(cmd_tx.clone()),
-            detect_unplugged_sensors(cmd_tx.clone())
+            healthcheck(&cmd_tx, shutdown.clone()),
+            detect_plugged_sensors_task(&cmd_tx, shutdown.clone()),
+            detect_unplugged_sensors(&cmd_tx, shutdown)
         );
     }
 

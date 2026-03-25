@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 
+use crate::core::temperature::DynamicRange;
 use crate::error::{Result, SensorError};
 use crate::ezo::driver::DriverError;
 use crate::ezo::driver::{CommandTransport, Driver};
@@ -10,7 +11,7 @@ pub trait EzoSensor: Send + Sync + 'static {
 
     fn data(&self) -> &SensorInfo;
     fn driver(&self) -> &Mutex<Self::DriverType>;
-    fn data_range(&self) -> (f32, f32);
+    fn data_range(&self) -> DynamicRange;
 
     /// Measurement command for this sensor.
     fn measurement_command(&self) -> &'static [u8] {

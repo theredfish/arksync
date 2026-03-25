@@ -19,11 +19,13 @@ impl From<Kelvin> for DynamicTemperature {
         Self::Kelvin(value)
     }
 }
+
 impl From<Celsius> for DynamicTemperature {
     fn from(value: Celsius) -> Self {
         Self::Celsius(value)
     }
 }
+
 impl From<Fahrenheit> for DynamicTemperature {
     fn from(value: Fahrenheit) -> Self {
         Self::Fahrenheit(value)

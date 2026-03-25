@@ -1,6 +1,9 @@
 use chrono::Utc;
 use std::sync::Mutex;
 
+use crate::core::temperature::unit::{CelsiusUnit, Unit};
+use crate::core::temperature::DynamicRange;
+
 use crate::ezo::driver::{uart::UartDriver, Driver};
 use crate::ezo::ezo_sensor::EzoSensor;
 use crate::sensor::{SensorInfo, SensorName, SensorState};
@@ -8,6 +11,7 @@ use crate::sensor::{SensorInfo, SensorName, SensorState};
 pub struct Rtd<D: Driver> {
     data: SensorInfo,
     driver: Mutex<D>,
+    temperature_unit: Unit,
 }
 
 impl<D: Driver + Send + 'static> EzoSensor for Rtd<D> {
@@ -21,9 +25,12 @@ impl<D: Driver + Send + 'static> EzoSensor for Rtd<D> {
         &self.driver
     }
 
-    // TODO: set the TemperatureOutput solution here
-    fn data_range(&self) -> (f32, f32) {
-        (-126.0, 1254.0)
+    fn data_range(&self) -> DynamicRange {
+        match self.temperature_unit {
+            Unit::Celsius(_) => DynamicRange::celsius(-126.0..1254.0),
+            Unit::Fahrenheit(_) => DynamicRange::fahrenheit(-194.8..2289.2),
+            Unit::Kelvin(_) => DynamicRange::kelvin(147.15..1527.15),
+        }
     }
 }
 
@@ -38,6 +45,7 @@ impl<D: Driver> Rtd<D> {
                 connection: driver.connection_info(),
             },
             driver: Mutex::new(driver),
+            temperature_unit: Unit::Celsius(CelsiusUnit),
         }
     }
 }

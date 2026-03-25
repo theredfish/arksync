@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::time::{interval, Duration as TokioDuration};
+use tokio_util::sync::CancellationToken;
 
 use crate::serial_port::{self};
 
@@ -11,11 +12,20 @@ use crate::serial_port::{self};
 ///
 /// Compare the list of sensors'connection with OS connections for both
 /// UART and I2C and remove stale sensor from the list.
-pub async fn detect_unplugged_sensors(cmd_tx: Sender<SensorServiceCmd>) {
+pub async fn detect_unplugged_sensors(
+    cmd_tx: &Sender<SensorServiceCmd>,
+    shutdown: CancellationToken,
+) {
     let mut interval = interval(TokioDuration::from_secs(2));
 
     loop {
-        interval.tick().await;
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = shutdown.cancelled() => {
+                println!("Detector: stopping unplugged sensor scan");
+                break;
+            }
+        }
 
         let available_asc_ports = serial_port::find_asc_port();
         let available_port_serials: HashSet<_> = available_asc_ports
