@@ -127,6 +127,7 @@ dependencies = [
  "serialport",
  "test-case",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

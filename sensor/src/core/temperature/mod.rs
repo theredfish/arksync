@@ -1,16 +1,16 @@
 mod dynamic;
-pub use dynamic::*;
-
+mod dynamic_range;
 pub mod unit;
-pub use unit::TemperatureUnit;
-pub type Celsius = Temperature<unit::Celsius>;
-pub type Kelvin = Temperature<unit::Kelvin>;
-pub type Fahrenheit = Temperature<unit::Fahrenheit>;
 
-pub mod dynamic_range;
+pub use dynamic::*;
 pub use dynamic_range::*;
+pub use unit::TemperatureUnit;
 
 use std::{cmp::Ordering, marker::PhantomData};
+
+pub type Celsius = Temperature<unit::CelsiusUnit>;
+pub type Kelvin = Temperature<unit::KelvinUnit>;
+pub type Fahrenheit = Temperature<unit::FahrenheitUnit>;
 
 #[derive(Debug)]
 pub struct Temperature<Unit: TemperatureUnit>(f32, PhantomData<Unit>);

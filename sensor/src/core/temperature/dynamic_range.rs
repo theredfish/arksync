@@ -13,16 +13,19 @@ pub enum DynamicRange {
     Celsius(Range<Celsius>),
     Fahrenheit(Range<Fahrenheit>),
 }
+
 impl From<Range<Kelvin>> for DynamicRange {
     fn from(value: Range<Kelvin>) -> Self {
         Self::Kelvin(value)
     }
 }
+
 impl From<Range<Celsius>> for DynamicRange {
     fn from(value: Range<Celsius>) -> Self {
         Self::Celsius(value)
     }
 }
+
 impl From<Range<Fahrenheit>> for DynamicRange {
     fn from(value: Range<Fahrenheit>) -> Self {
         Self::Fahrenheit(value)
@@ -71,5 +74,15 @@ impl DynamicRange {
 
 #[cfg(test)]
 mod test {
-    // TODO: implement test cases
+    use super::*;
+    use crate::core::temperature::unit::FahrenheitUnit;
+
+    #[test]
+    #[ignore = "for dev"]
+    fn test_conversion() {
+        println!(
+            "{:?}",
+            DynamicRange::celsius(-126.0..1254.0).convert::<FahrenheitUnit>()
+        );
+    }
 }
