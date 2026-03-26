@@ -11,7 +11,7 @@ use crate::serial_port::{self};
 /// Listen for unplugged sensors.
 ///
 /// Compare the list of sensors'connection with OS connections for both
-/// UART and I2C and remove stale sensor from the list.
+/// UART and I2C and mark stale sensors as unplugged.
 pub async fn detect_unplugged_sensors(
     cmd_tx: &Sender<SensorServiceCmd>,
     shutdown: CancellationToken,
@@ -42,20 +42,17 @@ pub async fn detect_unplugged_sensors(
 
         if let Ok(sensors) = current_sensors {
             for sensor in sensors.values() {
-                let connection_info = &sensor.info().connection;
+                let info = sensor.info();
+                let connection_info = &info.connection;
 
                 match connection_info {
                     SensorConnection::Uart(port_metadata) => {
                         if !available_port_serials.contains(&port_metadata.serial_number) {
                             println!(
-                                "Detector: Sensor {} is unplugged, removing from registry",
+                                "Detector: Sensor {} is unplugged, marking sensor state",
                                 port_metadata.serial_number
                             );
-                            let _ = cmd_tx
-                                .send(SensorServiceCmd::RemoveSensors {
-                                    uuids: vec![port_metadata.serial_number.clone()],
-                                })
-                                .await;
+                            sensor.mark_unplugged();
                         }
                     }
                     SensorConnection::I2c(_) => {

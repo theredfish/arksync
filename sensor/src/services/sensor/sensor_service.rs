@@ -137,10 +137,6 @@ impl SensorService {
             }
 
             SensorServiceCmd::AllSensors { respond_to } => {
-                println!(
-                    "Registry: Providing snapshot of all sensors ({} total)",
-                    self.sensors.len()
-                );
                 let _ = respond_to.send(Arc::new(self.sensors.clone()));
             }
         }

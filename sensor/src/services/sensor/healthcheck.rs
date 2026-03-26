@@ -1,8 +1,13 @@
+use chrono::Utc;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::oneshot;
 use tokio::time::{interval, Duration};
 use tokio_util::sync::CancellationToken;
 
+use crate::sensor::SensorState;
 use crate::services::sensor::SensorServiceCmd;
+
+const HEALTHCHECK_INTERVAL_SECS: u64 = 15;
 
 /// The sensor service healthcheck.
 ///
@@ -15,15 +20,63 @@ use crate::services::sensor::SensorServiceCmd;
 /// layers.
 ///
 /// The service healthcheck will mainly focus on checking the state of the
-/// sensor and its last_activity before marking it as unhealthy or degraded.
-/// This will help to sort sensors, have a backoff mechanism to check their
-/// health again and avoid flooding the alert system.
-pub async fn healthcheck(_cmd_tx: &Sender<SensorServiceCmd>, shutdown: CancellationToken) {
-    let mut interval = interval(Duration::from_secs(15));
+/// sensor and its last_activity before deciding when it should be removed from
+/// the registry.
+pub async fn healthcheck(cmd_tx: &Sender<SensorServiceCmd>, shutdown: CancellationToken) {
+    let mut interval = interval(Duration::from_secs(HEALTHCHECK_INTERVAL_SECS));
+
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                println!("Health check: Sensor service is alive");
+                let (respond_to, rx) = oneshot::channel();
+                if cmd_tx
+                    .send(SensorServiceCmd::AllSensors { respond_to })
+                    .await
+                    .is_err()
+                {
+                    eprintln!("Health check: sensor registry is unavailable");
+                    continue;
+                }
+
+                let Ok(sensors) = rx.await else {
+                    eprintln!("Health check: failed to receive sensor snapshot");
+                    continue;
+                };
+
+                let now = Utc::now();
+                let mut sensors_to_remove = Vec::new();
+
+                for (uuid, sensor) in sensors.iter() {
+                    let info = sensor.info();
+                    let state_age = now.signed_duration_since(info.state_since).num_seconds();
+                    let inactivity = now.signed_duration_since(info.last_activity).num_seconds();
+
+                    println!(
+                        "Health check: sensor {uuid} state={:?} reason={:?} state_age={}s inactivity={}s failures={}",
+                        info.state,
+                        info.state_reason,
+                        state_age,
+                        inactivity,
+                        info.consecutive_failures
+                    );
+
+                    match info.state {
+                        SensorState::Unplugged => sensors_to_remove.push(uuid.clone()),
+                        _ => {}
+                    }
+                }
+
+                if !sensors_to_remove.is_empty() {
+                    println!(
+                        "Health check: removing stale sensors {:?}",
+                        sensors_to_remove
+                    );
+                    let _ = cmd_tx
+                        .send(SensorServiceCmd::RemoveSensors {
+                            uuids: sensors_to_remove,
+                        })
+                        .await;
+                }
             }
             _ = shutdown.cancelled() => {
                 println!("Health check: stopping");
