@@ -22,6 +22,10 @@ const HEALTHCHECK_INTERVAL_SECS: u64 = 15;
 /// The service healthcheck will mainly focus on checking the state of the
 /// sensor and its last_activity before deciding when it should be removed from
 /// the registry.
+///
+/// Note: Unplugged sensors are removed immediately by the unplugged sensor
+/// detector, but this healthcheck serves as a safety net to catch any edge cases
+/// where sensors remain in an Unplugged state without being removed.
 pub async fn healthcheck(cmd_tx: &Sender<SensorServiceCmd>, shutdown: CancellationToken) {
     let mut interval = interval(Duration::from_secs(HEALTHCHECK_INTERVAL_SECS));
 
@@ -61,6 +65,7 @@ pub async fn healthcheck(cmd_tx: &Sender<SensorServiceCmd>, shutdown: Cancellati
                     );
 
                     match info.state {
+                        // Safety net: should already be removed by unplugged detector
                         SensorState::Unplugged => sensors_to_remove.push(uuid.clone()),
                         _ => {}
                     }

@@ -41,6 +41,8 @@ pub async fn detect_unplugged_sensors(
         let current_sensors = rx.await;
 
         if let Ok(sensors) = current_sensors {
+            let mut unplugged_sensors = Vec::new();
+
             for sensor in sensors.values() {
                 let info = sensor.info();
                 let connection_info = &info.connection;
@@ -49,16 +51,26 @@ pub async fn detect_unplugged_sensors(
                     SensorConnection::Uart(port_metadata) => {
                         if !available_port_serials.contains(&port_metadata.serial_number) {
                             println!(
-                                "Detector: Sensor {} is unplugged, marking sensor state",
+                                "Detector: Sensor {} is unplugged, removing from registry",
                                 port_metadata.serial_number
                             );
                             sensor.mark_unplugged();
+                            unplugged_sensors.push(port_metadata.serial_number.clone());
                         }
                     }
                     SensorConnection::I2c(_) => {
                         unimplemented!("No I2C sensor handling yet");
                     }
                 }
+            }
+
+            // Remove all unplugged sensors in a single batch to allow quick reconnect
+            if !unplugged_sensors.is_empty() {
+                let _ = cmd_tx
+                    .send(SensorServiceCmd::RemoveSensors {
+                        uuids: unplugged_sensors,
+                    })
+                    .await;
             }
         }
     }
