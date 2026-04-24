@@ -1,3 +1,5 @@
+mod relay;
+
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::Serialize;
 use std::{
@@ -12,6 +14,10 @@ pub static SENSORS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::n
 
 pub fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::<tauri::Wry>::default()
+        .setup(|app| {
+            relay::spawn_debug_loop(app.handle().clone());
+            Ok(())
+        })
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             TauriLog::new()

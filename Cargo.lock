@@ -108,6 +108,7 @@ dependencies = [
  "eyre",
  "log",
  "rand 0.9.0",
+ "rppal",
  "serde",
  "serde_json",
  "tauri",
@@ -4352,6 +4353,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "rppal"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae44db779bd0898047804d22b662a9dc533b142c077b3f7e36003f658835c5b9"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
