@@ -64,10 +64,8 @@ pub async fn healthcheck(cmd_tx: &Sender<SensorServiceCmd>, shutdown: Cancellati
                         info.consecutive_failures
                     );
 
-                    match info.state {
-                        // Safety net: should already be removed by unplugged detector
-                        SensorState::Unplugged => sensors_to_remove.push(uuid.clone()),
-                        _ => {}
+                    if info.state == SensorState::Unplugged {
+                        sensors_to_remove.push(uuid.clone())
                     }
                 }
 
