@@ -1,1 +1,0 @@
-KERNEL=="ttyUSB0", GROUP="${USER}", MODE="0666"

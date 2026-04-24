@@ -7,17 +7,27 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::oneshot;
 use tokio::time::{interval, Duration as TokioDuration};
+use tokio_util::sync::CancellationToken;
 
 use crate::serial_port::{self, SerialPortMetadata};
 
 /// Listen for plugged sensors.
 ///
 /// Finds new USB sensors and adds them to registry.
-pub async fn detect_plugged_sensors_task(cmd_tx: Sender<SensorServiceCmd>) {
+pub async fn detect_plugged_sensors_task(
+    cmd_tx: &Sender<SensorServiceCmd>,
+    shutdown: CancellationToken,
+) {
     let mut interval = interval(TokioDuration::from_secs(2));
 
     loop {
-        interval.tick().await;
+        tokio::select! {
+            _ = interval.tick() => {}
+            _ = shutdown.cancelled() => {
+                println!("Detector: stopping plugged sensor scan");
+                break;
+            }
+        }
 
         println!("Detector: Scanning for sensors...");
         let asc_ports = serial_port::find_asc_port();
