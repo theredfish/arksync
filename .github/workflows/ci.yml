@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CARGO_FIXIT_VERSION: "0.1.1"
+  CARGO_FIXIT_VERSION: "0.1.7"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
 
@@ -58,7 +58,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-fixit
-          key: cargo-fixit-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_FIXIT_VERSION }}
+          key: cargo-fixit-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_FIXIT_VERSION }}-${{ hashFiles('rust-toolchain.toml') }}
 
       - name: Install cargo-fixit
         if: steps.cache-cargo-fixit.outputs.cache-hit != 'true'
@@ -115,7 +115,9 @@ jobs:
 
       - name: Fail on remaining Rust diagnostics
         run: |
-          if grep -E '^(warning|error)(\[[^]]+\])?:' cargo-fixit.log; then
+          perl -pe 's/\x1b\[[0-9;]*m//g' cargo-fixit.log > cargo-fixit.plain.log
+
+          if grep -E '^(warning|error)(\[[^]]+\])?:' cargo-fixit.plain.log; then
             exit 1
           fi
 
