@@ -11,7 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CARGO_FIXIT_VERSION: "0.1.1"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
 
@@ -48,48 +47,7 @@ jobs:
         with:
           cache-on-failure: true
 
-      - name: Run Clippy
-        id: clippy
-        continue-on-error: true
-        run: cargo clippy --workspace --tests --all-features -- -D warnings
-
-      - name: Cache cargo-fixit
-        if: steps.clippy.outcome == 'failure'
-        id: cache-cargo-fixit
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/cargo-fixit
-          key: cargo-fixit-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_FIXIT_VERSION }}
-
-      - name: Install cargo-fixit
-        if: steps.clippy.outcome == 'failure' && steps.cache-cargo-fixit.outputs.cache-hit != 'true'
-        run: cargo install cargo-fixit --version "$CARGO_FIXIT_VERSION" --locked
-
-      - name: Apply Clippy machine-applicable fixes
-        if: steps.clippy.outcome == 'failure'
-        id: cargo-fixit
-        continue-on-error: true
-        run: cargo fixit --clippy --workspace --all-targets --all-features --allow-dirty --allow-staged
-
-      - name: Format fixed files
-        if: steps.clippy.outcome == 'failure'
-        run: cargo fmt
-
-      - name: Export Clippy fix patch
-        if: steps.clippy.outcome == 'failure'
-        run: git diff --patch > clippy-fix.patch
-
-      - name: Upload Clippy fix patch
-        if: steps.clippy.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: clippy-fix.patch
-          path: clippy-fix.patch
-          if-no-files-found: ignore
-
-      - name: Fail when Clippy reported diagnostics
-        if: steps.clippy.outcome == 'failure'
-        run: exit 1
+      - run: cargo clippy --workspace --tests --all-features -- -D warnings
 
   testing:
     name: cargo nextest
@@ -113,3 +71,13 @@ jobs:
           tool: nextest
 
       - run: cargo nextest run --workspace --all-features --profile ci
+
+  clippy-fix:
+    name: cargo fixit
+    needs: linting
+    if: ${{ needs.linting.result == 'failure' }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/clippy-fix.yml
+    with:
+      commit_changes: true
