@@ -82,6 +82,7 @@ pub fn GridItem(
         col_start,
         row_start,
         col_span,
+        current_col_span: Arc::new(move || grid_item_data.get_untracked().span.col_span),
         on_drag_move: Arc::new(move |drag_px_pos| {
             grid_item_data.update(|item| {
                 item.px_pos = drag_px_pos;
@@ -129,9 +130,20 @@ pub fn GridItem(
         handle: Some(resize_button_ref),
         col_span,
         row_span,
-        on_resize_end: Arc::new(move |size| {
+        current_col_start: Arc::new(move || grid_item_data.get_untracked().grid_pos.col_start),
+        on_resize_move: Arc::new(move |size| {
             grid_item_data.update(|item| {
                 item.size = size;
+            });
+        }),
+        on_resize_end: Arc::new(move |size| {
+            let cell_size = layout.get_untracked().cell_size;
+            let col_span = ((size.width / cell_size.width).round() as usize).max(1);
+            let row_span = ((size.height / cell_size.height).round() as usize).max(1);
+
+            grid_item_data.update(|item| {
+                item.size = size;
+                item.span = Span { row_span, col_span };
             });
         }),
         ..Default::default()
