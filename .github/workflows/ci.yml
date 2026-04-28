@@ -75,7 +75,7 @@ jobs:
   clippy-fix:
     name: cargo fixit
     needs: linting
-    if: ${{ needs.linting.result == 'failure' }}
+    if: ${{ always() && needs.linting.result == 'failure' }}
     permissions:
       contents: write
     uses: ./.github/workflows/clippy-fix.yml
