@@ -44,9 +44,12 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
         move |(width, height): &(f64, f64), _, _| {
             log!("Detected size change");
             // Update the cell size
-            let border_pixels = columns as f64;
             layout.update(|layout| {
-                let cell_width = (*width / (columns) as f64) - border_pixels;
+                let cell_width = *width / columns as f64;
+                layout.size = Size {
+                    width: *width,
+                    height: *height,
+                };
                 layout.cell_size = Size {
                     width: cell_width,
                     height: cell_width, // Same as width for square cells
@@ -170,7 +173,7 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
                                 col_span=3
                                 row_span=3
                                 // FIXME: this is just for debugging
-                                col_start=1
+                                col_start=0
                                 row_start=0
                                 label=format!("Item {}", id)
                                 dynamic=true

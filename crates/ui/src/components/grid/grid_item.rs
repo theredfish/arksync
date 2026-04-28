@@ -49,8 +49,8 @@ pub fn GridItem(
             row_start,
         },
         px_pos: Position {
-            x: col_start as f64 * cell_h,
-            y: row_start as f64 * cell_w,
+            x: col_start as f64 * cell_w,
+            y: row_start as f64 * cell_h,
         },
         span: Span { row_span, col_span },
         size: Size {
@@ -81,6 +81,7 @@ pub fn GridItem(
         handle: Some(drag_ref),
         col_start,
         row_start,
+        col_span,
         on_drag_move: Arc::new(move |drag_px_pos| {
             grid_item_data.update(|item| {
                 item.px_pos = drag_px_pos;
