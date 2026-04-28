@@ -6,6 +6,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+
 jobs:
   formatting:
     name: cargo fmt
@@ -19,32 +27,28 @@ jobs:
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
-  linting:
-    name: cargo clippy
+  rust:
+    name: cargo clippy + nextest
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
       - uses: awalsh128/cache-apt-pkgs-action@latest
         with:
           packages: libwebkit2gtk-4.1-dev libudev-dev
           version: 1.0
+
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy
-      - run: cargo clippy --workspace --tests --all-features -- -D warnings
 
-  testing:
-    name: cargo nextest
-    runs-on: ubuntu-latest
-    env:
-      CARGO_TERM_COLOR: always
-    steps:
-      - uses: actions/checkout@v5
-      - uses: awalsh128/cache-apt-pkgs-action@latest
+      - uses: swatinem/rust-cache@v2
         with:
-          packages: libwebkit2gtk-4.1-dev libudev-dev
-          version: 1.0
+          cache-on-failure: true
+
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
+
+      - run: cargo clippy --workspace --tests --all-features -- -D warnings
       - run: cargo nextest run --workspace --all-features --profile ci
