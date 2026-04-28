@@ -8,6 +8,13 @@ on:
         required: true
         type: boolean
         default: true
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+concurrency:
+  group: clippy-fix-${{ github.event.workflow_run.head_branch || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -20,9 +27,13 @@ env:
 jobs:
   clippy-fix:
     name: cargo fixit --clippy
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          fetch-depth: 0
 
       - uses: awalsh128/cache-apt-pkgs-action@latest
         with:
@@ -58,7 +69,7 @@ jobs:
         run: git diff --stat
 
       - name: Resolve GitHub Actions bot identity
-        if: ${{ inputs.commit_changes }}
+        if: ${{ github.event_name == 'workflow_run' || inputs.commit_changes }}
         run: |
           BOT_LOGIN="github-actions[bot]"
           BOT_ID="$(curl -fsSL https://api.github.com/users/github-actions%5Bbot%5D | python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])')"
@@ -67,7 +78,7 @@ jobs:
           echo "GIT_AUTHOR_EMAIL=${BOT_ID}+${BOT_LOGIN}@users.noreply.github.com" >> "$GITHUB_ENV"
 
       - name: Commit fixes
-        if: ${{ inputs.commit_changes }}
+        if: ${{ github.event_name == 'workflow_run' || inputs.commit_changes }}
         run: |
           if git diff --quiet; then
             echo "No Clippy fixes to commit."
