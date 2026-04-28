@@ -49,7 +49,7 @@ jobs:
         run: cargo install cargo-fixit --version "$CARGO_FIXIT_VERSION" --locked
 
       - name: Apply Clippy machine-applicable fixes
-        run: cargo fixit --clippy --workspace --all-targets --all-features --allow-dirty --allow-staged -- -D warnings
+        run: cargo fixit --clippy --workspace --all-targets --all-features --allow-dirty --allow-staged
 
       - name: Format fixed files
         run: cargo fmt

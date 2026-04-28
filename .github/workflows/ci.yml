@@ -42,7 +42,7 @@ jobs:
 
       - uses: ./.github/actions/setup-rust
         with:
-          components: clippy
+          components: clippy, rustfmt
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -69,7 +69,7 @@ jobs:
         if: steps.clippy.outcome == 'failure'
         id: cargo-fixit
         continue-on-error: true
-        run: cargo fixit --clippy --workspace --all-targets --all-features --allow-dirty --allow-staged -- -D warnings
+        run: cargo fixit --clippy --workspace --all-targets --all-features --allow-dirty --allow-staged
 
       - name: Format fixed files
         if: steps.clippy.outcome == 'failure'
