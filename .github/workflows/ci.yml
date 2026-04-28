@@ -11,6 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  CARGO_FIXIT_VERSION: "0.1.1"
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
 
@@ -27,8 +28,8 @@ jobs:
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
-  rust:
-    name: cargo clippy + nextest
+  linting:
+    name: cargo clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -46,9 +47,68 @@ jobs:
         with:
           cache-on-failure: true
 
+      - name: Run Clippy
+        id: clippy
+        continue-on-error: true
+        run: cargo clippy --workspace --tests --all-features -- -D warnings
+
+      - name: Cache cargo-fixit
+        if: steps.clippy.outcome == 'failure'
+        id: cache-cargo-fixit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-fixit
+          key: cargo-fixit-${{ runner.os }}-${{ runner.arch }}-${{ env.CARGO_FIXIT_VERSION }}
+
+      - name: Install cargo-fixit
+        if: steps.clippy.outcome == 'failure' && steps.cache-cargo-fixit.outputs.cache-hit != 'true'
+        run: cargo install cargo-fixit --version "$CARGO_FIXIT_VERSION" --locked
+
+      - name: Apply Clippy machine-applicable fixes
+        if: steps.clippy.outcome == 'failure'
+        id: cargo-fixit
+        continue-on-error: true
+        run: cargo fixit --clippy --workspace --all-targets --all-features --allow-dirty --allow-staged -- -D warnings
+
+      - name: Format fixed files
+        if: steps.clippy.outcome == 'failure'
+        run: cargo fmt
+
+      - name: Export Clippy fix patch
+        if: steps.clippy.outcome == 'failure'
+        run: git diff --patch > clippy-fix.patch
+
+      - name: Upload Clippy fix patch
+        if: steps.clippy.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-fix.patch
+          path: clippy-fix.patch
+          if-no-files-found: ignore
+
+      - name: Fail when Clippy reported diagnostics
+        if: steps.clippy.outcome == 'failure'
+        run: exit 1
+
+  testing:
+    name: cargo nextest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: libwebkit2gtk-4.1-dev libudev-dev
+          version: 1.0
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest
 
-      - run: cargo clippy --workspace --tests --all-features -- -D warnings
       - run: cargo nextest run --workspace --all-features --profile ci
