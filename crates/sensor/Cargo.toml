@@ -1,0 +1,22 @@
+[package]
+name = "arksync-sensor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# [lib]
+# name = "arksync_lib"
+# crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+chrono.workspace = true
+eyre.workspace = true
+serialport.workspace = true
+tokio = { workspace = true, features = ["full"] }
+tokio-util.workspace = true
+
+[dev-dependencies]
+test-case.workspace = true
+
+[lints]
+workspace = true
