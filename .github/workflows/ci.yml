@@ -70,7 +70,6 @@ jobs:
         run: |
           set +e
           cargo fixit \
-            --color always \
             --clippy \
             --workspace \
             --allow-dirty \
