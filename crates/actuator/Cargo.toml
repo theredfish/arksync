@@ -1,0 +1,15 @@
+[package]
+name = "arksync-actuator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+log.workspace = true
+serde.workspace = true
+
+[target.'cfg(all(target_os = "linux", any(target_arch = "arm", target_arch = "aarch64")))'.dependencies]
+rppal.workspace = true
+
+[lints]
+workspace = true

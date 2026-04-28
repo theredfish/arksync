@@ -1,8 +1,8 @@
 [build]
-target = "./index.html"
+target = "./crates/ui/index.html"
 
 [watch]
-ignore = ["./src-tauri"]
+ignore = ["./src-tauri", "./crates/actuator", "./crates/sensor"]
 
 [serve]
 port = 1420

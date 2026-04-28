@@ -1,31 +1,46 @@
-[package]
-name = "arksync-ui"
+[workspace]
+members = ["crates/actuator", "crates/sensor", "crates/ui", "src-tauri"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 
-[dependencies]
-leptos = { version = "0.8", features = ["csr"] }
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
-js-sys = "0.3"
-serde = { version = "1", features = ["derive"] }
-serde-wasm-bindgen = "0.6"
-console_error_panic_hook = "0.1.7"
+[workspace.dependencies]
+arksync-actuator = { path = "crates/actuator" }
 charming = { version = "0.6.0", features = ["wasm"] }
+chrono = "0.4"
+console_error_panic_hook = "0.1.7"
+eyre = "0.6.12"
+futures-util = "0.3"
+js-sys = "0.3"
+leptos = { version = "0.8", features = ["csr"] }
 leptos-use = "0.16.3"
 leptos_router = "0.8"
-web-sys = { version = "0.3", features = ["EventListener"] }
-tauri-sys = { git = "https://github.com/JonasKruckenberg/tauri-sys", branch = "v2", features = ["core", "event"]}
-futures-util = "0.3"
-eyre = "0.6"
+log = "0.4"
 ndarray = "0.17.1"
-
-[workspace]
-members = ["src-tauri", "sensor"]
+rand = "0.9"
+rppal = "0.18"
+serde = { version = "1", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+serde_json = "1"
+serialport = "4.8.1"
+tauri = { version = "2", features = ["test"] }
+tauri-build = { version = "2", features = [] }
+tauri-plugin-log = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
+tauri-sys = { git = "https://github.com/JonasKruckenberg/tauri-sys", branch = "v2", features = ["core", "event"] }
+test-case = "3.3.1"
+tokio = "1.49.0"
+tokio-util = "0.7"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["EventListener"] }
 
 # Waiting for a more stable version of the software, we allow some dead code and
 # unused variables.
-[lints.rust]
+[workspace.lints.rust]
 unused_variables = "allow"
 dead_code = "allow"
