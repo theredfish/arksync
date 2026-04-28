@@ -29,7 +29,7 @@ jobs:
           packages: libwebkit2gtk-4.1-dev libudev-dev
           version: 1.0
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: ./.github/actions/setup-rust
         with:
           components: clippy, rustfmt
 

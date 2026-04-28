@@ -21,8 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
       # Ensure rustfmt is installed and setup problem matcher
-      - uses: dtolnay/rust-toolchain@master
+      - uses: ./.github/actions/setup-rust
         with:
           components: rustfmt
       - name: Rustfmt Check
@@ -39,7 +40,7 @@ jobs:
           packages: libwebkit2gtk-4.1-dev libudev-dev
           version: 1.0
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: ./.github/actions/setup-rust
         with:
           components: clippy
 
@@ -101,7 +102,7 @@ jobs:
           packages: libwebkit2gtk-4.1-dev libudev-dev
           version: 1.0
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: ./.github/actions/setup-rust
 
       - uses: swatinem/rust-cache@v2
         with:
