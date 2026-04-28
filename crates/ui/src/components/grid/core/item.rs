@@ -31,6 +31,10 @@ impl GridItemData {
         let Size { width, height } = cell_size;
         let x = (self.grid_pos.col_start) as f64 * width;
         let y = (self.grid_pos.row_start) as f64 * height;
+        let item_size = Size {
+            width: self.span.col_span as f64 * width,
+            height: self.span.row_span as f64 * height,
+        };
 
         self.px_pos = match axes_to_update {
             Axes::X => Position {
@@ -42,6 +46,17 @@ impl GridItemData {
                 y,
             },
             Axes::XY => Position { x, y },
+        };
+        self.size = match axes_to_update {
+            Axes::X => Size {
+                width: item_size.width,
+                height: self.size.height,
+            },
+            Axes::Y => Size {
+                width: self.size.width,
+                height: item_size.height,
+            },
+            Axes::XY => item_size,
         };
     }
 

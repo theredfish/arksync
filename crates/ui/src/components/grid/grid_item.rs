@@ -134,6 +134,8 @@ pub fn GridItem(
         col_span,
         row_span,
         current_col_start: Arc::new(move || grid_item_data.get_untracked().grid_pos.col_start),
+        current_col_span: Arc::new(move || grid_item_data.get_untracked().span.col_span),
+        current_row_span: Arc::new(move || grid_item_data.get_untracked().span.row_span),
         on_resize_move: Arc::new(move |size| {
             grid_item_data.update(|item| {
                 item.size = size;

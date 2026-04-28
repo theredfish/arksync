@@ -54,6 +54,8 @@ pub struct UseResizableGridItemOptions {
     pub col_span: usize,
     pub row_span: usize,
     pub current_col_start: Arc<dyn Fn() -> usize + Send + Sync>,
+    pub current_col_span: Arc<dyn Fn() -> usize + Send + Sync>,
+    pub current_row_span: Arc<dyn Fn() -> usize + Send + Sync>,
     pub on_resize_start: Arc<dyn Fn(Size) + Send + Sync>,
     pub on_resize_move: Arc<dyn Fn(Size) + Send + Sync>,
     pub on_resize_end: Arc<dyn Fn(Size) + Send + Sync>,
@@ -66,6 +68,8 @@ impl Default for UseResizableGridItemOptions {
             col_span: 1,
             row_span: 1,
             current_col_start: Arc::new(|| 0),
+            current_col_span: Arc::new(|| 1),
+            current_row_span: Arc::new(|| 1),
             on_resize_start: Arc::new(|_| {}),
             on_resize_move: Arc::new(|_| {}),
             on_resize_end: Arc::new(|_| {}),
@@ -94,6 +98,8 @@ pub fn use_resizable_grid_item(
         col_span,
         row_span,
         current_col_start,
+        current_col_span,
+        current_row_span,
         on_resize_start,
         on_resize_move,
         on_resize_end,
@@ -120,6 +126,8 @@ pub fn use_resizable_grid_item(
 
     let current_col_start_for_resize = Arc::clone(&current_col_start);
     let current_col_start_for_size = Arc::clone(&current_col_start);
+    let current_col_span_for_layout = Arc::clone(&current_col_span);
+    let current_row_span_for_layout = Arc::clone(&current_row_span);
 
     let _resize_starts = use_event_listener(handle, leptos::ev::pointerdown, move |evt| {
         evt.prevent_default();
@@ -236,19 +244,18 @@ pub fn use_resizable_grid_item(
     Effect::watch(
         move || layout.get().cell_size,
         move |cell_size, _, _| {
-            if matches!(resize_state.get_untracked(), ResizeState::Idle { .. }) {
-                // Only update if the size has actually changed
-                if let ResizeState::Idle { last_item_size } = resize_state.get_untracked() {
-                    let expected_size = Size {
-                        width: (col_span as f64 * cell_size.width).round(),
-                        height: (row_span as f64 * cell_size.height).round(),
-                    };
+            if !matches!(resize_state.get_untracked(), ResizeState::Resizing { .. }) {
+                let expected_size = Size {
+                    width: (current_col_span_for_layout() as f64 * cell_size.width).round(),
+                    height: (current_row_span_for_layout() as f64 * cell_size.height).round(),
+                };
+                let expected_size =
+                    clamp_size_to_grid(&layout.get_untracked(), current_col_start(), expected_size);
 
-                    if last_item_size != expected_size {
-                        resize_state.set(ResizeState::Idle {
-                            last_item_size: expected_size,
-                        });
-                    }
+                if resize_state.get_untracked().last_item_size() != expected_size {
+                    resize_state.set(ResizeState::Idle {
+                        last_item_size: expected_size,
+                    });
                 }
             }
         },
