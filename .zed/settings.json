@@ -1,0 +1,49 @@
+{
+  "languages": {
+    "Rust": {
+      "language_servers": [
+        "rust-analyzer",
+        "tailwindcss-language-server",
+        "..."
+      ]
+    }
+  },
+  "lsp": {
+    "tailwindcss-language-server": {
+      "settings": {
+        "includeLanguages": {
+          "rust": "html"
+        },
+        "classAttributes": [
+          "class",
+          "attr:class"
+        ],
+        "experimental": {
+          "classRegex": [
+            "\\bclass\\s*=\\s*\"([^\"]*)\"",
+            "\\battr:class\\s*=\\s*\"([^\"]*)\"",
+            "\\bclass\\s*=\\s*format!\\(\\s*\"([^\"]*)\"",
+            "\\battr:class\\s*=\\s*format!\\(\\s*\"([^\"]*)\""
+          ]
+        },
+        "tailwindCSS": {
+          "includeLanguages": {
+            "rust": "html"
+          },
+          "classAttributes": [
+            "class",
+            "attr:class"
+          ],
+          "experimental": {
+            "classRegex": [
+              "\\bclass\\s*=\\s*\"([^\"]*)\"",
+              "\\battr:class\\s*=\\s*\"([^\"]*)\"",
+              "\\bclass\\s*=\\s*format!\\(\\s*\"([^\"]*)\"",
+              "\\battr:class\\s*=\\s*format!\\(\\s*\"([^\"]*)\""
+            ]
+          }
+        }
+      }
+    }
+  }
+}

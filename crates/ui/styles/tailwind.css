@@ -3,9 +3,26 @@
 @tailwind utilities;
 
 @layer base {
+    html {
+        @apply bg-sk-carbon-950;
+    }
+
+    body {
+        @apply min-h-screen bg-sk-carbon-950 text-sk-carbon-150;
+    }
+
+    ::selection {
+        @apply bg-sk-mint-325 text-sk-sage-50;
+    }
 
     a[aria-current],
     a:hover {
-        @apply text-darcula-yellow-400
+        @apply text-sk-aqua-50
+    }
+}
+
+@layer components {
+    .arksync-panel {
+        @apply border border-sk-carbon-725 bg-sk-carbon-900 text-sk-carbon-150;
     }
 }
