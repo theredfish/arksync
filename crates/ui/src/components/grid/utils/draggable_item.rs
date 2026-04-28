@@ -19,6 +19,8 @@ pub struct UseDraggableGridItemOptions {
     pub col_start: usize,
     /// Initial row position
     pub row_start: usize,
+    /// Column span of the item, used to clamp horizontal dragging inside the grid
+    pub col_span: usize,
     /// Callback when drag starts
     pub on_drag_start: Arc<dyn Fn(Position) + Send + Sync>,
     /// Callback during dragging
@@ -33,6 +35,7 @@ impl Default for UseDraggableGridItemOptions {
             handle: None,
             col_start: 0,
             row_start: 0,
+            col_span: 1,
             on_drag_start: Arc::new(|_| {}),
             on_drag_move: Arc::new(|_| {}),
             on_drag_end: Arc::new(|_, _, _| {}),
@@ -58,6 +61,7 @@ pub fn use_draggable_grid_item(
         handle,
         col_start,
         row_start,
+        col_span,
         on_drag_start,
         on_drag_move,
         on_drag_end,
@@ -71,8 +75,8 @@ pub fn use_draggable_grid_item(
         } = layout.get_untracked().cell_size;
 
         let initial_position = Position {
-            x: (options.col_start.saturating_sub(1)) as f64 * cell_w,
-            y: (options.row_start.saturating_sub(1)) as f64 * cell_h,
+            x: col_start as f64 * cell_w,
+            y: row_start as f64 * cell_h,
         };
 
         drag_state.set(DragState::Dragging(initial_position));
@@ -84,7 +88,7 @@ pub fn use_draggable_grid_item(
     let _ = use_draggable_with_options(
         element_ref,
         UseDraggableOptions::default()
-            .handle(options.handle)
+            .handle(handle)
             .initial_value({
                 let pos = match drag_state.get_untracked() {
                     DragState::Dragging(p) | DragState::DragEnded(p) => p,
@@ -92,16 +96,31 @@ pub fn use_draggable_grid_item(
                 Position { x: pos.x, y: pos.y }
             })
             .on_move(move |drag_event| {
-                drag_state.set(DragState::Dragging(drag_event.position));
-                on_drag_move(drag_event.position);
+                let layout = layout.get_untracked();
+                let max_col_start = layout.columns.saturating_sub(col_span);
+                let max_x = max_col_start as f64 * layout.cell_size.width;
+                let clamped_position = Position {
+                    x: drag_event.position.x.clamp(0.0, max_x),
+                    y: drag_event.position.y.max(0.0),
+                };
+
+                drag_state.set(DragState::Dragging(clamped_position));
+                on_drag_move(clamped_position);
             })
             .on_end(move |drag_event| {
-                let cell_size = layout.get_untracked().cell_size;
-                let drag_position = drag_event.position;
+                let layout = layout.get_untracked();
+                let cell_size = layout.cell_size;
+                let max_col_start = layout.columns.saturating_sub(col_span);
+                let max_x = max_col_start as f64 * cell_size.width;
+                let drag_position = Position {
+                    x: drag_event.position.x.clamp(0.0, max_x),
+                    y: drag_event.position.y.max(0.0),
+                };
 
                 // Snap to grid
                 let (col_start, row_start, final_position) = {
-                    let col = (drag_position.x / cell_size.width).round() as usize;
+                    let col =
+                        ((drag_position.x / cell_size.width).round() as usize).min(max_col_start);
                     let row = (drag_position.y / cell_size.height).round() as usize;
                     let snapped_pos = Position {
                         x: col as f64 * cell_size.width,

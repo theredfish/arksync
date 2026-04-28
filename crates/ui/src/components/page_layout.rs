@@ -17,7 +17,7 @@ pub fn PageLayout(
                 {actions.run()}
             </header>
 
-            <div class="relative flex-1 overflow-auto px-8 pb-8 pt-3">
+            <div class="relative flex-1 overflow-y-auto overflow-x-hidden px-8 pb-8 pt-3">
                 {children()}
             </div>
         </div>
