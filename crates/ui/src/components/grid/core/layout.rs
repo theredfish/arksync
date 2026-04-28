@@ -407,10 +407,14 @@ impl Layout {
         self.items.remove(&untracked_item.id);
     }
 
-    pub fn update_items_size(&mut self, (w_ratio, h_ratio): (f64, f64)) {
-        // we used to update the grid items size here, so we can prepare the
-        // collision detection and re-layout the items. But let's skip thos for
-        // now since we are not using that feature yet.
+    pub fn sync_items_to_grid(&mut self) {
+        for item in self.items.values() {
+            item.update(|item| {
+                let max_col_start = self.columns.saturating_sub(item.span.col_span);
+                item.grid_pos.col_start = item.grid_pos.col_start.min(max_col_start);
+                item.grid_to_pixels(self.cell_size, Axes::XY);
+            });
+        }
     }
 }
 
