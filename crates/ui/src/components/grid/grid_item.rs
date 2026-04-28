@@ -16,6 +16,9 @@ use leptos_use::core::Position;
 use leptos_use::{use_element_bounding, UseElementBoundingReturn};
 use std::sync::Arc;
 
+const GRID_ITEM_GAP_PX: f64 = 12.0;
+const GRID_ITEM_INSET_PX: f64 = GRID_ITEM_GAP_PX / 2.0;
+
 #[component]
 pub fn GridItem(
     children: Children,
@@ -194,16 +197,20 @@ pub fn GridItem(
         // let Position { x: left, y: top } = drag_position.get();
         let resize_transition = resize_transition.get();
         let Size { width, height } = resize_size.get();
+        let visual_width = (width - GRID_ITEM_GAP_PX).max(0.0);
+        let visual_height = (height - GRID_ITEM_GAP_PX).max(0.0);
+        let visual_left = left + GRID_ITEM_INSET_PX;
+        let visual_top = top + GRID_ITEM_INSET_PX;
 
         log!("resize: {width};{height}");
 
         format!(
-            r#"width: {width}px;
-            height: {height}px;
+            r#"width: {visual_width}px;
+            height: {visual_height}px;
             transition: {resize_transition}, {drag_transition};
             touch-action: none;
-            left: {left}px;
-            top: {top}px;"#
+            left: {visual_left}px;
+            top: {visual_top}px;"#
         )
     };
 
