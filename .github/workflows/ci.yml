@@ -62,14 +62,15 @@ jobs:
 
       - name: Install cargo-fixit
         if: steps.cache-cargo-fixit.outputs.cache-hit != 'true'
-        run: cargo install cargo-fixit --version "$CARGO_FIXIT_VERSION" --locked
+        run: cargo +"$RUST_TOOLCHAIN_CHANNEL" install cargo-fixit --version "$CARGO_FIXIT_VERSION" --locked
 
       - name: Apply Clippy machine-applicable fixes
         id: cargo-fixit
         continue-on-error: true
         run: |
           set +e
-          cargo fixit \
+          cargo +"$RUST_TOOLCHAIN_CHANNEL" fixit \
+            --color always \
             --clippy \
             --workspace \
             --allow-dirty \

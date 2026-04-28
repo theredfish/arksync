@@ -7,6 +7,11 @@ inputs:
     required: false
     default: ""
 
+outputs:
+  channel:
+    description: Resolved Rust toolchain channel.
+    value: ${{ steps.rust-toolchain.outputs.channel }}
+
 runs:
   using: composite
   steps:
@@ -21,3 +26,7 @@ runs:
       with:
         toolchain: ${{ steps.rust-toolchain.outputs.channel }}
         components: ${{ inputs.components }}
+
+    - name: Export Rust toolchain
+      shell: bash
+      run: echo "RUST_TOOLCHAIN_CHANNEL=${{ steps.rust-toolchain.outputs.channel }}" >> "$GITHUB_ENV"
