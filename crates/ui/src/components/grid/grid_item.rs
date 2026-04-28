@@ -198,13 +198,13 @@ pub fn GridItem(
         <div
             node_ref=grid_item_ref
             style={style}
-            class="absolute cursor-move border-2 border-gray-500"
+            class="arksync-panel absolute cursor-move overflow-hidden rounded-lg"
             data-id=id.to_string()
         >
-            <div node_ref=drag_ref class="w-full p-2">
+            <div node_ref=drag_ref class="w-full border-b border-sk-carbon-725 px-4 py-3 font-mono text-[10px] uppercase tracking-[0.18em] text-sk-carbon-500">
                 { label }
             </div>
-            <div>
+            <div class="px-4 py-2 text-xs text-sk-carbon-500">
                 { move || {
                     let Size { width, height } = resize_size.get();
                     let GridPosition { col_start, row_start } = grid_item_data.get().grid_pos;
@@ -218,7 +218,7 @@ pub fn GridItem(
                 class="absolute bottom-0 right-0 cursor-se-resize"
                 data-id=id.to_string()
             >
-                <ResizeIcon class="h-6 w-6" />
+                <ResizeIcon class="h-6 w-6 text-sk-carbon-450" />
             </div>
         </div>
     }

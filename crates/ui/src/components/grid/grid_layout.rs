@@ -1,6 +1,7 @@
 use crate::components::grid::core::layout::LayoutBuilder;
 use crate::components::grid::core::size::Size;
 use crate::components::grid::grid_item::GridItem;
+use crate::components::page_layout::PageLayout;
 use leptos::{html::Div, logging::log, prelude::*};
 use leptos_use::{
     use_element_bounding_with_options, UseElementBoundingOptions, UseElementBoundingReturn,
@@ -111,21 +112,19 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
     });
 
     view! {
-        <div class="flex flex-col h-full">
-            // Header section for action buttons
-            <div class="flex items-center gap-2 px-4 py-3 bg-darcula-gray border-b border-gray-700">
+        <PageLayout
+            eyebrow="Dashboards"
+            title="Station overview"
+            actions=move || view! {
                 <button
                     on:click=add_item
-                    class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded shadow text-sm"
+                    class="rounded-md border border-sk-mint-325 bg-sk-mint-450 px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] text-sk-aqua-50 transition-colors hover:bg-sk-mint-400"
                 >
                     "Add Item"
                 </button>
-                // Space for future action buttons
-            </div>
-
-            // Grid content area
-            <div class="flex-1 relative overflow-auto">
-                <div node_ref=grid_layout_node class="relative h-full">
+            }
+        >
+            <div node_ref=grid_layout_node class="relative h-full">
                 {
                     move || {
                         if display_grid {
@@ -140,14 +139,14 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
 
                                     view! {
                                         <div
-                                            class=move || format!("absolute {border_t_b} {border_l_r} border-gray-800")
+                                            class=move || format!("absolute {border_t_b} {border_l_r} border-sk-carbon-800")
                                             style={ move || {
                                                 format!("left: {}px; top: {}px; width: {}px; height: {}px;", col * cell_w as usize, row * cell_h as usize, cell_w, cell_h)
                                             }}
                                         >
                                             {
                                                 if row == 0 {
-                                                    Some(view! { <span class="text-xs text-gray-400">{format!("{col}")}</span> })
+                                                    Some(view! { <span class="text-xs text-sk-carbon-500">{format!("{col}")}</span> })
                                                 } else {
                                                     None
                                                 }
@@ -176,15 +175,14 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
                                 label=format!("Item {}", id)
                                 dynamic=true
                             >
-                                <div class="p-4 text-gray-500">
+                                <div class="p-4 text-sk-carbon-500">
                                     "No data yet"
                                 </div>
                             </GridItem>
                         }
                     }
                 />
-                </div>
             </div>
-        </div>
+        </PageLayout>
     }
 }
