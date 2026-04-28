@@ -21,6 +21,8 @@ pub struct UseDraggableGridItemOptions {
     pub row_start: usize,
     /// Column span of the item, used to clamp horizontal dragging inside the grid
     pub col_span: usize,
+    /// Current column span of the item, used after resize to keep drag bounds accurate
+    pub current_col_span: Arc<dyn Fn() -> usize + Send + Sync>,
     /// Callback when drag starts
     pub on_drag_start: Arc<dyn Fn(Position) + Send + Sync>,
     /// Callback during dragging
@@ -36,6 +38,7 @@ impl Default for UseDraggableGridItemOptions {
             col_start: 0,
             row_start: 0,
             col_span: 1,
+            current_col_span: Arc::new(|| 1),
             on_drag_start: Arc::new(|_| {}),
             on_drag_move: Arc::new(|_| {}),
             on_drag_end: Arc::new(|_, _, _| {}),
@@ -62,6 +65,7 @@ pub fn use_draggable_grid_item(
         col_start,
         row_start,
         col_span,
+        current_col_span,
         on_drag_start,
         on_drag_move,
         on_drag_end,
@@ -84,6 +88,9 @@ pub fn use_draggable_grid_item(
         on_drag_start(initial_position);
     });
 
+    let current_col_span_for_move = Arc::clone(&current_col_span);
+    let current_col_span_for_end = Arc::clone(&current_col_span);
+
     // Setup draggable with leptos-use
     let _ = use_draggable_with_options(
         element_ref,
@@ -97,7 +104,7 @@ pub fn use_draggable_grid_item(
             })
             .on_move(move |drag_event| {
                 let layout = layout.get_untracked();
-                let max_col_start = layout.columns.saturating_sub(col_span);
+                let max_col_start = layout.columns.saturating_sub(current_col_span_for_move());
                 let max_x = max_col_start as f64 * layout.cell_size.width;
                 let clamped_position = Position {
                     x: drag_event.position.x.clamp(0.0, max_x),
@@ -110,7 +117,7 @@ pub fn use_draggable_grid_item(
             .on_end(move |drag_event| {
                 let layout = layout.get_untracked();
                 let cell_size = layout.cell_size;
-                let max_col_start = layout.columns.saturating_sub(col_span);
+                let max_col_start = layout.columns.saturating_sub(current_col_span_for_end());
                 let max_x = max_col_start as f64 * cell_size.width;
                 let drag_position = Position {
                     x: drag_event.position.x.clamp(0.0, max_x),

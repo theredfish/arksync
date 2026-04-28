@@ -7,6 +7,17 @@ use std::sync::Arc;
 use crate::components::grid::core::layout::Layout;
 use crate::components::grid::core::size::Size;
 
+fn clamp_size_to_grid(layout: &Layout, col_start: usize, size: Size) -> Size {
+    let cell_size = layout.cell_size;
+    let max_col_span = layout.columns.saturating_sub(col_start).max(1);
+    let max_width = max_col_span as f64 * cell_size.width;
+
+    Size {
+        width: size.width.clamp(cell_size.width, max_width),
+        height: size.height.max(cell_size.height),
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum ResizeState {
     Idle {
@@ -42,6 +53,7 @@ pub struct UseResizableGridItemOptions {
     pub handle: Option<NodeRef<Div>>,
     pub col_span: usize,
     pub row_span: usize,
+    pub current_col_start: Arc<dyn Fn() -> usize + Send + Sync>,
     pub on_resize_start: Arc<dyn Fn(Size) + Send + Sync>,
     pub on_resize_move: Arc<dyn Fn(Size) + Send + Sync>,
     pub on_resize_end: Arc<dyn Fn(Size) + Send + Sync>,
@@ -53,6 +65,7 @@ impl Default for UseResizableGridItemOptions {
             handle: None,
             col_span: 1,
             row_span: 1,
+            current_col_start: Arc::new(|| 0),
             on_resize_start: Arc::new(|_| {}),
             on_resize_move: Arc::new(|_| {}),
             on_resize_end: Arc::new(|_| {}),
@@ -80,6 +93,7 @@ pub fn use_resizable_grid_item(
         handle,
         col_span,
         row_span,
+        current_col_start,
         on_resize_start,
         on_resize_move,
         on_resize_end,
@@ -104,6 +118,9 @@ pub fn use_resizable_grid_item(
 
     let handle = handle.unwrap_or(target);
 
+    let current_col_start_for_resize = Arc::clone(&current_col_start);
+    let current_col_start_for_size = Arc::clone(&current_col_start);
+
     let _resize_starts = use_event_listener(handle, leptos::ev::pointerdown, move |evt| {
         evt.prevent_default();
         let cursor_pos = (evt.client_x(), evt.client_y());
@@ -119,6 +136,8 @@ pub fn use_resizable_grid_item(
         on_resize_start(last_item_size);
         let on_resize_move = Arc::clone(&on_resize_move);
         let on_resize_end = Arc::clone(&on_resize_end);
+        let current_col_start_for_move = Arc::clone(&current_col_start_for_resize);
+        let current_col_start_for_end = Arc::clone(&current_col_start_for_resize);
 
         let _resize_in_progress =
             use_event_listener(window(), leptos::ev::pointermove, move |evt| {
@@ -146,6 +165,11 @@ pub fn use_resizable_grid_item(
                         width: last_item_size.width + offset_x as f64,
                         height: last_item_size.height + offset_y as f64,
                     };
+                    let current_size = clamp_size_to_grid(
+                        &layout.get_untracked(),
+                        current_col_start_for_move(),
+                        current_size,
+                    );
 
                     on_resize_move(current_size);
                 }
@@ -159,7 +183,8 @@ pub fn use_resizable_grid_item(
                 ..
             } = resize_state.get()
             {
-                let cell_size = layout.get_untracked().cell_size;
+                let layout = layout.get_untracked();
+                let cell_size = layout.cell_size;
 
                 let total_offset_x = last_client_pos.0 - start_pos.0;
                 let total_offset_y = last_client_pos.1 - start_pos.1;
@@ -173,16 +198,27 @@ pub fn use_resizable_grid_item(
                 // Here the calcul for a grid cell width of 100px is: (153 / 100).round() -> 1.53.round() -> 2
 
                 // Calculate the raw new size (before snapping)
-                let raw_width = last_item_size.width + total_offset_x as f64;
-                let raw_height = last_item_size.height + total_offset_y as f64;
+                let raw_size = clamp_size_to_grid(
+                    &layout,
+                    current_col_start_for_end(),
+                    Size {
+                        width: last_item_size.width + total_offset_x as f64,
+                        height: last_item_size.height + total_offset_y as f64,
+                    },
+                );
 
-                let snapped_width = (raw_width / cell_size.width).round() * cell_size.width;
-                let snapped_height = (raw_height / cell_size.height).round() * cell_size.height;
+                let snapped_width = (raw_size.width / cell_size.width).round() * cell_size.width;
+                let snapped_height =
+                    (raw_size.height / cell_size.height).round() * cell_size.height;
 
-                let snapped_size = Size {
-                    width: snapped_width,
-                    height: snapped_height,
-                };
+                let snapped_size = clamp_size_to_grid(
+                    &layout,
+                    current_col_start_for_end(),
+                    Size {
+                        width: snapped_width,
+                        height: snapped_height,
+                    },
+                );
 
                 resize_state.set(ResizeState::Ended {
                     start_pos,
@@ -230,10 +266,14 @@ pub fn use_resizable_grid_item(
                     offset_y,
                     last_item_size,
                     ..
-                } => Size {
-                    width: (last_item_size.width + offset_x as f64),
-                    height: (last_item_size.height + offset_y as f64),
-                },
+                } => clamp_size_to_grid(
+                    &layout.get_untracked(),
+                    current_col_start_for_size(),
+                    Size {
+                        width: last_item_size.width + offset_x as f64,
+                        height: last_item_size.height + offset_y as f64,
+                    },
+                ),
                 ResizeState::Ended { last_item_size, .. } => last_item_size,
             }
         }
