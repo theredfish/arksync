@@ -13,7 +13,6 @@ use leptos::html::Div;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos_use::core::Position;
-use leptos_use::{use_element_bounding, UseElementBoundingReturn};
 use std::sync::Arc;
 
 const GRID_ITEM_GAP_PX: f64 = 12.0;
@@ -34,7 +33,6 @@ pub fn GridItem(
 ) -> impl IntoView {
     let layout = use_context::<RwSignal<Layout>>().expect("should retrieve the layout context");
     let untracked_layout = layout.get_untracked();
-    let window = window();
     let grid_item_ref = NodeRef::<Div>::new();
     let drag_ref = NodeRef::<Div>::new();
     let resize_button_ref = NodeRef::<Div>::new();
@@ -92,19 +90,9 @@ pub fn GridItem(
                 log!("Update item with new px_pos: {drag_px_pos:?}");
             })
         }),
-        on_drag_end: Arc::new(move |col_start, row_start, snapped_px_pos| {
-            grid_item_data.update(|item| {
-                item.px_pos = snapped_px_pos;
-                item.grid_pos = GridPosition {
-                    col_start,
-                    row_start,
-                };
-            });
-
-            // Move item with collision detection and push other items down
+        on_drag_end: Arc::new(move |col_start, row_start, _snapped_px_pos| {
             layout.update(|layout| {
-                // TODO: drag & detect collisions
-                // layout.move_item_with_collision(grid_item_data, new_row, new_col);
+                layout.move_item_with_collision(grid_item_data, row_start, col_start);
             });
         }),
         ..Default::default()
@@ -121,13 +109,6 @@ pub fn GridItem(
         ..
     } = use_draggable_grid_item(grid_item_ref, draggable_options);
 
-    // Absolute element width/height
-    let UseElementBoundingReturn {
-        width: item_width,
-        height: item_height,
-        ..
-    } = use_element_bounding(grid_item_ref);
-
     // Grid item resize
     let resize_options = UseResizableGridItemOptions {
         handle: Some(resize_button_ref),
@@ -142,13 +123,12 @@ pub fn GridItem(
             });
         }),
         on_resize_end: Arc::new(move |size| {
-            let cell_size = layout.get_untracked().cell_size;
-            let col_span = ((size.width / cell_size.width).round() as usize).max(1);
-            let row_span = ((size.height / cell_size.height).round() as usize).max(1);
+            layout.update(|layout| {
+                let cell_size = layout.cell_size;
+                let col_span = (size.width / cell_size.width).round() as usize;
+                let row_span = (size.height / cell_size.height).round() as usize;
 
-            grid_item_data.update(|item| {
-                item.size = size;
-                item.span = Span { row_span, col_span };
+                layout.resize_item_with_collision(grid_item_data, col_span, row_span);
             });
         }),
         ..Default::default()
@@ -158,39 +138,6 @@ pub fn GridItem(
         size: resize_size,
         transition: resize_transition,
     } = use_resizable_grid_item(grid_item_ref, resize_options);
-
-    // TODO: Handle collisions
-
-    // TODO: clamp dragging event.
-    // Avoid issues where min > max.
-    // let left = move || {
-    //     // let x = metadata.get().position.col_start * layout.get().cell_size.width as u32;
-    //     match drag_state.get() {
-    //         DragState::Dragging(p) | DragState::DragEnded(p) => p.x,
-    //     }
-    //     // let grid_w = layout.get().size.width;
-    //     //     let max = if grid_w <= 0. {
-    //     //         0.
-    //     //     } else {
-    //     //         grid_w - item_width.get()
-    //     //     };
-
-    //     //     x.clamp(0., max.round())
-    // };
-    // let top = move || {
-    //     // let y = metadata.get().position.row_start * layout.get().cell_size.height as u32;
-    //     match drag_state.get() {
-    //         DragState::Dragging(p) | DragState::DragEnded(p) => p.y,
-    //     }
-    //     // let grid_h = layout.get().size.height;
-    //     // let max = if grid_h <= 0. {
-    //     //     0.
-    //     // } else {
-    //     //     grid_h - item_height.get()
-    //     // };
-
-    //     // y.clamp(0.0, max.round())
-    // };
 
     let style = move || {
         // let Size { width, height } = metadata.get().size;
