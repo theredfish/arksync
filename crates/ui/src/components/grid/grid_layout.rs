@@ -25,7 +25,7 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
     provide_context(layout);
 
     // Track dynamically added items
-    let next_id = RwSignal::new(1u32);
+    let next_id = RwSignal::new(10_000u32);
     let grid_items = RwSignal::new(Vec::<u32>::new());
 
     // Handler to add new items
@@ -114,7 +114,7 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
                         }
                     }
                 }
-                // {children()}
+                {children()}
                 <For
                     each=move || grid_items.get()
                     key=|id| *id
@@ -124,7 +124,6 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
                                 id=id
                                 col_span=3
                                 row_span=3
-                                // FIXME: this is just for debugging
                                 col_start=0
                                 row_start=0
                                 label=format!("Item {}", id)

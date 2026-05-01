@@ -2,9 +2,14 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use leptos_use::{core::Position, use_draggable_with_options, UseDraggableOptions};
 use std::sync::Arc;
+use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 
 use crate::components::grid::core::{layout::Layout, size::Size};
+
+// Keep this slightly above the drag transition duration so the released item
+// stays above its neighbors until the snap-back animation has fully finished.
+const DRAG_RELEASE_ELEVATION_MS: i32 = 280;
 
 #[derive(Clone, Copy, Debug)]
 pub enum DragState {
@@ -28,7 +33,7 @@ pub struct UseDraggableGridItemOptions {
     /// Callback during dragging
     pub on_drag_move: Arc<dyn Fn(Position) + Send + Sync>,
     /// Callback when drag ends with final grid position
-    pub on_drag_end: Arc<dyn Fn(usize, usize, Position) + Send + Sync>,
+    pub on_drag_end: Arc<dyn Fn(usize, usize, Position, Position) + Send + Sync>,
 }
 
 impl Default for UseDraggableGridItemOptions {
@@ -41,7 +46,7 @@ impl Default for UseDraggableGridItemOptions {
             current_col_span: Arc::new(|| 1),
             on_drag_start: Arc::new(|_| {}),
             on_drag_move: Arc::new(|_| {}),
-            on_drag_end: Arc::new(|_, _, _| {}),
+            on_drag_end: Arc::new(|_, _, _, _| {}),
         }
     }
 }
@@ -52,6 +57,8 @@ pub struct UseDraggableGridItemReturn {
     pub position: Signal<Position>,
     /// CSS transition string for drag animations
     pub transition: Signal<&'static str>,
+    /// Whether the item is actively being dragged
+    pub is_dragging: Signal<bool>,
 }
 
 pub fn use_draggable_grid_item(
@@ -60,6 +67,8 @@ pub fn use_draggable_grid_item(
 ) -> UseDraggableGridItemReturn {
     let layout = use_context::<RwSignal<Layout>>().expect("Layout context must be provided");
     let drag_state = RwSignal::new(DragState::Dragging(Position::default()));
+    let is_dragging = RwSignal::new(false);
+    let drag_elevation_epoch = RwSignal::new(0_u32);
     let UseDraggableGridItemOptions {
         handle,
         col_start,
@@ -103,6 +112,8 @@ pub fn use_draggable_grid_item(
                 Position { x: pos.x, y: pos.y }
             })
             .on_move(move |drag_event| {
+                drag_elevation_epoch.update(|epoch| *epoch = epoch.wrapping_add(1));
+
                 let layout = layout.get_untracked();
                 let max_col_start = layout.columns.saturating_sub(current_col_span_for_move());
                 let max_x = max_col_start as f64 * layout.cell_size.width;
@@ -111,10 +122,14 @@ pub fn use_draggable_grid_item(
                     y: drag_event.position.y.max(0.0),
                 };
 
+                is_dragging.set(true);
                 drag_state.set(DragState::Dragging(clamped_position));
                 on_drag_move(clamped_position);
             })
             .on_end(move |drag_event| {
+                drag_elevation_epoch.update(|epoch| *epoch = epoch.wrapping_add(1));
+                let drag_end_epoch = drag_elevation_epoch.get_untracked();
+
                 let layout = layout.get_untracked();
                 let cell_size = layout.cell_size;
                 let max_col_start = layout.columns.saturating_sub(current_col_span_for_end());
@@ -138,7 +153,22 @@ pub fn use_draggable_grid_item(
 
                 drag_state.set(DragState::DragEnded(final_position));
 
-                on_drag_end(col_start, row_start, final_position);
+                on_drag_end(col_start, row_start, final_position, drag_position);
+
+                // Release drag elevation after the CSS transition, not on pointerup.
+                // Otherwise a snapping item can briefly pass behind another panel
+                // during the return animation and make the interaction look broken.
+                let release_drag_elevation = Closure::wrap(Box::new(move || {
+                    if drag_elevation_epoch.get_untracked() == drag_end_epoch {
+                        is_dragging.set(false);
+                    }
+                }) as Box<dyn FnMut()>);
+
+                let _ = window().set_timeout_with_callback_and_timeout_and_arguments_0(
+                    release_drag_elevation.as_ref().unchecked_ref(),
+                    DRAG_RELEASE_ELEVATION_MS,
+                );
+                release_drag_elevation.forget();
             })
             .target_offset(move |event_target: web_sys::EventTarget| {
                 let target: web_sys::HtmlElement = event_target.unchecked_into();
@@ -161,5 +191,6 @@ pub fn use_draggable_grid_item(
     UseDraggableGridItemReturn {
         transition,
         position,
+        is_dragging: is_dragging.into(),
     }
 }
