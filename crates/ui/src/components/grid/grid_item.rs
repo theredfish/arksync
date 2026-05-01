@@ -90,9 +90,9 @@ pub fn GridItem(
                 log!("Update item with new px_pos: {drag_px_pos:?}");
             })
         }),
-        on_drag_end: Arc::new(move |col_start, row_start, _snapped_px_pos| {
+        on_drag_end: Arc::new(move |col_start, row_start, _snapped_px_pos, drag_px_pos| {
             layout.update(|layout| {
-                layout.move_item_with_collision(grid_item_data, row_start, col_start);
+                layout.move_item_with_collision(grid_item_data, row_start, col_start, drag_px_pos);
             });
         }),
         ..Default::default()
@@ -106,6 +106,7 @@ pub fn GridItem(
         // TODO: see to remove this from the UseDraggableGridItemReturn? Or keep for API if open sourced?
         // position: drag_position,
         transition: drag_transition,
+        is_dragging,
         ..
     } = use_draggable_grid_item(grid_item_ref, draggable_options);
 
@@ -150,6 +151,7 @@ pub fn GridItem(
         let visual_height = (height - GRID_ITEM_GAP_PX).max(0.0);
         let visual_left = left + GRID_ITEM_INSET_PX;
         let visual_top = top + GRID_ITEM_INSET_PX;
+        let z_index = if is_dragging.get() { 1000 } else { 1 };
 
         log!("resize: {width};{height}");
 
@@ -159,7 +161,8 @@ pub fn GridItem(
             transition: {resize_transition}, {drag_transition};
             touch-action: none;
             left: {visual_left}px;
-            top: {visual_top}px;"#
+            top: {visual_top}px;
+            z-index: {z_index};"#
         )
     };
 

@@ -7,8 +7,35 @@ use leptos::{
     logging::log,
     prelude::{GetUntracked, RwSignal, Set, Update},
 };
+use leptos_use::core::Position;
 use ndarray::{concatenate, Array2, Axis};
 use std::collections::{HashMap, HashSet};
+
+const MIN_DROP_AXIS_OVERLAP_RATIO: f64 = 0.35;
+const DOMINANT_DROP_OVERLAP_RATIO: f64 = 1.25;
+
+#[derive(Clone, Copy, Debug)]
+struct ItemAabb {
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DropCollision {
+    item_id: u32,
+    overlap_area: f64,
+    horizontal_overlap_ratio: f64,
+    vertical_overlap_ratio: f64,
+}
+
+impl DropCollision {
+    fn is_actionable(self) -> bool {
+        self.horizontal_overlap_ratio >= MIN_DROP_AXIS_OVERLAP_RATIO
+            && self.vertical_overlap_ratio >= MIN_DROP_AXIS_OVERLAP_RATIO
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Layout {
@@ -39,20 +66,6 @@ impl Layout {
         self.rows = required_rows;
     }
 
-    fn rebuild_collision_grid(&mut self) {
-        self.collision_grid = Array2::from_elem((self.rows, self.columns), None::<u32>);
-        let items = self
-            .items
-            .values()
-            .map(|item| item.get_untracked())
-            .collect::<Vec<_>>();
-
-        for item in items {
-            self.ensure_rows(item.grid_pos.row_start + item.span.row_span);
-            self.set_item_in_grid(&item);
-        }
-    }
-
     fn clamp_position_for_item(&self, item: &GridItemData, row: usize, col: usize) -> GridPosition {
         let max_col = self.columns.saturating_sub(item.span.col_span);
 
@@ -64,6 +77,45 @@ impl Layout {
 
     fn col_ranges_overlap(a_start: usize, a_span: usize, b_start: usize, b_span: usize) -> bool {
         a_start < b_start + b_span && b_start < a_start + a_span
+    }
+
+    fn item_aabb(item: &GridItemData) -> ItemAabb {
+        let left = item.grid_pos.col_start as f64;
+        let top = item.grid_pos.row_start as f64;
+
+        ItemAabb {
+            left,
+            top,
+            right: left + item.span.col_span as f64,
+            bottom: top + item.span.row_span as f64,
+        }
+    }
+
+    fn drag_aabb(&self, item: &GridItemData, drag_px_pos: Position) -> ItemAabb {
+        let left = drag_px_pos.x / self.cell_size.width;
+        let top = drag_px_pos.y / self.cell_size.height;
+
+        ItemAabb {
+            left,
+            top,
+            right: left + item.span.col_span as f64,
+            bottom: top + item.span.row_span as f64,
+        }
+    }
+
+    fn aabb_overlap(a: ItemAabb, b: ItemAabb) -> Option<(f64, f64)> {
+        let width = a.right.min(b.right) - a.left.max(b.left);
+        let height = a.bottom.min(b.bottom) - a.top.max(b.top);
+
+        if width <= 0.0 || height <= 0.0 {
+            return None;
+        }
+
+        Some((width, height))
+    }
+
+    fn items_overlap(a: &GridItemData, b: &GridItemData) -> bool {
+        Self::aabb_overlap(Self::item_aabb(a), Self::item_aabb(b)).is_some()
     }
 
     fn colliding_item_ids(&self, item: &GridItemData) -> Vec<u32> {
@@ -82,6 +134,80 @@ impl Layout {
         }
 
         colliding_ids.into_iter().collect()
+    }
+
+    fn colliding_item_ids_in_aabb(&self, aabb: ItemAabb, excluded_id: u32) -> Vec<u32> {
+        let mut colliding_ids = HashSet::new();
+        let row_start = aabb.top.floor().max(0.0) as usize;
+        let row_end = aabb.bottom.ceil().max(0.0) as usize;
+        let col_start = aabb.left.floor().max(0.0) as usize;
+        let col_end = aabb.right.ceil().max(0.0) as usize;
+
+        for row_idx in row_start..row_end.min(self.collision_grid.nrows()) {
+            for col_idx in col_start..col_end.min(self.collision_grid.ncols()) {
+                if let Some(occupant_id) = self.collision_grid[[row_idx, col_idx]] {
+                    if occupant_id != excluded_id {
+                        colliding_ids.insert(occupant_id);
+                    }
+                }
+            }
+        }
+
+        colliding_ids.into_iter().collect()
+    }
+
+    fn fine_drop_collisions(
+        &self,
+        moved_item: &GridItemData,
+        drag_px_pos: Position,
+    ) -> Vec<DropCollision> {
+        let moved_aabb = self.drag_aabb(moved_item, drag_px_pos);
+        let mut collisions = self
+            .colliding_item_ids_in_aabb(moved_aabb, moved_item.id)
+            .into_iter()
+            .filter_map(|item_id| {
+                let item = self.items.get(&item_id)?.get_untracked();
+                let item_aabb = Self::item_aabb(&item);
+                let (overlap_width, overlap_height) = Self::aabb_overlap(moved_aabb, item_aabb)?;
+
+                Some(DropCollision {
+                    item_id,
+                    overlap_area: overlap_width * overlap_height,
+                    horizontal_overlap_ratio: overlap_width
+                        / (moved_item.span.col_span.min(item.span.col_span) as f64),
+                    vertical_overlap_ratio: overlap_height
+                        / (moved_item.span.row_span.min(item.span.row_span) as f64),
+                })
+            })
+            .filter(|collision| collision.is_actionable())
+            .collect::<Vec<_>>();
+
+        collisions.sort_by(|a, b| {
+            b.overlap_area
+                .partial_cmp(&a.overlap_area)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.item_id.cmp(&b.item_id))
+        });
+        collisions
+    }
+
+    fn dominant_drop_collision(collisions: &[DropCollision]) -> Option<DropCollision> {
+        let first = *collisions.first()?;
+        let Some(second) = collisions.get(1) else {
+            return Some(first);
+        };
+
+        if first.overlap_area >= second.overlap_area * DOMINANT_DROP_OVERLAP_RATIO {
+            Some(first)
+        } else {
+            None
+        }
+    }
+
+    fn restore_item_position(&mut self, item: RwSignal<GridItemData>, mut item_data: GridItemData) {
+        item_data.grid_to_pixels(self.cell_size, Axes::XY);
+        item.set(item_data);
+        self.set_item_in_grid(&item_data);
     }
 
     fn item_fits_ignoring(&self, item: &GridItemData, ignored_ids: &[u32]) -> bool {
@@ -111,87 +237,257 @@ impl Layout {
         moved_item: &GridItemData,
         old_position: GridPosition,
         colliding_ids: &[u32],
-    ) -> bool {
+    ) -> Option<GridPosition> {
         if colliding_ids.len() != 1 {
-            return false;
+            return None;
         }
 
         let colliding_id = colliding_ids[0];
         let Some(&colliding_item_signal) = self.items.get(&colliding_id) else {
-            return false;
+            return None;
         };
 
         let mut colliding_item = colliding_item_signal.get_untracked();
-        let has_vertical_neighbor = self.items.values().any(|item_signal| {
-            let item = item_signal.get_untracked();
+        if old_position.col_start != moved_item.grid_pos.col_start {
+            return None;
+        }
 
-            item.id != moved_item.id
-                && item.id != colliding_id
-                && Self::col_ranges_overlap(
-                    item.grid_pos.col_start,
-                    item.span.col_span,
-                    colliding_item.grid_pos.col_start,
-                    colliding_item.span.col_span,
+        if !Self::col_ranges_overlap(
+            old_position.col_start,
+            moved_item.span.col_span,
+            colliding_item.grid_pos.col_start,
+            colliding_item.span.col_span,
+        ) {
+            return None;
+        }
+
+        let colliding_position = colliding_item.grid_pos;
+        let (moved_swap_position, colliding_swap_position) =
+            if old_position.row_start < colliding_position.row_start {
+                (
+                    GridPosition {
+                        row_start: old_position.row_start + colliding_item.span.row_span,
+                        col_start: moved_item.grid_pos.col_start,
+                    },
+                    GridPosition {
+                        row_start: old_position.row_start,
+                        col_start: colliding_position.col_start,
+                    },
                 )
-                && (item.grid_pos.row_start + item.span.row_span
-                    == colliding_item.grid_pos.row_start
-                    || colliding_item.grid_pos.row_start + colliding_item.span.row_span
-                        == item.grid_pos.row_start)
-        });
+            } else if old_position.row_start > colliding_position.row_start {
+                (
+                    GridPosition {
+                        row_start: colliding_position.row_start,
+                        col_start: moved_item.grid_pos.col_start,
+                    },
+                    GridPosition {
+                        row_start: colliding_position.row_start + moved_item.span.row_span,
+                        col_start: colliding_position.col_start,
+                    },
+                )
+            } else {
+                return None;
+            };
 
-        if has_vertical_neighbor {
-            return false;
+        let mut moved_swap_item = *moved_item;
+        moved_swap_item.grid_pos = moved_swap_position;
+        colliding_item.grid_pos = colliding_swap_position;
+
+        self.ensure_rows(
+            (moved_swap_item.grid_pos.row_start + moved_swap_item.span.row_span)
+                .max(colliding_item.grid_pos.row_start + colliding_item.span.row_span),
+        );
+
+        if Self::items_overlap(&moved_swap_item, &colliding_item) {
+            return None;
         }
 
-        colliding_item.grid_pos = old_position;
-
-        if !self.item_fits_ignoring(&colliding_item, &[moved_item.id, colliding_id]) {
-            return false;
+        if !self.item_fits_ignoring(&moved_swap_item, &[moved_item.id, colliding_id])
+            || !self.item_fits_ignoring(&colliding_item, &[moved_item.id, colliding_id])
+        {
+            return None;
         }
 
-        colliding_item_signal.update(|item| {
-            item.grid_pos = old_position;
-            item.grid_to_pixels(self.cell_size, Axes::XY);
-        });
+        self.clear_item_from_grid(&colliding_item_signal.get_untracked());
+        colliding_item.grid_to_pixels(self.cell_size, Axes::XY);
+        colliding_item_signal.set(colliding_item);
+        self.set_item_in_grid(&colliding_item);
 
-        true
+        Some(moved_swap_position)
     }
 
-    fn push_items_below(&mut self, moved_item: &GridItemData, row_start: usize, by_rows: usize) {
-        if by_rows == 0 {
-            return;
-        }
+    fn insertion_row_for_collision(
+        &self,
+        moved_item: &GridItemData,
+        colliding_ids: &[u32],
+        drag_px_pos: Position,
+    ) -> Option<usize> {
+        let moved_top = drag_px_pos.y / self.cell_size.height;
 
-        let mut items_to_move = self
-            .items
-            .values()
-            .filter_map(|item_signal| {
-                let item = item_signal.get_untracked();
-                let item_row_end = item.grid_pos.row_start + item.span.row_span;
+        colliding_ids
+            .iter()
+            .filter_map(|id| self.items.get(id).map(|item| item.get_untracked()))
+            .filter(|item| {
+                Self::col_ranges_overlap(
+                    moved_item.grid_pos.col_start,
+                    moved_item.span.col_span,
+                    item.grid_pos.col_start,
+                    item.span.col_span,
+                )
+            })
+            .min_by_key(|item| (item.grid_pos.row_start, item.grid_pos.col_start, item.id))
+            .map(|item| {
+                let item_mid = item.grid_pos.row_start as f64 + item.span.row_span as f64 / 2.0;
 
-                if item.id == moved_item.id
-                    || !Self::col_ranges_overlap(
-                        item.grid_pos.col_start,
-                        item.span.col_span,
-                        moved_item.grid_pos.col_start,
-                        moved_item.span.col_span,
-                    )
-                    || item_row_end <= row_start
-                {
-                    return None;
+                if moved_top >= item_mid {
+                    item.grid_pos.row_start + item.span.row_span
+                } else {
+                    item.grid_pos.row_start
                 }
+            })
+    }
 
-                Some((item.grid_pos.row_start, item.id, *item_signal))
+    fn compact_items_up_in_columns(
+        &mut self,
+        col_start: usize,
+        col_span: usize,
+        excluded_id: Option<u32>,
+    ) {
+        let item_ids = self.collect_item_ids_in_columns_from_row(0, col_start, col_span, u32::MAX);
+        let mut items = item_ids
+            .into_iter()
+            .filter(|item_id| Some(*item_id) != excluded_id)
+            .filter_map(|item_id| {
+                self.items
+                    .get(&item_id)
+                    .map(|item_signal| (item_id, *item_signal, item_signal.get_untracked()))
             })
             .collect::<Vec<_>>();
 
-        items_to_move.sort_by_key(|(row_start, id, _)| (*row_start, *id));
-        for (_, _, item_signal) in items_to_move {
-            item_signal.update(|item| {
-                item.grid_pos.row_start += by_rows;
-                item.grid_to_pixels(self.cell_size, Axes::XY);
-            });
+        items.sort_by_key(|(_, _, item)| {
+            (item.grid_pos.row_start, item.grid_pos.col_start, item.id)
+        });
+
+        for (_, item_signal, mut item) in items {
+            self.clear_item_from_grid(&item);
+
+            while item.grid_pos.row_start > 0 {
+                let mut candidate = item;
+                candidate.grid_pos.row_start -= 1;
+
+                if !self.item_fits_ignoring(&candidate, &[item.id]) {
+                    break;
+                }
+
+                item = candidate;
+            }
+
+            item.grid_to_pixels(self.cell_size, Axes::XY);
+            item_signal.set(item);
+            self.set_item_in_grid(&item);
         }
+    }
+
+    fn collect_item_ids_in_columns_from_row(
+        &self,
+        row_start: usize,
+        col_start: usize,
+        col_span: usize,
+        excluded_id: u32,
+    ) -> Vec<u32> {
+        let mut ids = HashSet::new();
+        let mut ranges_to_scan = vec![(row_start, col_start, col_span)];
+
+        while let Some((row_start, col_start, col_span)) = ranges_to_scan.pop() {
+            let col_end = (col_start + col_span).min(self.columns);
+
+            for row_idx in row_start..self.collision_grid.nrows() {
+                for col_idx in col_start..col_end {
+                    let Some(item_id) = self.collision_grid[[row_idx, col_idx]] else {
+                        continue;
+                    };
+
+                    if item_id == excluded_id || !ids.insert(item_id) {
+                        continue;
+                    }
+
+                    if let Some(item_signal) = self.items.get(&item_id) {
+                        let item = item_signal.get_untracked();
+                        ranges_to_scan.push((
+                            item.grid_pos.row_start,
+                            item.grid_pos.col_start,
+                            item.span.col_span,
+                        ));
+                    }
+                }
+            }
+        }
+
+        let mut ids = ids.into_iter().collect::<Vec<_>>();
+        ids.sort_by_key(|id| {
+            self.items
+                .get(id)
+                .map(|item| {
+                    let item = item.get_untracked();
+                    (item.grid_pos.row_start, item.grid_pos.col_start, item.id)
+                })
+                .unwrap_or((usize::MAX, usize::MAX, *id))
+        });
+        ids
+    }
+
+    fn shift_items_down(&mut self, item_ids: Vec<u32>, by_rows: usize) {
+        if by_rows == 0 || item_ids.is_empty() {
+            return;
+        }
+
+        let items_to_shift = item_ids
+            .into_iter()
+            .filter_map(|item_id| {
+                self.items
+                    .get(&item_id)
+                    .map(|item_signal| (item_id, *item_signal, item_signal.get_untracked()))
+            })
+            .collect::<Vec<_>>();
+
+        for (_, _, item) in &items_to_shift {
+            self.clear_item_from_grid(item);
+        }
+
+        for (_, item_signal, mut item) in items_to_shift {
+            item.grid_pos.row_start += by_rows;
+            item.grid_to_pixels(self.cell_size, Axes::XY);
+            self.ensure_rows(item.grid_pos.row_start + item.span.row_span);
+            item_signal.set(item);
+            self.set_item_in_grid(&item);
+        }
+    }
+
+    fn set_item_after_local_push(
+        &mut self,
+        item: &GridItemData,
+        mut row_start: usize,
+        mut by_rows: usize,
+    ) {
+        self.ensure_rows(item.grid_pos.row_start + item.span.row_span);
+
+        while !self.colliding_item_ids(item).is_empty() {
+            let item_ids = self.collect_item_ids_in_columns_from_row(
+                row_start,
+                item.grid_pos.col_start,
+                item.span.col_span,
+                item.id,
+            );
+            if item_ids.is_empty() || by_rows == 0 {
+                break;
+            }
+            self.shift_items_down(item_ids, by_rows);
+
+            row_start = item.grid_pos.row_start;
+            by_rows = item.span.row_span;
+        }
+
+        self.set_item_in_grid(item);
     }
 
     /// Set an item in the collision grid based on its position and span
@@ -283,6 +579,12 @@ impl Layout {
 
         // Add/update item in the items HashMap
         self.items.insert(untracked_item.id, item);
+
+        self.compact_items_up_in_columns(
+            untracked_item.grid_pos.col_start,
+            untracked_item.span.col_span,
+            None,
+        );
     }
 
     /// Add an item at the top-left, pushing all existing items down (for dynamic "Add Item" button)
@@ -376,16 +678,20 @@ impl Layout {
         item: RwSignal<GridItemData>,
         new_row_start: usize,
         new_col_start: usize,
+        drag_px_pos: Position,
     ) {
         let mut untracked_item = item.get_untracked();
         let old_position = untracked_item.grid_pos;
         let new_position =
             self.clamp_position_for_item(&untracked_item, new_row_start, new_col_start);
 
-        // If position hasn't changed, nothing to do
+        // If the snapped grid position did not change, still restore the pixel
+        // position because dragging may have written a raw sub-cell offset.
         if old_position.row_start == new_position.row_start
             && old_position.col_start == new_position.col_start
         {
+            untracked_item.grid_to_pixels(self.cell_size, Axes::XY);
+            item.set(untracked_item);
             return;
         }
 
@@ -401,21 +707,69 @@ impl Layout {
 
         let colliding_ids = self.colliding_item_ids(&untracked_item);
 
-        if !colliding_ids.is_empty()
-            && !self.try_swap_items(&untracked_item, old_position, &colliding_ids)
-        {
-            self.push_items_below(
+        let mut placed_in_grid = false;
+        if !colliding_ids.is_empty() {
+            let fine_collisions = self.fine_drop_collisions(&untracked_item, drag_px_pos);
+            let Some(drop_collision) = Self::dominant_drop_collision(&fine_collisions) else {
+                untracked_item.grid_pos = old_position;
+                self.restore_item_position(item, untracked_item);
+                return;
+            };
+
+            if let Some(swap_position) =
+                self.try_swap_items(&untracked_item, old_position, &[drop_collision.item_id])
+            {
+                untracked_item.grid_pos = swap_position;
+                untracked_item.grid_to_pixels(self.cell_size, Axes::XY);
+                self.set_item_in_grid(&untracked_item);
+                placed_in_grid = true;
+            } else {
+                if old_position.col_start == untracked_item.grid_pos.col_start {
+                    untracked_item.grid_pos = old_position;
+                    self.restore_item_position(item, untracked_item);
+                    return;
+                }
+
+                if let Some(row_start) = self.insertion_row_for_collision(
+                    &untracked_item,
+                    &[drop_collision.item_id],
+                    drag_px_pos,
+                ) {
+                    untracked_item.grid_pos.row_start = row_start;
+                    untracked_item.grid_to_pixels(self.cell_size, Axes::XY);
+                    self.ensure_rows(
+                        untracked_item.grid_pos.row_start + untracked_item.span.row_span,
+                    );
+                }
+
+                self.set_item_after_local_push(
+                    &untracked_item,
+                    untracked_item.grid_pos.row_start,
+                    untracked_item.span.row_span,
+                );
+                placed_in_grid = true;
+            }
+        }
+
+        // Update the moved item's signal
+        item.set(untracked_item);
+        if !placed_in_grid {
+            self.set_item_after_local_push(
                 &untracked_item,
                 untracked_item.grid_pos.row_start,
                 untracked_item.span.row_span,
             );
         }
-
-        // Update the moved item's signal
-        item.set(untracked_item);
-
-        self.ensure_grid_capacity();
-        self.rebuild_collision_grid();
+        self.compact_items_up_in_columns(
+            old_position.col_start,
+            untracked_item.span.col_span,
+            None,
+        );
+        self.compact_items_up_in_columns(
+            untracked_item.grid_pos.col_start,
+            untracked_item.span.col_span,
+            None,
+        );
     }
 
     pub fn resize_item_with_collision(
@@ -445,6 +799,7 @@ impl Layout {
         self.ensure_rows(untracked_item.grid_pos.row_start + untracked_item.span.row_span);
 
         let colliding_ids = self.colliding_item_ids(&untracked_item);
+        let mut placed_in_grid = false;
         if !colliding_ids.is_empty() {
             let old_row_end = old_item.grid_pos.row_start + old_item.span.row_span;
             let new_row_end = untracked_item.grid_pos.row_start + untracked_item.span.row_span;
@@ -454,8 +809,7 @@ impl Layout {
                     .map(|item| item.get_untracked().grid_pos.row_start < old_row_end)
                     .unwrap_or(false)
             });
-
-            let (push_from_row, push_by_rows) = if has_side_collision {
+            let (row_start, by_rows) = if has_side_collision {
                 (
                     untracked_item.grid_pos.row_start,
                     untracked_item.span.row_span,
@@ -463,13 +817,24 @@ impl Layout {
             } else {
                 (old_row_end, new_row_end.saturating_sub(old_row_end))
             };
-
-            self.push_items_below(&untracked_item, push_from_row, push_by_rows);
+            self.set_item_after_local_push(&untracked_item, row_start, by_rows);
+            placed_in_grid = true;
         }
 
         item.set(untracked_item);
-        self.ensure_grid_capacity();
-        self.rebuild_collision_grid();
+        if !placed_in_grid {
+            self.set_item_after_local_push(
+                &untracked_item,
+                untracked_item.grid_pos.row_start,
+                untracked_item.span.row_span,
+            );
+        }
+        self.compact_items_up_in_columns(old_item.grid_pos.col_start, old_item.span.col_span, None);
+        self.compact_items_up_in_columns(
+            untracked_item.grid_pos.col_start,
+            untracked_item.span.col_span,
+            None,
+        );
     }
 
     /// Push items down by a certain number of rows
@@ -524,12 +889,40 @@ impl Layout {
     }
 
     pub fn sync_items_to_grid(&mut self) {
-        for item in self.items.values() {
-            item.update(|item| {
-                let max_col_start = self.columns.saturating_sub(item.span.col_span);
-                item.grid_pos.col_start = item.grid_pos.col_start.min(max_col_start);
-                item.grid_to_pixels(self.cell_size, Axes::XY);
-            });
+        self.collision_grid = Array2::from_elem((self.rows, self.columns), None::<u32>);
+        let mut items = self
+            .items
+            .values()
+            .map(|item_signal| {
+                let item = item_signal.get_untracked();
+                (
+                    item.grid_pos.row_start,
+                    item.grid_pos.col_start,
+                    item.id,
+                    *item_signal,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        items.sort_by_key(|(row_start, col_start, id, _)| (*row_start, *col_start, *id));
+
+        for (_, _, _, item_signal) in items {
+            let mut item = item_signal.get_untracked();
+            item.grid_pos = self.clamp_position_for_item(
+                &item,
+                item.grid_pos.row_start,
+                item.grid_pos.col_start,
+            );
+
+            while !self.colliding_item_ids(&item).is_empty() {
+                item.grid_pos.row_start += 1;
+                self.ensure_rows(item.grid_pos.row_start + item.span.row_span);
+            }
+
+            item.grid_to_pixels(self.cell_size, Axes::XY);
+            item_signal.set(item);
+            self.ensure_rows(item.grid_pos.row_start + item.span.row_span);
+            self.set_item_in_grid(&item);
         }
     }
 }
