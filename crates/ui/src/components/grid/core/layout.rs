@@ -539,7 +539,10 @@ impl Layout {
                 collision_grid::set_item(&mut self.collision_grid, &untracked_item);
                 placed_in_grid = true;
             } else {
-                if old_position.col_start == untracked_item.grid_pos.col_start {
+                let same_column_drop = old_position.col_start == untracked_item.grid_pos.col_start;
+                let moving_up = untracked_item.grid_pos.row_start < old_position.row_start;
+
+                if same_column_drop && !moving_up {
                     untracked_item.grid_pos = old_position;
                     self.restore_item_position(item, untracked_item);
                     return;
