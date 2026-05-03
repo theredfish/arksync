@@ -5,6 +5,7 @@ use std::default::Default;
 use std::sync::Arc;
 
 use crate::components::grid::core::layout::Layout;
+use crate::components::grid::core::resize_preview::directional_snap_span;
 use crate::components::grid::core::size::Size;
 
 fn clamp_size_to_grid(layout: &Layout, col_start: usize, size: Size) -> Size {
@@ -16,26 +17,6 @@ fn clamp_size_to_grid(layout: &Layout, col_start: usize, size: Size) -> Size {
         width: size.width.clamp(cell_size.width, max_width),
         height: size.height.max(cell_size.height),
     }
-}
-
-/// Snaps a resize dimension in the direction of the pointer movement.
-///
-/// Growing targets the next grid cell and shrinking targets the previous one,
-/// which makes previews and final sizes follow the resize direction instead of
-/// waiting for a half-cell `round()` threshold.
-pub fn directional_snap_span(raw_px: f64, current_span: usize, cell_px: f64) -> usize {
-    let raw_span = raw_px / cell_px;
-    let current_span = current_span.max(1) as f64;
-
-    let snapped_span = if raw_span > current_span {
-        raw_span.ceil()
-    } else if raw_span < current_span {
-        raw_span.floor()
-    } else {
-        current_span
-    };
-
-    (snapped_span as usize).max(1)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -221,15 +202,9 @@ pub fn use_resizable_grid_item(
                 let total_offset_x = last_client_pos.0 - start_pos.0;
                 let total_offset_y = last_client_pos.1 - start_pos.1;
 
-                // Grid-snapping when resizing ends.
-                //
-                // If the last mouse position x is 253, and the resize started at 100px, then we get a movement
-                // of 153px. To stick the movement to the grid we need to know if we reached the middle of the
-                // last cell in which case we fill it, otherwise, we go back to the previous cell.
-                //
-                // Here the calcul for a grid cell width of 100px is: (153 / 100).round() -> 1.53.round() -> 2
-
-                // Calculate the raw new size (before snapping)
+                // Calculate the raw new size first, then snap in the resize
+                // direction so the final size matches the preview shown during
+                // pointer movement.
                 let raw_size = clamp_size_to_grid(
                     &layout,
                     current_col_start_for_end(),

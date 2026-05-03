@@ -8,8 +8,7 @@ use crate::components::grid::utils::draggable_item::{
     use_draggable_grid_item, UseDraggableGridItemOptions, UseDraggableGridItemReturn,
 };
 use crate::components::grid::utils::resizable_item::{
-    directional_snap_span, use_resizable_grid_item, UseResizableGridItemOptions,
-    UseResizableGridItemReturn,
+    use_resizable_grid_item, UseResizableGridItemOptions, UseResizableGridItemReturn,
 };
 use crate::components::heroicons::ResizeIcon;
 use leptos::html::Div;
@@ -94,19 +93,7 @@ pub fn GridItem(
         on_drag_move: Arc::new(move |drag_px_pos| {
             let layout = layout.get_untracked();
             let item = grid_item_data.get_untracked();
-            let max_col_start = layout.columns.saturating_sub(item.span.col_span);
-            let col_start =
-                ((drag_px_pos.x / layout.cell_size.width).round() as usize).min(max_col_start);
-            let row_start = (drag_px_pos.y / layout.cell_size.height).round() as usize;
-
-            drop_preview.set(Some(DropPreview::new(
-                item.id,
-                GridPosition {
-                    col_start,
-                    row_start,
-                },
-                item.span,
-            )));
+            drop_preview.set(Some(DropPreview::from_drag(&item, drag_px_pos, &layout)));
 
             grid_item_data.update(|item| {
                 item.px_pos = drag_px_pos;
@@ -145,21 +132,7 @@ pub fn GridItem(
         on_resize_move: Arc::new(move |size| {
             let layout = layout.get_untracked();
             let item = grid_item_data.get_untracked();
-            let max_col_span = layout
-                .columns
-                .saturating_sub(item.grid_pos.col_start)
-                .max(1);
-            let col_span =
-                directional_snap_span(size.width, item.span.col_span, layout.cell_size.width)
-                    .min(max_col_span);
-            let row_span =
-                directional_snap_span(size.height, item.span.row_span, layout.cell_size.height);
-
-            resize_preview.set(Some(ResizePreview::new(
-                item.id,
-                item.grid_pos,
-                Span { row_span, col_span },
-            )));
+            resize_preview.set(Some(ResizePreview::from_resize(&item, size, &layout)));
 
             grid_item_data.update(|item| {
                 item.size = size;
