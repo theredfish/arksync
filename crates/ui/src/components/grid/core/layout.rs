@@ -1,4 +1,5 @@
 use crate::components::grid::core::collision::{grid as collision_grid, item_aabb};
+use crate::components::grid::core::drop_placement::{self, DropPlacement};
 use crate::components::grid::core::item::Axes;
 use crate::components::grid::core::{
     item::{GridItemData, GridPosition},
@@ -28,6 +29,8 @@ pub struct Layout {
 }
 
 impl Layout {
+    /// Grows the collision grid vertically so future writes can address every
+    /// required row without special-casing out-of-bounds placements.
     fn ensure_rows(&mut self, required_rows: usize) {
         if required_rows <= self.rows {
             return;
@@ -41,6 +44,8 @@ impl Layout {
         self.rows = required_rows;
     }
 
+    /// Keeps an item inside the horizontal grid bounds while preserving the
+    /// requested row. Vertical growth is handled separately by `ensure_rows`.
     fn clamp_position_for_item(&self, item: &GridItemData, row: usize, col: usize) -> GridPosition {
         let max_col = self.columns.saturating_sub(item.span.col_span);
 
@@ -50,16 +55,24 @@ impl Layout {
         }
     }
 
+    /// Tests whether two column spans share at least one grid column.
     fn col_ranges_overlap(a_start: usize, a_span: usize, b_start: usize, b_span: usize) -> bool {
         a_start < b_start + b_span && b_start < a_start + a_span
     }
 
+    /// Restores an item after a rejected drop and writes the restored state back
+    /// to both the item signal and the collision grid.
     fn restore_item_position(&mut self, item: RwSignal<GridItemData>, mut item_data: GridItemData) {
         item_data.grid_to_pixels(self.cell_size, Axes::XY);
         item.set(item_data);
         collision_grid::set_item(&mut self.collision_grid, &item_data);
     }
 
+    /// Attempts a vertical swap between the moved item and one dominant target.
+    ///
+    /// Swaps are deliberately narrow: the item must stay in the same column
+    /// track, overlap the target horizontally, and both final positions must fit
+    /// without touching any third item.
     fn try_swap_items(
         &mut self,
         moved_item: &GridItemData,
@@ -153,6 +166,8 @@ impl Layout {
         Some(moved_swap_position)
     }
 
+    /// Chooses whether a non-swapping drop should be inserted before or after
+    /// the collided item based on the dragged item's pixel position.
     fn insertion_row_for_collision(
         &self,
         moved_item: &GridItemData,
@@ -184,6 +199,8 @@ impl Layout {
             })
     }
 
+    /// Compacts every item that intersects the given column range as high as it
+    /// can go, while optionally leaving one active item untouched.
     fn compact_items_up_in_columns(
         &mut self,
         col_start: usize,
@@ -226,6 +243,10 @@ impl Layout {
         }
     }
 
+    /// Collects items affected by a vertical push in the scanned columns.
+    ///
+    /// When an affected item spans additional columns, those columns are added
+    /// to the scan so connected collision chains move together.
     fn collect_item_ids_in_columns_from_row(
         &self,
         row_start: usize,
@@ -274,6 +295,8 @@ impl Layout {
         ids
     }
 
+    /// Moves a prepared set of items down by a fixed number of rows and keeps
+    /// their signals, pixel positions, and collision cells synchronized.
     fn shift_items_down(&mut self, item_ids: Vec<u32>, by_rows: usize) {
         if by_rows == 0 || item_ids.is_empty() {
             return;
@@ -301,6 +324,8 @@ impl Layout {
         }
     }
 
+    /// Places an item by repeatedly pushing only the local collision chain below
+    /// it until the item can be written into the collision grid.
     fn set_item_after_local_push(
         &mut self,
         item: &GridItemData,
@@ -525,47 +550,52 @@ impl Layout {
             });
             let fine_collisions =
                 item_aabb::drop_collisions(&untracked_item, moved_aabb, collision_candidates);
-            let Some(drop_collision) = item_aabb::dominant_drop_collision(&fine_collisions) else {
-                untracked_item.grid_pos = old_position;
-                self.restore_item_position(item, untracked_item);
-                return;
-            };
+            let dominant_collision = item_aabb::dominant_drop_collision(&fine_collisions);
+            let target_id = dominant_collision.map(|collision| collision.item_id);
+            let swap_position = target_id.and_then(|target_id| {
+                self.try_swap_items(&untracked_item, old_position, &[target_id])
+            });
+            let insertion_row =
+                target_id
+                    .filter(|_| swap_position.is_none())
+                    .and_then(|target_id| {
+                        self.insertion_row_for_collision(&untracked_item, &[target_id], drag_px_pos)
+                    });
 
-            if let Some(swap_position) =
-                self.try_swap_items(&untracked_item, old_position, &[drop_collision.item_id])
-            {
-                untracked_item.grid_pos = swap_position;
-                untracked_item.grid_to_pixels(self.cell_size, Axes::XY);
-                collision_grid::set_item(&mut self.collision_grid, &untracked_item);
-                placed_in_grid = true;
-            } else {
-                let same_column_drop = old_position.col_start == untracked_item.grid_pos.col_start;
-                let moving_up = untracked_item.grid_pos.row_start < old_position.row_start;
-
-                if same_column_drop && !moving_up {
+            match drop_placement::resolve_collision_drop(
+                old_position,
+                untracked_item.grid_pos,
+                target_id,
+                swap_position,
+                insertion_row,
+            ) {
+                DropPlacement::Restore => {
                     untracked_item.grid_pos = old_position;
                     self.restore_item_position(item, untracked_item);
                     return;
                 }
-
-                if let Some(row_start) = self.insertion_row_for_collision(
-                    &untracked_item,
-                    &[drop_collision.item_id],
-                    drag_px_pos,
-                ) {
-                    untracked_item.grid_pos.row_start = row_start;
+                DropPlacement::Swap { moved_position, .. } => {
+                    untracked_item.grid_pos = moved_position;
                     untracked_item.grid_to_pixels(self.cell_size, Axes::XY);
-                    self.ensure_rows(
-                        untracked_item.grid_pos.row_start + untracked_item.span.row_span,
-                    );
+                    collision_grid::set_item(&mut self.collision_grid, &untracked_item);
+                    placed_in_grid = true;
                 }
+                DropPlacement::InsertWithPush { row_start, .. } => {
+                    if let Some(row_start) = row_start {
+                        untracked_item.grid_pos.row_start = row_start;
+                        untracked_item.grid_to_pixels(self.cell_size, Axes::XY);
+                        self.ensure_rows(
+                            untracked_item.grid_pos.row_start + untracked_item.span.row_span,
+                        );
+                    }
 
-                self.set_item_after_local_push(
-                    &untracked_item,
-                    untracked_item.grid_pos.row_start,
-                    untracked_item.span.row_span,
-                );
-                placed_in_grid = true;
+                    self.set_item_after_local_push(
+                        &untracked_item,
+                        untracked_item.grid_pos.row_start,
+                        untracked_item.span.row_span,
+                    );
+                    placed_in_grid = true;
+                }
             }
         }
 
@@ -656,7 +686,11 @@ impl Layout {
         );
     }
 
-    /// Push items down by a certain number of rows
+    /// Push items down by a certain number of rows.
+    ///
+    /// This legacy helper is currently used by `add_item_at_top`, where the
+    /// collision grid itself is shifted by row concatenation after item signals
+    /// have been moved.
     ///
     /// # Arguments
     /// * `items` - The items to push down
