@@ -1,5 +1,6 @@
 use crate::components::grid::core::drop_preview::DropPreview;
 use crate::components::grid::core::layout::LayoutBuilder;
+use crate::components::grid::core::resize_preview::ResizePreview;
 use crate::components::grid::core::size::Size;
 use crate::components::grid::grid_item::{GridItem, GRID_ITEM_GAP_PX, GRID_ITEM_INSET_PX};
 use crate::components::page_layout::PageLayout;
@@ -24,9 +25,11 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
             .build(),
     );
     let drop_preview = RwSignal::new(None::<DropPreview>);
+    let resize_preview = RwSignal::new(None::<ResizePreview>);
 
     provide_context(layout);
     provide_context(drop_preview);
+    provide_context(resize_preview);
 
     // Track dynamically added items
     let next_id = RwSignal::new(10_000u32);
@@ -134,6 +137,29 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
                                 <div
                                     class="pointer-events-none absolute rounded-lg border border-dashed border-sk-mint-325 bg-sk-mint-450/10"
                                     data-preview-for=preview.item_id.to_string()
+                                    style=format!(
+                                        "left: {visual_left}px; top: {visual_top}px; width: {visual_width}px; height: {visual_height}px; z-index: 999; transition: left 120ms ease-out, top 120ms ease-out, width 120ms ease-out, height 120ms ease-out;"
+                                    )
+                                />
+                            }
+                        })
+                    }
+                }
+                {
+                    move || {
+                        resize_preview.get().map(|preview| {
+                            let layout = layout.get();
+                            let (Position { x: left, y: top }, Size { width, height }) =
+                                preview.pixel_rect(layout.cell_size);
+                            let visual_left = left + GRID_ITEM_INSET_PX;
+                            let visual_top = top + GRID_ITEM_INSET_PX;
+                            let visual_width = (width - GRID_ITEM_GAP_PX).max(0.0);
+                            let visual_height = (height - GRID_ITEM_GAP_PX).max(0.0);
+
+                            view! {
+                                <div
+                                    class="pointer-events-none absolute rounded-lg border border-dashed border-sk-mint-325 bg-sk-mint-450/10"
+                                    data-resize-preview-for=preview.item_id.to_string()
                                     style=format!(
                                         "left: {visual_left}px; top: {visual_top}px; width: {visual_width}px; height: {visual_height}px; z-index: 999; transition: left 120ms ease-out, top 120ms ease-out, width 120ms ease-out, height 120ms ease-out;"
                                     )

@@ -1,13 +1,15 @@
 use crate::components::grid::core::drop_preview::DropPreview;
 use crate::components::grid::core::item::{GridItemData, GridPosition};
 use crate::components::grid::core::layout::Layout;
+use crate::components::grid::core::resize_preview::ResizePreview;
 use crate::components::grid::core::size::Size;
 use crate::components::grid::core::span::Span;
 use crate::components::grid::utils::draggable_item::{
     use_draggable_grid_item, UseDraggableGridItemOptions, UseDraggableGridItemReturn,
 };
 use crate::components::grid::utils::resizable_item::{
-    use_resizable_grid_item, UseResizableGridItemOptions, UseResizableGridItemReturn,
+    directional_snap_span, use_resizable_grid_item, UseResizableGridItemOptions,
+    UseResizableGridItemReturn,
 };
 use crate::components::heroicons::ResizeIcon;
 use leptos::html::Div;
@@ -35,6 +37,8 @@ pub fn GridItem(
     let layout = use_context::<RwSignal<Layout>>().expect("should retrieve the layout context");
     let drop_preview = use_context::<RwSignal<Option<DropPreview>>>()
         .expect("Drop preview context must be provided");
+    let resize_preview = use_context::<RwSignal<Option<ResizePreview>>>()
+        .expect("Resize preview context must be provided");
     let untracked_layout = layout.get_untracked();
     let grid_item_ref = NodeRef::<Div>::new();
     let drag_ref = NodeRef::<Div>::new();
@@ -139,11 +143,30 @@ pub fn GridItem(
         current_col_span: Arc::new(move || grid_item_data.get_untracked().span.col_span),
         current_row_span: Arc::new(move || grid_item_data.get_untracked().span.row_span),
         on_resize_move: Arc::new(move |size| {
+            let layout = layout.get_untracked();
+            let item = grid_item_data.get_untracked();
+            let max_col_span = layout
+                .columns
+                .saturating_sub(item.grid_pos.col_start)
+                .max(1);
+            let col_span =
+                directional_snap_span(size.width, item.span.col_span, layout.cell_size.width)
+                    .min(max_col_span);
+            let row_span =
+                directional_snap_span(size.height, item.span.row_span, layout.cell_size.height);
+
+            resize_preview.set(Some(ResizePreview::new(
+                item.id,
+                item.grid_pos,
+                Span { row_span, col_span },
+            )));
+
             grid_item_data.update(|item| {
                 item.size = size;
             });
         }),
         on_resize_end: Arc::new(move |size| {
+            resize_preview.set(None);
             layout.update(|layout| {
                 let cell_size = layout.cell_size;
                 let col_span = (size.width / cell_size.width).round() as usize;
