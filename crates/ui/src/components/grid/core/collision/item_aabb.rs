@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 use crate::components::grid::core::collision::aabb::Aabb;
 use crate::components::grid::core::item::GridItemData;
 use crate::components::grid::core::size::Size;
