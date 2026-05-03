@@ -81,3 +81,83 @@ pub fn directional_snap_span(raw_px: f64, current_span: usize, cell_px: f64) -> 
 
     (snapped_span as usize).max(1)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::grid::core::layout::LayoutBuilder;
+
+    fn layout() -> Layout {
+        LayoutBuilder::default()
+            .columns(4)
+            .rows(4)
+            .cell_size(100.0, 50.0)
+            .build()
+    }
+
+    fn item() -> GridItemData {
+        GridItemData {
+            id: 11,
+            grid_pos: GridPosition {
+                col_start: 1,
+                row_start: 2,
+            },
+            span: Span {
+                col_span: 2,
+                row_span: 3,
+            },
+            ..GridItemData::default()
+        }
+    }
+
+    #[test]
+    fn directional_snap_span_announces_growth_and_shrink_in_pointer_direction() {
+        assert_eq!(directional_snap_span(201.0, 2, 100.0), 3);
+        assert_eq!(directional_snap_span(199.0, 2, 100.0), 1);
+        assert_eq!(directional_snap_span(200.0, 2, 100.0), 2);
+        assert_eq!(directional_snap_span(1.0, 2, 100.0), 1);
+    }
+
+    #[test]
+    fn from_resize_anchors_position_and_clamps_to_remaining_columns() {
+        let preview = ResizePreview::from_resize(
+            &item(),
+            Size {
+                width: 999.0,
+                height: 151.0,
+            },
+            &layout(),
+        );
+
+        assert_eq!(preview.item_id, 11);
+        assert_eq!(preview.grid_pos.col_start, 1);
+        assert_eq!(preview.grid_pos.row_start, 2);
+        assert_eq!(preview.span.col_span, 3);
+        assert_eq!(preview.span.row_span, 4);
+    }
+
+    #[test]
+    fn pixel_rect_converts_resize_preview_back_to_pixels() {
+        let preview = ResizePreview::new(
+            11,
+            GridPosition {
+                col_start: 1,
+                row_start: 2,
+            },
+            Span {
+                col_span: 3,
+                row_span: 4,
+            },
+        );
+
+        let (position, size) = preview.pixel_rect(Size {
+            width: 100.0,
+            height: 50.0,
+        });
+
+        assert_eq!(position.x, 100.0);
+        assert_eq!(position.y, 100.0);
+        assert_eq!(size.width, 300.0);
+        assert_eq!(size.height, 200.0);
+    }
+}

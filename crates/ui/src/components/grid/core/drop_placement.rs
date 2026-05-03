@@ -153,3 +153,157 @@ pub fn resolve_collision_drop(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::grid::core::item::GridPosition;
+    use crate::components::grid::core::span::Span;
+
+    fn item(
+        id: u32,
+        col_start: usize,
+        row_start: usize,
+        col_span: usize,
+        row_span: usize,
+    ) -> GridItemData {
+        GridItemData {
+            id,
+            grid_pos: GridPosition {
+                col_start,
+                row_start,
+            },
+            span: Span { col_span, row_span },
+            ..GridItemData::default()
+        }
+    }
+
+    #[test]
+    fn drop_collisions_keep_only_actionable_overlaps_sorted_by_area() {
+        let moved_item = item(1, 0, 0, 4, 4);
+        let moved_aabb = Aabb::new(0.0, 0.0, 4.0, 4.0);
+        let candidates = [
+            item(3, 3, 3, 4, 4), // 1x1 overlap: below the 35% axis threshold.
+            item(2, 1, 1, 4, 4), // 3x3 overlap: actionable and dominant.
+            item(4, 2, 1, 4, 4), // 2x3 overlap: actionable but smaller.
+        ];
+
+        let collisions = drop_collisions(&moved_item, moved_aabb, candidates);
+
+        assert_eq!(collisions.len(), 2);
+        assert_eq!(collisions[0].item_id, 2);
+        assert_eq!(collisions[1].item_id, 4);
+    }
+
+    #[test]
+    fn dominant_drop_collision_returns_none_for_ambiguous_overlaps() {
+        let moved_item = item(1, 0, 0, 4, 4);
+        let moved_aabb = Aabb::new(0.0, 0.0, 4.0, 4.0);
+        let candidates = [
+            item(2, 1, 0, 4, 4), // 12 cells of overlap.
+            item(3, 0, 1, 4, 4), // 12 cells of overlap: no dominant target.
+        ];
+        let collisions = drop_collisions(&moved_item, moved_aabb, candidates);
+
+        assert!(dominant_drop_collision(&collisions).is_none());
+    }
+
+    #[test]
+    fn resolve_collision_drop_restores_when_there_is_no_target() {
+        let placement = resolve_collision_drop(
+            GridPosition {
+                col_start: 0,
+                row_start: 2,
+            },
+            GridPosition {
+                col_start: 0,
+                row_start: 1,
+            },
+            None,
+            None,
+            None,
+        );
+
+        assert!(matches!(placement, DropPlacement::Restore));
+    }
+
+    #[test]
+    fn resolve_collision_drop_prefers_successful_swap() {
+        let swap_position = GridPosition {
+            col_start: 0,
+            row_start: 2,
+        };
+        let placement = resolve_collision_drop(
+            GridPosition {
+                col_start: 0,
+                row_start: 0,
+            },
+            GridPosition {
+                col_start: 0,
+                row_start: 1,
+            },
+            Some(42),
+            Some(swap_position),
+            Some(3),
+        );
+
+        let DropPlacement::Swap {
+            target_id,
+            moved_position,
+        } = placement
+        else {
+            panic!("expected swap placement");
+        };
+
+        assert_eq!(target_id, 42);
+        assert_eq!(moved_position.col_start, swap_position.col_start);
+        assert_eq!(moved_position.row_start, swap_position.row_start);
+    }
+
+    #[test]
+    fn resolve_collision_drop_restores_same_column_downward_moves_without_swap() {
+        let placement = resolve_collision_drop(
+            GridPosition {
+                col_start: 0,
+                row_start: 0,
+            },
+            GridPosition {
+                col_start: 0,
+                row_start: 2,
+            },
+            Some(42),
+            None,
+            Some(2),
+        );
+
+        assert!(matches!(placement, DropPlacement::Restore));
+    }
+
+    #[test]
+    fn resolve_collision_drop_inserts_when_moving_up_without_swap() {
+        let placement = resolve_collision_drop(
+            GridPosition {
+                col_start: 0,
+                row_start: 4,
+            },
+            GridPosition {
+                col_start: 0,
+                row_start: 2,
+            },
+            Some(42),
+            None,
+            Some(2),
+        );
+
+        let DropPlacement::InsertWithPush {
+            target_id,
+            row_start,
+        } = placement
+        else {
+            panic!("expected insert placement");
+        };
+
+        assert_eq!(target_id, 42);
+        assert_eq!(row_start, Some(2));
+    }
+}
