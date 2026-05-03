@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, Default)]
 pub struct Layout {
+    /// Total rendered size available for the grid surface.
     pub size: Size,
     /// The collision grid storing the occupancy of each cell by item id
     pub collision_grid: Array2<Option<u32>>,
@@ -549,8 +550,8 @@ impl Layout {
                     .map(|item_signal| item_signal.get_untracked())
             });
             let fine_collisions =
-                item_aabb::drop_collisions(&untracked_item, moved_aabb, collision_candidates);
-            let dominant_collision = item_aabb::dominant_drop_collision(&fine_collisions);
+                drop_placement::drop_collisions(&untracked_item, moved_aabb, collision_candidates);
+            let dominant_collision = drop_placement::dominant_drop_collision(&fine_collisions);
             let target_id = dominant_collision.map(|collision| collision.item_id);
             let swap_position = target_id.and_then(|target_id| {
                 self.try_swap_items(&untracked_item, old_position, &[target_id])
@@ -620,6 +621,11 @@ impl Layout {
         );
     }
 
+    /// Resizes an item, pushes any newly covered local collision chain down,
+    /// then compacts the affected columns back upward.
+    ///
+    /// Resizing is anchored at the item's current top-left grid position. Width
+    /// is clamped to the available columns and height can grow the grid.
     pub fn resize_item_with_collision(
         &mut self,
         item: RwSignal<GridItemData>,
@@ -731,6 +737,7 @@ impl Layout {
         // For add_item, the collision_grid update happens via row concatenation.
     }
 
+    /// Removes an item from both the collision grid and the item registry.
     pub fn remove_item(&mut self, item: RwSignal<GridItemData>) {
         let untracked_item = item.get_untracked();
 
@@ -741,6 +748,12 @@ impl Layout {
         self.items.remove(&untracked_item.id);
     }
 
+    /// Rebuilds the collision grid from item signals and resolves any initial
+    /// overlaps by moving later items downward.
+    ///
+    /// This is the normalization pass used after responsive layout changes or
+    /// initial registration so the backend grid representation matches the
+    /// rendered item positions.
     pub fn sync_items_to_grid(&mut self) {
         self.collision_grid = Array2::from_elem((self.rows, self.columns), None::<u32>);
         let mut items = self
@@ -782,35 +795,48 @@ impl Layout {
 
 #[derive(Clone, Debug, Default)]
 pub struct LayoutBuilder {
+    /// Initial rendered size available for the grid surface.
     pub size: Size,
+    /// Optional initial collision grid. `build` creates the final empty grid
+    /// from `rows` and `columns`.
     pub collision_grid: Array2<Option<u32>>,
+    /// Optional initial item registry.
     pub items: HashMap<u32, RwSignal<GridItemData>>,
+    /// Number of grid columns to allocate.
     pub columns: usize,
+    /// Number of grid rows to allocate.
     pub rows: usize,
+    /// Initial rendered size of each grid cell.
     pub cell_size: Size,
 }
 
 impl LayoutBuilder {
+    /// Sets the number of rows allocated in the initial collision grid.
     pub fn rows(mut self, quantity: usize) -> Self {
         self.rows = quantity;
         self
     }
 
+    /// Sets the number of columns allocated in the initial collision grid.
     pub fn columns(mut self, quantity: usize) -> Self {
         self.columns = quantity;
         self
     }
 
+    /// Sets the total rendered grid size.
     pub fn size(mut self, width: f64, height: f64) -> Self {
         self.size = Size { width, height };
         self
     }
 
+    /// Sets the rendered size of one grid cell.
     pub fn cell_size(mut self, width: f64, height: f64) -> Self {
         self.cell_size = Size { width, height };
         self
     }
 
+    /// Builds a layout with an empty collision grid sized from the configured
+    /// row and column counts.
     pub fn build(self) -> Layout {
         let collision_grid = Array2::from_elem((self.rows, self.columns), None::<u32>);
 
