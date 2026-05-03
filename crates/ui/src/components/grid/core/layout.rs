@@ -85,9 +85,7 @@ impl Layout {
         }
 
         let colliding_id = colliding_ids[0];
-        let Some(&colliding_item_signal) = self.items.get(&colliding_id) else {
-            return None;
-        };
+        let colliding_item_signal = *self.items.get(&colliding_id)?;
 
         let mut colliding_item = colliding_item_signal.get_untracked();
         if old_position.col_start != moved_item.grid_pos.col_start {

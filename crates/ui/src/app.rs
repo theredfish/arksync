@@ -52,7 +52,7 @@ pub fn Home() -> impl IntoView {
     view! {
         <PageLayout eyebrow="Station" title="ArkSync">
             <p class="mt-3 max-w-xl text-sk-carbon-300">
-                "Centralisez les mesures, les alertes et les automatisations de votre station."
+                "Environmental monitoring and regulation system."
             </p>
         </PageLayout>
     }
