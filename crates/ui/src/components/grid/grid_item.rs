@@ -1,3 +1,4 @@
+use crate::components::grid::core::drop_preview::DropPreview;
 use crate::components::grid::core::item::{GridItemData, GridPosition};
 use crate::components::grid::core::layout::Layout;
 use crate::components::grid::core::size::Size;
@@ -15,8 +16,8 @@ use leptos::prelude::*;
 use leptos_use::core::Position;
 use std::sync::Arc;
 
-const GRID_ITEM_GAP_PX: f64 = 12.0;
-const GRID_ITEM_INSET_PX: f64 = GRID_ITEM_GAP_PX / 2.0;
+pub(crate) const GRID_ITEM_GAP_PX: f64 = 12.0;
+pub(crate) const GRID_ITEM_INSET_PX: f64 = GRID_ITEM_GAP_PX / 2.0;
 
 #[component]
 pub fn GridItem(
@@ -32,6 +33,8 @@ pub fn GridItem(
     dynamic: bool,
 ) -> impl IntoView {
     let layout = use_context::<RwSignal<Layout>>().expect("should retrieve the layout context");
+    let drop_preview = use_context::<RwSignal<Option<DropPreview>>>()
+        .expect("Drop preview context must be provided");
     let untracked_layout = layout.get_untracked();
     let grid_item_ref = NodeRef::<Div>::new();
     let drag_ref = NodeRef::<Div>::new();
@@ -85,12 +88,29 @@ pub fn GridItem(
         col_span,
         current_col_span: Arc::new(move || grid_item_data.get_untracked().span.col_span),
         on_drag_move: Arc::new(move |drag_px_pos| {
+            let layout = layout.get_untracked();
+            let item = grid_item_data.get_untracked();
+            let max_col_start = layout.columns.saturating_sub(item.span.col_span);
+            let col_start =
+                ((drag_px_pos.x / layout.cell_size.width).round() as usize).min(max_col_start);
+            let row_start = (drag_px_pos.y / layout.cell_size.height).round() as usize;
+
+            drop_preview.set(Some(DropPreview::new(
+                item.id,
+                GridPosition {
+                    col_start,
+                    row_start,
+                },
+                item.span,
+            )));
+
             grid_item_data.update(|item| {
                 item.px_pos = drag_px_pos;
                 log!("Update item with new px_pos: {drag_px_pos:?}");
             })
         }),
         on_drag_end: Arc::new(move |col_start, row_start, _snapped_px_pos, drag_px_pos| {
+            drop_preview.set(None);
             layout.update(|layout| {
                 layout.move_item_with_collision(grid_item_data, row_start, col_start, drag_px_pos);
             });
