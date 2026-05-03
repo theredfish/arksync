@@ -11,6 +11,13 @@ use crate::components::grid::core::{layout::Layout, size::Size};
 // stays above its neighbors until the snap-back animation has fully finished.
 const DRAG_RELEASE_ELEVATION_MS: i32 = 280;
 
+// Clicks on the drag handle can still emit a draggable end event. Requiring a
+// small pointer delta keeps simple clicks from snapping the item with a stale
+// internal draggable position.
+const DRAG_ACTIVATION_THRESHOLD_PX: f64 = 4.0;
+const DRAG_ACTIVATION_THRESHOLD_SQUARED: f64 =
+    DRAG_ACTIVATION_THRESHOLD_PX * DRAG_ACTIVATION_THRESHOLD_PX;
+
 #[derive(Clone, Copy, Debug)]
 pub enum DragState {
     Dragging(Position),
@@ -69,6 +76,8 @@ pub fn use_draggable_grid_item(
     let drag_state = RwSignal::new(DragState::Dragging(Position::default()));
     let is_dragging = RwSignal::new(false);
     let drag_elevation_epoch = RwSignal::new(0_u32);
+    let drag_pointer_start = RwSignal::new(None::<(i32, i32)>);
+    let drag_threshold_reached = RwSignal::new(false);
     let UseDraggableGridItemOptions {
         handle,
         col_start,
@@ -111,7 +120,29 @@ pub fn use_draggable_grid_item(
                 };
                 Position { x: pos.x, y: pos.y }
             })
+            .on_start(move |drag_event| {
+                drag_pointer_start.set(Some((
+                    drag_event.event.client_x(),
+                    drag_event.event.client_y(),
+                )));
+                drag_threshold_reached.set(false);
+                true
+            })
             .on_move(move |drag_event| {
+                if !drag_threshold_reached.get_untracked() {
+                    let Some((start_x, start_y)) = drag_pointer_start.get_untracked() else {
+                        return;
+                    };
+                    let delta_x = (drag_event.event.client_x() - start_x) as f64;
+                    let delta_y = (drag_event.event.client_y() - start_y) as f64;
+
+                    if delta_x * delta_x + delta_y * delta_y < DRAG_ACTIVATION_THRESHOLD_SQUARED {
+                        return;
+                    }
+
+                    drag_threshold_reached.set(true);
+                }
+
                 drag_elevation_epoch.update(|epoch| *epoch = epoch.wrapping_add(1));
 
                 let layout = layout.get_untracked();
@@ -127,6 +158,15 @@ pub fn use_draggable_grid_item(
                 on_drag_move(clamped_position);
             })
             .on_end(move |drag_event| {
+                let drag_was_activated = drag_threshold_reached.get_untracked();
+                drag_pointer_start.set(None);
+                drag_threshold_reached.set(false);
+
+                if !drag_was_activated {
+                    is_dragging.set(false);
+                    return;
+                }
+
                 drag_elevation_epoch.update(|epoch| *epoch = epoch.wrapping_add(1));
                 let drag_end_epoch = drag_elevation_epoch.get_untracked();
 
