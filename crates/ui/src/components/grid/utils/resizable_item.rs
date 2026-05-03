@@ -18,6 +18,26 @@ fn clamp_size_to_grid(layout: &Layout, col_start: usize, size: Size) -> Size {
     }
 }
 
+/// Snaps a resize dimension in the direction of the pointer movement.
+///
+/// Growing targets the next grid cell and shrinking targets the previous one,
+/// which makes previews and final sizes follow the resize direction instead of
+/// waiting for a half-cell `round()` threshold.
+pub fn directional_snap_span(raw_px: f64, current_span: usize, cell_px: f64) -> usize {
+    let raw_span = raw_px / cell_px;
+    let current_span = current_span.max(1) as f64;
+
+    let snapped_span = if raw_span > current_span {
+        raw_span.ceil()
+    } else if raw_span < current_span {
+        raw_span.floor()
+    } else {
+        current_span
+    };
+
+    (snapped_span as usize).max(1)
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum ResizeState {
     Idle {
@@ -128,6 +148,8 @@ pub fn use_resizable_grid_item(
     let current_col_start_for_size = Arc::clone(&current_col_start);
     let current_col_span_for_layout = Arc::clone(&current_col_span);
     let current_row_span_for_layout = Arc::clone(&current_row_span);
+    let current_col_span_for_resize = Arc::clone(&current_col_span);
+    let current_row_span_for_resize = Arc::clone(&current_row_span);
 
     let _resize_starts = use_event_listener(handle, leptos::ev::pointerdown, move |evt| {
         evt.prevent_default();
@@ -146,6 +168,8 @@ pub fn use_resizable_grid_item(
         let on_resize_end = Arc::clone(&on_resize_end);
         let current_col_start_for_move = Arc::clone(&current_col_start_for_resize);
         let current_col_start_for_end = Arc::clone(&current_col_start_for_resize);
+        let current_col_span_for_end = Arc::clone(&current_col_span_for_resize);
+        let current_row_span_for_end = Arc::clone(&current_row_span_for_resize);
 
         let _resize_in_progress =
             use_event_listener(window(), leptos::ev::pointermove, move |evt| {
@@ -215,16 +239,23 @@ pub fn use_resizable_grid_item(
                     },
                 );
 
-                let snapped_width = (raw_size.width / cell_size.width).round() * cell_size.width;
-                let snapped_height =
-                    (raw_size.height / cell_size.height).round() * cell_size.height;
+                let snapped_col_span = directional_snap_span(
+                    raw_size.width,
+                    current_col_span_for_end(),
+                    cell_size.width,
+                );
+                let snapped_row_span = directional_snap_span(
+                    raw_size.height,
+                    current_row_span_for_end(),
+                    cell_size.height,
+                );
 
                 let snapped_size = clamp_size_to_grid(
                     &layout,
                     current_col_start_for_end(),
                     Size {
-                        width: snapped_width,
-                        height: snapped_height,
+                        width: snapped_col_span as f64 * cell_size.width,
+                        height: snapped_row_span as f64 * cell_size.height,
                     },
                 );
 
