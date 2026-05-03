@@ -63,3 +63,76 @@ impl DropPreview {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::grid::core::layout::LayoutBuilder;
+
+    fn layout() -> Layout {
+        LayoutBuilder::default()
+            .columns(4)
+            .rows(4)
+            .cell_size(100.0, 50.0)
+            .build()
+    }
+
+    fn item() -> GridItemData {
+        GridItemData {
+            id: 7,
+            grid_pos: GridPosition {
+                col_start: 0,
+                row_start: 0,
+            },
+            span: Span {
+                col_span: 2,
+                row_span: 1,
+            },
+            ..GridItemData::default()
+        }
+    }
+
+    #[test]
+    fn from_drag_follows_the_hovered_rounded_grid_slot() {
+        let preview = DropPreview::from_drag(&item(), Position { x: 149.0, y: 76.0 }, &layout());
+
+        assert_eq!(preview.item_id, 7);
+        assert_eq!(preview.grid_pos.col_start, 1);
+        assert_eq!(preview.grid_pos.row_start, 2);
+        assert_eq!(preview.span.col_span, 2);
+        assert_eq!(preview.span.row_span, 1);
+    }
+
+    #[test]
+    fn from_drag_clamps_the_preview_inside_available_columns() {
+        let preview = DropPreview::from_drag(&item(), Position { x: 999.0, y: 0.0 }, &layout());
+
+        assert_eq!(preview.grid_pos.col_start, 2);
+        assert_eq!(preview.grid_pos.row_start, 0);
+    }
+
+    #[test]
+    fn pixel_rect_converts_grid_preview_back_to_pixels() {
+        let preview = DropPreview::new(
+            7,
+            GridPosition {
+                col_start: 2,
+                row_start: 3,
+            },
+            Span {
+                col_span: 2,
+                row_span: 4,
+            },
+        );
+
+        let (position, size) = preview.pixel_rect(Size {
+            width: 100.0,
+            height: 50.0,
+        });
+
+        assert_eq!(position.x, 200.0);
+        assert_eq!(position.y, 150.0);
+        assert_eq!(size.width, 200.0);
+        assert_eq!(size.height, 200.0);
+    }
+}
