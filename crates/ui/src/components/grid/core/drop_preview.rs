@@ -1,4 +1,5 @@
-use crate::components::grid::core::item::GridPosition;
+use crate::components::grid::core::item::{GridItemData, GridPosition};
+use crate::components::grid::core::layout::Layout;
 use crate::components::grid::core::size::Size;
 use crate::components::grid::core::span::Span;
 use leptos_use::core::Position;
@@ -26,6 +27,26 @@ impl DropPreview {
             grid_pos,
             span,
         }
+    }
+
+    /// Creates a preview from the current drag pixel position.
+    ///
+    /// The drag preview follows the currently hovered grid slot. It does not
+    /// try to predict whether the final placement will swap, push, or restore.
+    pub fn from_drag(item: &GridItemData, drag_px_pos: Position, layout: &Layout) -> Self {
+        let max_col_start = layout.columns.saturating_sub(item.span.col_span);
+        let col_start =
+            ((drag_px_pos.x / layout.cell_size.width).round() as usize).min(max_col_start);
+        let row_start = (drag_px_pos.y / layout.cell_size.height).round() as usize;
+
+        Self::new(
+            item.id,
+            GridPosition {
+                col_start,
+                row_start,
+            },
+            item.span,
+        )
     }
 
     /// Converts the snapped grid position to a pixel rectangle.

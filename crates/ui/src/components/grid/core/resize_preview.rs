@@ -1,4 +1,5 @@
-use crate::components::grid::core::item::GridPosition;
+use crate::components::grid::core::item::{GridItemData, GridPosition};
+use crate::components::grid::core::layout::Layout;
 use crate::components::grid::core::size::Size;
 use crate::components::grid::core::span::Span;
 use leptos_use::core::Position;
@@ -28,6 +29,24 @@ impl ResizePreview {
         }
     }
 
+    /// Creates a preview from the current resize pixel size.
+    ///
+    /// This keeps the preview math outside the component callbacks. The span is
+    /// snapped in the resize direction, then clamped to the remaining columns.
+    pub fn from_resize(item: &GridItemData, size: Size, layout: &Layout) -> Self {
+        let max_col_span = layout
+            .columns
+            .saturating_sub(item.grid_pos.col_start)
+            .max(1);
+        let col_span =
+            directional_snap_span(size.width, item.span.col_span, layout.cell_size.width)
+                .min(max_col_span);
+        let row_span =
+            directional_snap_span(size.height, item.span.row_span, layout.cell_size.height);
+
+        Self::new(item.id, item.grid_pos, Span { row_span, col_span })
+    }
+
     /// Converts the anchored grid span to a pixel rectangle.
     pub fn pixel_rect(self, cell_size: Size) -> (Position, Size) {
         (
@@ -41,4 +60,24 @@ impl ResizePreview {
             },
         )
     }
+}
+
+/// Snaps a resize dimension in the direction of the pointer movement.
+///
+/// Growing targets the next grid cell and shrinking targets the previous one,
+/// which makes previews and final sizes follow the resize direction instead of
+/// waiting for a half-cell `round()` threshold.
+pub fn directional_snap_span(raw_px: f64, current_span: usize, cell_px: f64) -> usize {
+    let raw_span = raw_px / cell_px;
+    let current_span = current_span.max(1) as f64;
+
+    let snapped_span = if raw_span > current_span {
+        raw_span.ceil()
+    } else if raw_span < current_span {
+        raw_span.floor()
+    } else {
+        current_span
+    };
+
+    (snapped_span as usize).max(1)
 }
