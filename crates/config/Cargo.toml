@@ -1,0 +1,11 @@
+[package]
+name = "arksync-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+path = "mod.rs"
+
+[lints]
+workspace = true

@@ -19,6 +19,9 @@ pub static SENSORS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::n
 pub fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::<tauri::Wry>::default()
         .setup(|app| {
+            tauri::async_runtime::block_on(async { arksync_db::run().await })
+                .map_err(|err| -> Box<dyn std::error::Error> { err.into() })?;
+
             relay::spawn_debug_loop(app.handle().clone());
             Ok(())
         })

@@ -20,6 +20,7 @@ tauri-build.workspace = true
 
 [dependencies]
 arksync-actuator.workspace = true
+arksync-db.workspace = true
 eyre.workspace = true
 log.workspace = true
 rand.workspace = true
@@ -28,7 +29,7 @@ serde_json.workspace = true
 tauri.workspace = true
 tauri-plugin-log.workspace = true
 tauri-plugin-opener.workspace = true
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["fs", "time"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater.workspace = true
