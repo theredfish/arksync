@@ -1,0 +1,2 @@
+[alias]
+sk = "run -p arksync-cli --"

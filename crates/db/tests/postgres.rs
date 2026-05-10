@@ -14,13 +14,8 @@ fn connects_and_runs_migrations() {
 
         assert_eq!(selected_value, 1);
 
-        arksync_db::setup().await.expect("setup postgres");
-        arksync_db::reset_public_schema()
+        arksync_db::reset_public_schema::<arksync_db::MplMigrator>(arksync_db::pool())
             .await
             .expect("reset public schema");
-        arksync_db::setup()
-            .await
-            .expect("setup postgres after schema reset");
-        arksync_db::migrations::run().await.expect("run migrations");
     });
 }

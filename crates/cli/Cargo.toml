@@ -1,0 +1,19 @@
+[package]
+name = "arksync-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+default-run = "sk"
+
+[[bin]]
+name = "sk"
+path = "src/main.rs"
+
+[dependencies]
+arksync-db.workspace = true
+clap = { workspace = true, features = ["derive"] }
+eyre.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true

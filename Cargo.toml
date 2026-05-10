@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/actuator",
+    "crates/cli",
     "crates/config",
     "crates/db",
     "crates/sensor",
@@ -17,11 +18,13 @@ license = "MPL-2.0"
 
 [workspace.dependencies]
 arksync-actuator = { path = "crates/actuator" }
+arksync-cli = { path = "crates/cli" }
 arksync-config = { path = "crates/config" }
 arksync-db = { path = "crates/db" }
 arksync-users = { path = "crates/users" }
 charming = { version = "0.6.0", features = ["wasm"] }
 chrono = "0.4"
+clap = { version = "4.6.1", features = ["derive"] }
 console_error_panic_hook = "0.1.7"
 eyre = "0.6.12"
 futures-util = "0.3"

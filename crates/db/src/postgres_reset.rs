@@ -2,16 +2,25 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use eyre::Result;
+use sqlx::PgExecutor;
 
-use crate::pool;
+use crate::Migrator;
 
-pub async fn reset_public_schema() -> Result<()> {
-    sqlx::query("drop schema if exists public cascade")
-        .execute(pool())
+pub async fn reset_public_schema<M>(executor: impl PgExecutor<'_>) -> eyre::Result<()>
+where
+    M: Migrator,
+{
+    executor
+        .execute(
+            r#"
+            drop schema if exists public cascade;
+            create schema public;
+            "#,
+        )
         .await?;
 
-    sqlx::query("create schema public").execute(pool()).await?;
+    crate::setup().await?;
+    M::run().await?;
 
     Ok(())
 }
