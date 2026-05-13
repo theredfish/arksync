@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#[ignore = "Integration test"]
 #[test]
 fn connects_and_runs_migrations() {
     let runtime = tokio::runtime::Runtime::new().expect("runtime");
