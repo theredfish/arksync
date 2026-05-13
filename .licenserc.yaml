@@ -8,5 +8,6 @@ header:
       file, You can obtain one at https://mozilla.org/MPL/2.0/.
   paths:
     - '**/*.rs'
+    - 'crates/db/src/migrations/local/**/*.sql'
 
   comment: on-failure

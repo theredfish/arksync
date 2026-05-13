@@ -1,0 +1,13 @@
+[package]
+name = "arksync-users"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+eyre.workspace = true
+sqlx = { workspace = true, features = ["postgres", "macros", "uuid"] }
+uuid = { workspace = true, features = ["v4"] }
+
+[lints]
+workspace = true
