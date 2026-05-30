@@ -23,7 +23,8 @@ use crate::theme::ArkSyncTheme;
 #[serde(rename_all = "camelCase")]
 struct SensorData {
     name: String,
-    value: [f32; 7],
+    labels: Vec<String>,
+    value: Vec<f32>,
 }
 
 #[component]
@@ -34,53 +35,51 @@ pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> i
     let (chart_container_w, chart_container_h) =
         (chart_container_size.width, chart_container_size.height);
 
-    let sensor_values = RwSignal::new(vec![0.0; 7]);
+    let sensor_values = RwSignal::new(Vec::<f32>::new());
+    let sensor_labels = RwSignal::new(Vec::<String>::new());
     let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::new(RefCell::new(None));
 
-    let render_responsive_chart = move |width: f64, height: f64, serie: Vec<f32>| {
-        let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::clone(&chart_instance);
-        let mut chart_ref = chart_instance.borrow_mut();
-        let width = if width == 0.0 { 300 } else { width as u32 };
-        let height = if height == 0.0 { 150 } else { height as u32 };
+    let render_responsive_chart =
+        move |width: f64, height: f64, serie: Vec<f32>, labels: Vec<String>| {
+            let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::clone(&chart_instance);
+            let mut chart_ref = chart_instance.borrow_mut();
+            let width = if width == 0.0 { 300 } else { width as u32 };
+            let height = if height == 0.0 { 150 } else { height as u32 };
 
-        let chart_config = Chart::new()
-            .title(
-                Title::new()
-                    .text("Water Temperature (C°)".to_string())
-                    .text_style(TextStyle::new().color(Color::Value("#39344a".to_string()))),
-            )
-            .series(Line::new().data(serie))
-            .x_axis(
-                Axis::new()
-                    .type_(AxisType::Category)
-                    .data(vec!["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]),
-            )
-            .y_axis(Axis::new().type_(AxisType::Value));
+            let chart_config = Chart::new()
+                .title(
+                    Title::new()
+                        .text("Water Temperature (C°)".to_string())
+                        .text_style(TextStyle::new().color(Color::Value("#39344a".to_string()))),
+                )
+                .series(Line::new().data(serie))
+                .x_axis(Axis::new().type_(AxisType::Category).data(labels))
+                .y_axis(Axis::new().type_(AxisType::Value));
 
-        if let Some(echarts) = chart_ref.as_ref() {
-            WasmRenderer::update(echarts, &chart_config);
-            // Resize if chart exists
-            WasmRenderer::resize_chart(
-                echarts,
-                ChartResize {
-                    width,
-                    height,
-                    silent: true,
-                    animation: Some(Animation {
-                        duration: 150,
-                        easing: Some(Easing::Linear),
-                    }),
-                },
-            );
-        } else {
-            let theme = theme.unwrap_or_default().as_wrapper().charming_theme;
-            let renderer = WasmRenderer::new(width, height).theme(theme);
-            let echarts = renderer
-                .render("water-temparature-gauge", &chart_config)
-                .unwrap();
-            *chart_ref = Some(echarts);
-        }
-    };
+            if let Some(echarts) = chart_ref.as_ref() {
+                WasmRenderer::update(echarts, &chart_config);
+                // Resize if chart exists
+                WasmRenderer::resize_chart(
+                    echarts,
+                    ChartResize {
+                        width,
+                        height,
+                        silent: true,
+                        animation: Some(Animation {
+                            duration: 150,
+                            easing: Some(Easing::Linear),
+                        }),
+                    },
+                );
+            } else {
+                let theme = theme.unwrap_or_default().as_wrapper().charming_theme;
+                let renderer = WasmRenderer::new(width, height).theme(theme);
+                let echarts = renderer
+                    .render("water-temparature-gauge", &chart_config)
+                    .unwrap();
+                *chart_ref = Some(echarts);
+            }
+        };
 
     Effect::new(move |_| {
         spawn_local(async move {
@@ -98,7 +97,8 @@ pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> i
             };
 
             while let Some(sensor_data) = stream.next().await {
-                sensor_values.set(sensor_data.payload.value.to_vec());
+                sensor_labels.set(sensor_data.payload.labels);
+                sensor_values.set(sensor_data.payload.value);
             }
         });
     });
@@ -109,10 +109,18 @@ pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> i
                 chart_container_w.get(),
                 chart_container_h.get(),
                 sensor_values.get(),
+                sensor_labels.get(),
             )
         },
-        move |(width, height, sensor_values): &(f64, f64, Vec<f32>), _prev, _| {
-            render_responsive_chart(*width, *height, sensor_values.to_vec());
+        move |(width, height, sensor_values, sensor_labels): &(f64, f64, Vec<f32>, Vec<String>),
+              _prev,
+              _| {
+            render_responsive_chart(
+                *width,
+                *height,
+                sensor_values.to_vec(),
+                sensor_labels.to_vec(),
+            );
         },
         false,
     );

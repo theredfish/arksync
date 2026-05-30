@@ -20,11 +20,11 @@ tauri-build.workspace = true
 
 [dependencies]
 arksync-actuator.workspace = true
+arksync-bus.workspace = true
 arksync-db.workspace = true
 arksync-hub = { workspace = true, features = ["local-knot-runtime"] }
 eyre.workspace = true
 log.workspace = true
-rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true

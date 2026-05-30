@@ -6,4 +6,6 @@ mod definitions;
 mod sensor_measurement_store;
 
 pub use definitions::SensorMeasurementRecord;
-pub use sensor_measurement_store::{insert_sensor_measurement, list_sensor_measurements_since};
+pub use sensor_measurement_store::{
+    insert_sensor_measurement, latest_sensor_hardware_uid, list_sensor_measurements_since,
+};
