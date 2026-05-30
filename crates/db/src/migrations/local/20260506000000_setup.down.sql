@@ -5,6 +5,8 @@
 drop trigger if exists trigger_register_local_hub_as_knot on station_hubs;
 drop function if exists register_local_hub_as_knot();
 
+drop table if exists sensor_measurements;
+
 drop trigger if exists actuators_set_updated_at on actuators;
 drop trigger if exists sensors_set_updated_at on sensors;
 drop trigger if exists station_knots_set_updated_at on station_knots;
