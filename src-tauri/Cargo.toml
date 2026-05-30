@@ -23,6 +23,7 @@ arksync-actuator.workspace = true
 arksync-bus.workspace = true
 arksync-db.workspace = true
 arksync-hub = { workspace = true, features = ["local-knot-runtime"] }
+chrono.workspace = true
 eyre.workspace = true
 log.workspace = true
 serde.workspace = true

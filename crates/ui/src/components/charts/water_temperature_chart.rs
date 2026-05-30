@@ -4,7 +4,7 @@
 
 use charming::{
     component::{Axis, Title},
-    element::{AxisType, Color, Easing, TextStyle},
+    element::{AxisLabel, AxisType, Color, Easing, TextStyle},
     series::Line,
     Animation, Chart, ChartResize, Echarts, WasmRenderer,
 };
@@ -52,8 +52,13 @@ pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> i
                         .text("Water Temperature (C°)".to_string())
                         .text_style(TextStyle::new().color(Color::Value("#39344a".to_string()))),
                 )
-                .series(Line::new().data(serie))
-                .x_axis(Axis::new().type_(AxisType::Category).data(labels))
+                .series(Line::new().show_symbol(false).data(serie))
+                .x_axis(
+                    Axis::new()
+                        .type_(AxisType::Category)
+                        .axis_label(AxisLabel::new().interval(axis_label_interval(labels.len())))
+                        .data(labels),
+                )
                 .y_axis(Axis::new().type_(AxisType::Value));
 
             if let Some(echarts) = chart_ref.as_ref() {
@@ -129,5 +134,13 @@ pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> i
         <div node_ref=chart_container class="w-full h-full">
             <div node_ref=chart_node id="water-temparature-gauge"></div>
         </div>
+    }
+}
+
+fn axis_label_interval(label_count: usize) -> f64 {
+    if label_count <= 8 {
+        0.0
+    } else {
+        (label_count / 8) as f64
     }
 }

@@ -165,6 +165,7 @@ dependencies = [
  "arksync-bus",
  "arksync-db",
  "arksync-hub",
+ "chrono",
  "eyre",
  "log",
  "serde",

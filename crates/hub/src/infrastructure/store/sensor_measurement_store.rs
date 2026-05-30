@@ -65,22 +65,26 @@ where
 {
     sqlx::query_as(
         r#"
-        select
-            id,
-            event_id,
-            source_parent_hub_id,
-            source_knot_id,
-            hardware_uid,
-            sensor_kind::text as sensor_kind,
-            unit,
-            value,
-            (extract(epoch from measured_at) * 1000)::bigint as measured_at_unix_millis,
-            (extract(epoch from received_at) * 1000)::bigint as received_at_unix_millis
-        from sensor_measurements
-        where hardware_uid = $1
-            and measured_at >= to_timestamp($2::double precision / 1000.0)
-        order by measured_at asc
-        limit $3
+        select *
+        from (
+            select
+                id,
+                event_id,
+                source_parent_hub_id,
+                source_knot_id,
+                hardware_uid,
+                sensor_kind::text as sensor_kind,
+                unit,
+                value,
+                (extract(epoch from measured_at) * 1000)::bigint as measured_at_unix_millis,
+                (extract(epoch from received_at) * 1000)::bigint as received_at_unix_millis
+            from sensor_measurements
+            where hardware_uid = $1
+                and measured_at >= to_timestamp($2::double precision / 1000.0)
+            order by measured_at desc
+            limit $3
+        ) recent_measurements
+        order by measured_at_unix_millis asc
         "#,
     )
     .bind(hardware_uid)
@@ -97,6 +101,34 @@ where
     sqlx::query_scalar(
         r#"
         select hardware_uid
+        from sensor_measurements
+        order by measured_at desc
+        limit 1
+        "#,
+    )
+    .fetch_optional(executor)
+    .await
+}
+
+pub async fn latest_sensor_measurement<'e, E>(
+    executor: E,
+) -> Result<Option<SensorMeasurementRecord>, sqlx::Error>
+where
+    E: PgExecutor<'e>,
+{
+    sqlx::query_as(
+        r#"
+        select
+            id,
+            event_id,
+            source_parent_hub_id,
+            source_knot_id,
+            hardware_uid,
+            sensor_kind::text as sensor_kind,
+            unit,
+            value,
+            (extract(epoch from measured_at) * 1000)::bigint as measured_at_unix_millis,
+            (extract(epoch from received_at) * 1000)::bigint as received_at_unix_millis
         from sensor_measurements
         order by measured_at desc
         limit 1
