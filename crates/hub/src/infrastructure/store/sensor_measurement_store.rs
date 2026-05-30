@@ -89,3 +89,19 @@ where
     .fetch_all(executor)
     .await
 }
+
+pub async fn latest_sensor_hardware_uid<'e, E>(executor: E) -> Result<Option<String>, sqlx::Error>
+where
+    E: PgExecutor<'e>,
+{
+    sqlx::query_scalar(
+        r#"
+        select hardware_uid
+        from sensor_measurements
+        order by measured_at desc
+        limit 1
+        "#,
+    )
+    .fetch_optional(executor)
+    .await
+}

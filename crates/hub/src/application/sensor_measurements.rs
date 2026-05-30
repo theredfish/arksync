@@ -5,7 +5,8 @@
 use crate::application::HubSensorEventEnvelope;
 use crate::domain::{SensorMeasurement, SensorMeasurementPoint, SensorTimeSeries};
 use crate::infrastructure::store::{
-    insert_sensor_measurement, list_sensor_measurements_since, SensorMeasurementRecord,
+    insert_sensor_measurement, latest_sensor_hardware_uid, list_sensor_measurements_since,
+    SensorMeasurementRecord,
 };
 use alloc::string::ToString;
 use arksync_bus::Timestamp;
@@ -70,4 +71,19 @@ where
         window_end,
         points,
     })
+}
+
+pub async fn load_latest_sensor_time_series(
+    executor: &sqlx::PgPool,
+    window_start: Timestamp,
+    window_end: Timestamp,
+    limit: i64,
+) -> Result<Option<SensorTimeSeries>, sqlx::Error> {
+    let Some(hardware_uid) = latest_sensor_hardware_uid(executor).await? else {
+        return Ok(None);
+    };
+
+    load_sensor_time_series(executor, &hardware_uid, window_start, window_end, limit)
+        .await
+        .map(Some)
 }
