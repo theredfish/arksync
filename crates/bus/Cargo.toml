@@ -1,0 +1,24 @@
+[package]
+name = "arksync-bus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+uuid-v4 = ["arksync-utils/uuid-v4"]
+
+[dependencies]
+arksync-macros.workspace = true
+arksync-utils.workspace = true
+postcard = { version = "1", default-features = false }
+serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
+
+[dev-dependencies]
+arksync-sensor = { path = "../sensor" }
+critical-section = { version = "1", features = ["std"] }
+embassy-sync = { version = "0.8", default-features = false }
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+
+[lints]
+workspace = true
