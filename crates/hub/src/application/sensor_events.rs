@@ -1,0 +1,25 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+use crate::application::{Hub, HubError};
+use arksync_bus::{EventEnvelope, Timestamp};
+use arksync_knot::domain::KnotEventSource;
+use arksync_sensor::infrastructure::events::{SensorEvent, SerialSensorPlugged};
+
+pub type HubSensorEventEnvelope = EventEnvelope<SensorEvent, KnotEventSource>;
+
+impl Hub {
+    pub fn accept_sensor_event(
+        &mut self,
+        event: HubSensorEventEnvelope,
+        received_at: Timestamp,
+    ) -> Result<(), HubError> {
+        match event.payload {
+            SensorEvent::SerialSensorPlugged(SerialSensorPlugged { metadata }) => {
+                self.observe_serial_sensor(event.source, metadata, event.occurred_at, received_at);
+                Ok(())
+            }
+        }
+    }
+}

@@ -3,8 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::detect_plugged_sensors_task;
+use crate::infrastructure::events::{SensorEvent, SerialSensorPlugged};
 use crate::sensor::Sensor;
+use crate::sensor::SensorConnection;
 use crate::services::sensor::{detect_unplugged_sensors, healthcheck};
+use arksync_bus::{EventEnvelope, EventProducer, Timestamp};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
@@ -39,19 +42,20 @@ pub struct CommandChannel {
 }
 
 /// Supervisor service that maintains the list of sensors
-pub struct SensorService {
+pub struct SensorService<'bus> {
     sensors: SensorList,
     sensor_tasks: HashMap<String, JoinHandle<()>>,
     cmd_channel: CommandChannel,
+    event_producer: Option<EventProducer<'bus, SensorEvent>>,
 }
 
-impl Default for SensorService {
+impl Default for SensorService<'_> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SensorService {
+impl<'bus> SensorService<'bus> {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(100);
 
@@ -59,7 +63,13 @@ impl SensorService {
             sensors: HashMap::new(),
             sensor_tasks: HashMap::new(),
             cmd_channel: CommandChannel { tx, rx },
+            event_producer: None,
         }
+    }
+
+    pub fn with_event_producer(mut self, event_producer: EventProducer<'bus, SensorEvent>) -> Self {
+        self.event_producer = Some(event_producer);
+        self
     }
 
     /// Main supervisor loop - maintains sensor registry
@@ -114,6 +124,7 @@ impl SensorService {
                         continue;
                     }
 
+                    self.emit_sensor_added_event(sensor.as_ref());
                     let task = Arc::clone(&sensor).run();
                     self.sensor_tasks.insert(uuid.clone(), task);
                     self.sensors.insert(uuid, sensor);
@@ -150,5 +161,120 @@ impl SensorService {
         for (_, task) in self.sensor_tasks.drain() {
             task.abort();
         }
+    }
+
+    fn emit_sensor_added_event(&mut self, sensor: &dyn Sensor) {
+        let Some(event_producer) = &mut self.event_producer else {
+            return;
+        };
+
+        let info = sensor.info();
+        let SensorConnection::Uart(metadata) = info.connection else {
+            return;
+        };
+
+        log::debug!(
+            "Sensor service produced SerialSensorPlugged for serial_number={}",
+            metadata.serial_number
+        );
+
+        let _ = event_producer.publish(EventEnvelope::new_with_id(
+            sensor_event_id(&metadata.serial_number),
+            (),
+            Timestamp::from_unix_millis(0),
+            SensorEvent::SerialSensorPlugged(SerialSensorPlugged { metadata }),
+        ));
+    }
+}
+
+fn sensor_event_id(serial_number: &str) -> arksync_bus::EventId {
+    let mut bytes = [0; 16];
+
+    for (index, byte) in serial_number.as_bytes().iter().take(16).enumerate() {
+        bytes[index] = *byte;
+    }
+
+    arksync_bus::EventId::new_with_random_bytes(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::{Result, SensorError};
+    use crate::sensor::{SensorInfo, SensorName, SensorState, SensorStateReason};
+    use crate::serial_port::{SerialPortMetadata, DEFAULT_BAUD_RATE};
+    use chrono::Utc;
+
+    struct MockSensor {
+        metadata: SerialPortMetadata,
+    }
+
+    impl MockSensor {
+        fn new(serial_number: &str) -> Self {
+            Self {
+                metadata: SerialPortMetadata {
+                    port_name: "/dev/ttyUSB0".to_string(),
+                    serial_number: serial_number.to_string(),
+                    baud_rate: DEFAULT_BAUD_RATE,
+                },
+            }
+        }
+    }
+
+    impl Sensor for MockSensor {
+        fn info(&self) -> SensorInfo {
+            let now = Utc::now();
+
+            SensorInfo {
+                firmware: 1.0,
+                name: SensorName::Unnamed,
+                state: SensorState::Active,
+                state_reason: SensorStateReason::Plugged,
+                state_since: now,
+                last_activity: now,
+                consecutive_failures: 0,
+                connection: SensorConnection::Uart(self.metadata.clone()),
+            }
+        }
+
+        fn read_measurement(&self) -> Result<f64> {
+            Err(SensorError::message("mock sensor does not read"))
+        }
+
+        fn check_measurement(&self, _value: f64) -> Option<SensorStateReason> {
+            None
+        }
+
+        fn record_measurement(&self, _value: f64) {}
+
+        fn record_error(&self, _err: &SensorError) {}
+
+        fn mark_unplugged(&self) {}
+    }
+
+    #[tokio::test]
+    async fn emits_sensor_plugged_event_when_sensor_is_added() {
+        let (event_tx, mut event_rx) = mpsc::channel(1);
+        let mut bus = arksync_bus::EventBus::new();
+        bus.subscribe(move |event: EventEnvelope<SensorEvent>| {
+            event_tx
+                .try_send(event)
+                .map_err(|_| arksync_bus::EventBusError::HandlerRejected)
+        });
+        let mut service = SensorService::new().with_event_producer(bus.producer());
+        let sensor = Arc::new(MockSensor::new("rtd-serial-1")) as Arc<dyn Sensor>;
+
+        service.handle_cmd(SensorServiceCmd::AddSensors {
+            sensors: vec![("rtd-serial-1".to_string(), sensor)],
+        });
+
+        let event = event_rx.recv().await.unwrap();
+        service.abort_all_sensor_tasks();
+
+        assert!(matches!(
+            event.payload,
+            SensorEvent::SerialSensorPlugged(SerialSensorPlugged { metadata })
+                if metadata.serial_number == "rtd-serial-1"
+        ));
     }
 }

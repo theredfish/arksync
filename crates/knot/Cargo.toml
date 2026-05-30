@@ -6,12 +6,18 @@ license.workspace = true
 
 [features]
 default = []
+std = []
+local-sensor-service = ["std", "arksync-bus", "arksync-sensor", "log", "tokio/sync"]
 uuid-v4 = ["arksync-utils/uuid-v4"]
 
 [dependencies]
+arksync-bus = { workspace = true, optional = true }
 arksync-macros.workspace = true
+arksync-sensor = { workspace = true, optional = true }
 arksync-utils.workspace = true
-serde = { version = "1", default-features = false, features = ["derive"] }
+log = { workspace = true, optional = true }
+serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
+tokio = { workspace = true, optional = true }
 
 [lints]
 workspace = true

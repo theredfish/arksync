@@ -3,7 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 pub mod id;
+pub mod sensor;
 pub mod source;
 
 pub use id::*;
+pub use sensor::*;
 pub use source::*;

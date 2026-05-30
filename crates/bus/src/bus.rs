@@ -68,8 +68,8 @@ where
 }
 
 pub struct EventSubscription<Payload, Source = ()> {
-    filter: Box<dyn EventFilter<Payload, Source>>,
-    handler: Box<dyn EventHandler<Payload, Source>>,
+    filter: Box<dyn EventFilter<Payload, Source> + Send>,
+    handler: Box<dyn EventHandler<Payload, Source> + Send>,
     delivery: Delivery,
     persistence: Persistence,
 }
@@ -77,8 +77,8 @@ pub struct EventSubscription<Payload, Source = ()> {
 impl<Payload, Source> EventSubscription<Payload, Source> {
     pub fn local<Filter, Handler>(filter: Filter, handler: Handler) -> Self
     where
-        Filter: EventFilter<Payload, Source> + 'static,
-        Handler: EventHandler<Payload, Source> + 'static,
+        Filter: EventFilter<Payload, Source> + Send + 'static,
+        Handler: EventHandler<Payload, Source> + Send + 'static,
     {
         Self {
             filter: Box::new(filter),
@@ -128,15 +128,15 @@ impl<Payload, Source> EventBus<Payload, Source> {
 
     pub fn subscribe<Handler>(&mut self, handler: Handler)
     where
-        Handler: EventHandler<Payload, Source> + 'static,
+        Handler: EventHandler<Payload, Source> + Send + 'static,
     {
         self.subscribe_where((), handler);
     }
 
     pub fn subscribe_where<Filter, Handler>(&mut self, filter: Filter, handler: Handler)
     where
-        Filter: EventFilter<Payload, Source> + 'static,
-        Handler: EventHandler<Payload, Source> + 'static,
+        Filter: EventFilter<Payload, Source> + Send + 'static,
+        Handler: EventHandler<Payload, Source> + Send + 'static,
     {
         self.add_subscription(EventSubscription::local(filter, handler));
     }
