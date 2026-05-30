@@ -8,6 +8,10 @@ extern crate alloc;
 
 pub mod application;
 pub mod domain;
+#[cfg(feature = "local-knot-runtime")]
+pub mod infrastructure;
 
 pub use application::*;
 pub use domain::*;
+#[cfg(feature = "local-knot-runtime")]
+pub use infrastructure::*;

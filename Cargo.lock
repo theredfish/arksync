@@ -229,12 +229,14 @@ name = "arksync-hub"
 version = "0.1.0"
 dependencies = [
  "arksync-bus",
+ "arksync-db",
  "arksync-knot",
  "arksync-macros",
  "arksync-sensor",
  "arksync-utils",
  "log",
  "serde",
+ "sqlx",
  "tokio",
 ]
 

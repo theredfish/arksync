@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::application::Hub;
+use crate::application::{persist_sensor_measurement, Hub};
 use arksync_bus::Timestamp;
 use arksync_knot::application::LocalKnotSensorEventEnvelope;
 use arksync_knot::application::LocalKnotSensorService;
@@ -23,13 +23,28 @@ impl LocalKnotRuntime {
 
         while let Some(event) = event_rx.recv().await {
             log::debug!("Hub received local Knot sensor event: {event:?}");
+            let received_at = timestamp_now();
 
-            if let Err(err) = hub.accept_sensor_event(event, timestamp_now()) {
+            match persist_sensor_measurement(arksync_db::pool(), &event, received_at).await {
+                Ok(Some(measurement)) => {
+                    log::info!(
+                        "Hub persisted sensor measurement hardware_uid={} value={}",
+                        measurement.hardware_uid,
+                        measurement.value
+                    );
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    log::error!("Hub failed to persist sensor measurement: {err:?}");
+                }
+            }
+
+            if let Err(err) = hub.accept_sensor_event(event, received_at) {
                 log::error!("Hub rejected local Knot sensor event: {err:?}");
                 continue;
             }
 
-            log::info!("Hub fake-persisted local Knot sensor event projection");
+            log::debug!("Hub projected local Knot sensor event");
         }
 
         let _ = knot.await;

@@ -4,6 +4,7 @@
 
 use crate::domain::SensorId;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use arksync_bus::Timestamp;
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::{MeasurementUnit, SensorKind};
@@ -58,6 +59,23 @@ pub struct SensorMeasurement {
     pub unit: MeasurementUnit,
     pub measured_at: Timestamp,
     pub received_at: Timestamp,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SensorMeasurementPoint {
+    pub measured_at: Timestamp,
+    pub value: f64,
+    pub unit: MeasurementUnit,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SensorTimeSeries {
+    pub hardware_uid: String,
+    pub window_start: Timestamp,
+    pub window_end: Timestamp,
+    pub points: Vec<SensorMeasurementPoint>,
 }
 
 impl SensorOverview {
