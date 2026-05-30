@@ -6,6 +6,7 @@ mod relay;
 
 use arksync_bus::Timestamp;
 use arksync_hub::SensorTimeSeries;
+use chrono::{Local, TimeZone};
 use serde::Serialize;
 use std::{
     collections::HashSet,
@@ -83,7 +84,7 @@ async fn water_temperature_sensor(app: AppHandle) {
         loop {
             interval.tick().await;
 
-            let sensor_data = load_temperature_series(Duration::from_secs(10 * 60), 600).await;
+            let sensor_data = load_temperature_series(Duration::from_secs(10 * 60), 120).await;
 
             log::debug!("{sensor_data:#?}");
 
@@ -111,7 +112,7 @@ async fn air_temperature_sensor(app: AppHandle) {
         loop {
             interval.tick().await;
 
-            let sensor_data = load_temperature_gauge(Duration::from_secs(10 * 60), 1).await;
+            let sensor_data = load_temperature_gauge().await;
 
             log::debug!("{sensor_data:#?}");
 
@@ -140,10 +141,16 @@ async fn load_temperature_series(window: Duration, limit: i64) -> TemperatureSer
     }
 }
 
-async fn load_temperature_gauge(window: Duration, limit: i64) -> TemperatureGaugeData {
-    let value = load_latest_time_series(window, limit)
+async fn load_temperature_gauge() -> TemperatureGaugeData {
+    let value = arksync_hub::load_latest_sensor_measurement(arksync_db::pool())
         .await
-        .and_then(|series| series.points.last().map(|point| point.value as f32))
+        .map_err(|err| {
+            log::error!("Failed to load latest sensor measurement: {err:?}");
+            err
+        })
+        .ok()
+        .flatten()
+        .map(|measurement| measurement.value as f32)
         .unwrap_or_default();
 
     TemperatureGaugeData {
@@ -177,8 +184,16 @@ fn measurement_labels(series: &SensorTimeSeries) -> Vec<String> {
     series
         .points
         .iter()
-        .map(|point| format!("{}s", point.measured_at.unix_millis / 1000))
+        .map(|point| format_timestamp(point.measured_at))
         .collect()
+}
+
+fn format_timestamp(timestamp: Timestamp) -> String {
+    Local
+        .timestamp_millis_opt(timestamp.unix_millis)
+        .single()
+        .map(|datetime| datetime.format("%H:%M:%S").to_string())
+        .unwrap_or_else(|| "--:--:--".to_string())
 }
 
 fn timestamp_now() -> Timestamp {
