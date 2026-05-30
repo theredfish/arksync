@@ -163,6 +163,7 @@ version = "0.1.0"
 dependencies = [
  "arksync-actuator",
  "arksync-db",
+ "arksync-hub",
  "eyre",
  "log",
  "rand 0.9.0",
@@ -227,18 +228,27 @@ dependencies = [
 name = "arksync-hub"
 version = "0.1.0"
 dependencies = [
+ "arksync-bus",
+ "arksync-knot",
  "arksync-macros",
+ "arksync-sensor",
  "arksync-utils",
+ "log",
  "serde",
+ "tokio",
 ]
 
 [[package]]
 name = "arksync-knot"
 version = "0.1.0"
 dependencies = [
+ "arksync-bus",
  "arksync-macros",
+ "arksync-sensor",
  "arksync-utils",
+ "log",
  "serde",
+ "tokio",
 ]
 
 [[package]]
@@ -257,8 +267,10 @@ dependencies = [
 name = "arksync-sensor"
 version = "0.1.0"
 dependencies = [
+ "arksync-bus",
  "chrono",
  "eyre",
+ "log",
  "serde",
  "serialport",
  "test-case",

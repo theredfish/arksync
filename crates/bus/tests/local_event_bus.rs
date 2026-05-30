@@ -6,7 +6,7 @@ use arksync_bus::{
     EventBus, EventBusError, EventEnvelope, EventHandler, EventId, PostcardDecode, PostcardEncode,
     Timestamp,
 };
-use arksync_sensor::infrastructure::events::{SensorEvent, SerialSensorObserved};
+use arksync_sensor::infrastructure::events::{SensorEvent, SerialSensorPlugged};
 use arksync_sensor::serial_port::{SerialPortMetadata, DEFAULT_BAUD_RATE};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
@@ -51,7 +51,7 @@ fn sensor_event() -> SensorEventEnvelope {
             label: "rtd-knot".to_string(),
         },
         Timestamp::from_unix_millis(1_779_840_000_000),
-        SensorEvent::SerialSensorObserved(SerialSensorObserved {
+        SensorEvent::SerialSensorPlugged(SerialSensorPlugged {
             metadata: SerialPortMetadata {
                 port_name: "/dev/ttyUSB0".to_string(),
                 serial_number: "rtd-serial-1".to_string(),
@@ -68,7 +68,7 @@ fn sends_sensor_event_through_embassy_local_event_bus() {
         |event: &SensorEventEnvelope| {
             matches!(
                 event.payload,
-                SensorEvent::SerialSensorObserved(SerialSensorObserved { .. })
+                SensorEvent::SerialSensorPlugged(SerialSensorPlugged { .. })
             )
         },
         ChannelHandler(SENSOR_EVENTS.sender()),
@@ -90,7 +90,7 @@ async fn sends_sensor_event_through_tokio_local_event_bus() {
         |event: &SensorEventEnvelope| {
             matches!(
                 event.payload,
-                SensorEvent::SerialSensorObserved(SerialSensorObserved { .. })
+                SensorEvent::SerialSensorPlugged(SerialSensorPlugged { .. })
             )
         },
         TokioHandler(hub_tx),
@@ -131,7 +131,7 @@ async fn bridges_embassy_knot_channel_to_tokio_hub_channel() {
         |event: &SensorEventEnvelope| {
             matches!(
                 event.payload,
-                SensorEvent::SerialSensorObserved(SerialSensorObserved { .. })
+                SensorEvent::SerialSensorPlugged(SerialSensorPlugged { .. })
             )
         },
         ChannelHandler(KNOT_EVENTS.sender()),

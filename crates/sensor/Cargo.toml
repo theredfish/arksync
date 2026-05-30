@@ -9,8 +9,10 @@ license.workspace = true
 # crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
+arksync-bus.workspace = true
 chrono.workspace = true
 eyre.workspace = true
+log.workspace = true
 serde.workspace = true
 serialport.workspace = true
 tokio = { workspace = true, features = ["full"] }

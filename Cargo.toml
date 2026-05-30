@@ -30,6 +30,7 @@ arksync-bus = { path = "crates/bus" }
 arksync-hub = { path = "crates/hub" }
 arksync-knot = { path = "crates/knot" }
 arksync-macros = { path = "crates/macros" }
+arksync-sensor = { path = "crates/sensor" }
 arksync-utils = { path = "crates/utils" }
 arksync-users = { path = "crates/users" }
 charming = { version = "0.6.0", features = ["wasm"] }

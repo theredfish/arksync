@@ -22,6 +22,7 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             tauri::async_runtime::block_on(async { arksync_db::run().await })
                 .map_err(|err| -> Box<dyn std::error::Error> { err.into() })?;
 
+            tauri::async_runtime::spawn(arksync_hub::LocalKnotRuntime::run());
             relay::spawn_debug_loop(app.handle().clone());
             Ok(())
         })
