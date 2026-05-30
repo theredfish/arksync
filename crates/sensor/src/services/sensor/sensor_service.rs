@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::detect_plugged_sensors_task;
-use crate::infrastructure::events::{SensorEvent, SerialSensorPlugged};
+use crate::infrastructure::events::{SensorEvent, SensorMeasurementRecorded, SerialSensorPlugged};
 use crate::sensor::Sensor;
 use crate::sensor::SensorConnection;
 use crate::services::sensor::{detect_unplugged_sensors, healthcheck};
@@ -46,7 +46,10 @@ pub struct SensorService<'bus> {
     sensors: SensorList,
     sensor_tasks: HashMap<String, JoinHandle<()>>,
     cmd_channel: CommandChannel,
+    measurement_tx: mpsc::Sender<SensorMeasurementRecorded>,
+    measurement_rx: mpsc::Receiver<SensorMeasurementRecorded>,
     event_producer: Option<EventProducer<'bus, SensorEvent>>,
+    event_counter: u128,
 }
 
 impl Default for SensorService<'_> {
@@ -58,12 +61,16 @@ impl Default for SensorService<'_> {
 impl<'bus> SensorService<'bus> {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(100);
+        let (measurement_tx, measurement_rx) = mpsc::channel(100);
 
         Self {
             sensors: HashMap::new(),
             sensor_tasks: HashMap::new(),
             cmd_channel: CommandChannel { tx, rx },
+            measurement_tx,
+            measurement_rx,
             event_producer: None,
+            event_counter: 0,
         }
     }
 
@@ -86,6 +93,10 @@ impl<'bus> SensorService<'bus> {
                     tokio::select! {
                         Some(cmd) = self.cmd_channel.rx.recv() => {
                             self.handle_cmd(cmd);
+                        }
+
+                        Some(measurement) = self.measurement_rx.recv() => {
+                            self.emit_measurement_recorded_event(measurement);
                         }
 
                         _ = tokio::signal::ctrl_c() => {
@@ -125,7 +136,7 @@ impl<'bus> SensorService<'bus> {
                     }
 
                     self.emit_sensor_added_event(sensor.as_ref());
-                    let task = Arc::clone(&sensor).run();
+                    let task = Arc::clone(&sensor).run(Some(self.measurement_tx.clone()));
                     self.sensor_tasks.insert(uuid.clone(), task);
                     self.sensors.insert(uuid, sensor);
                 }
@@ -185,6 +196,39 @@ impl<'bus> SensorService<'bus> {
             SensorEvent::SerialSensorPlugged(SerialSensorPlugged { metadata }),
         ));
     }
+
+    fn emit_measurement_recorded_event(&mut self, measurement: SensorMeasurementRecorded) {
+        self.event_counter = self.event_counter.wrapping_add(1);
+        let Some(event_producer) = &mut self.event_producer else {
+            return;
+        };
+
+        log::debug!(
+            "Sensor service produced SensorMeasurementRecorded for hardware_uid={} value={}",
+            measurement.sensor.hardware_uid,
+            measurement.measurement.value
+        );
+
+        let _ = event_producer.publish(EventEnvelope::new_with_id(
+            event_id_from_counter(self.event_counter),
+            (),
+            timestamp_now(),
+            SensorEvent::SensorMeasurementRecorded(measurement),
+        ));
+    }
+}
+
+fn event_id_from_counter(counter: u128) -> arksync_bus::EventId {
+    arksync_bus::EventId::new_with_random_bytes(counter.to_be_bytes())
+}
+
+fn timestamp_now() -> Timestamp {
+    let unix_millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or_default();
+
+    Timestamp::from_unix_millis(unix_millis)
 }
 
 fn sensor_event_id(serial_number: &str) -> arksync_bus::EventId {

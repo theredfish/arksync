@@ -20,6 +20,23 @@ impl Hub {
                 self.observe_serial_sensor(event.source, metadata, event.occurred_at, received_at);
                 Ok(())
             }
+            SensorEvent::SensorMeasurementRecorded(measurement) => {
+                #[cfg(feature = "log")]
+                log::debug!(
+                    "Hub accepted sensor measurement hardware_uid={} value={}",
+                    measurement.sensor.hardware_uid,
+                    measurement.measurement.value
+                );
+
+                self.record_sensor_measurement(
+                    event.source,
+                    measurement,
+                    event.occurred_at,
+                    received_at,
+                );
+
+                Ok(())
+            }
         }
     }
 }
