@@ -1,0 +1,16 @@
+[package]
+name = "arksync-utils"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+std = ["uuid/std"]
+uuid-v4 = ["std", "uuid/v4"]
+
+[dependencies]
+uuid = { version = "1", default-features = false }
+
+[lints]
+workspace = true

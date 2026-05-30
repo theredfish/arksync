@@ -2,11 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-pub mod core;
-pub mod error;
-pub mod ezo;
-pub mod i2c_bus;
-pub mod infrastructure;
-pub mod sensor;
-pub mod serial_port;
-pub mod services;
+use proc_macro::TokenStream;
+
+mod uuid_v4_macro;
+
+#[proc_macro_derive(UuidV4)]
+pub fn derive_uuid_v4(input: TokenStream) -> TokenStream {
+    uuid_v4_macro::derive(input)
+}

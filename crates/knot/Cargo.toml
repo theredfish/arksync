@@ -1,0 +1,17 @@
+[package]
+name = "arksync-knot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+uuid-v4 = ["arksync-utils/uuid-v4"]
+
+[dependencies]
+arksync-macros.workspace = true
+arksync-utils.workspace = true
+serde = { version = "1", default-features = false, features = ["derive"] }
+
+[lints]
+workspace = true

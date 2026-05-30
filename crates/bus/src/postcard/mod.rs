@@ -2,11 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-pub mod core;
-pub mod error;
-pub mod ezo;
-pub mod i2c_bus;
-pub mod infrastructure;
-pub mod sensor;
-pub mod serial_port;
-pub mod services;
+//! Postcard support for EventBus envelopes and bounded-context events.
+
+mod postcard_decode;
+mod postcard_encode;
+
+pub use postcard::Error;
+pub use postcard_decode::*;
+pub use postcard_encode::*;
