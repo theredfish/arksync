@@ -4,13 +4,15 @@
 
 use crate::application::LocalKnotCommandHandler;
 use crate::domain::{
-    ObservedSerialSensor, RegisteredSensor, SensorId, SensorOverview, SensorRegistrationStatus,
+    ObservedSerialSensor, RegisteredSensor, SensorId, SensorMeasurement, SensorOverview,
+    SensorRegistrationStatus,
 };
 use alloc::string::String;
 use alloc::vec::Vec;
 use arksync_bus::Timestamp;
 use arksync_knot::application::KnotCommand;
 use arksync_knot::domain::KnotEventSource;
+use arksync_sensor::infrastructure::events::SensorMeasurementRecorded;
 use arksync_sensor::serial_port::SerialPortMetadata;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,6 +46,7 @@ pub struct RemoveSensor {
 pub struct Hub {
     registered_sensors: Vec<RegisteredSensor>,
     observed_serial_sensors: Vec<ObservedSerialSensor>,
+    sensor_measurements: Vec<SensorMeasurement>,
 }
 
 impl Hub {
@@ -139,6 +142,10 @@ impl Hub {
         overview
     }
 
+    pub fn list_sensor_measurements(&self) -> Vec<SensorMeasurement> {
+        self.sensor_measurements.clone()
+    }
+
     pub fn handle_local_knot_command<Handler>(
         &mut self,
         handler: &mut Handler,
@@ -176,6 +183,24 @@ impl Hub {
             first_observed_at: observed_at,
             last_observed_at: observed_at,
             last_received_at: received_at,
+        });
+    }
+
+    pub(crate) fn record_sensor_measurement(
+        &mut self,
+        source: KnotEventSource,
+        event: SensorMeasurementRecorded,
+        measured_at: Timestamp,
+        received_at: Timestamp,
+    ) {
+        self.sensor_measurements.push(SensorMeasurement {
+            source,
+            hardware_uid: event.sensor.hardware_uid,
+            kind: event.sensor.kind,
+            value: event.measurement.value,
+            unit: event.measurement.unit,
+            measured_at,
+            received_at,
         });
     }
 }

@@ -4,11 +4,16 @@
 
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration, Instant};
 
 use crate::error::{Result, SensorError};
 use crate::i2c_bus::I2cConnection;
+use crate::infrastructure::events::{
+    MeasuredSensor, MeasurementUnit, SensorConnectionMetadata, SensorKind, SensorMeasurement,
+    SensorMeasurementRecorded,
+};
 use crate::serial_port::SerialPortMetadata;
 
 #[derive(Debug, Clone, Default)]
@@ -66,7 +71,10 @@ pub trait Sensor: Send + Sync + 'static {
     fn mark_unplugged(&self);
 
     /// Spawn the main background task for this sensor.
-    fn run(self: Arc<Self>) -> JoinHandle<()> {
+    fn run(
+        self: Arc<Self>,
+        measurement_tx: Option<mpsc::Sender<SensorMeasurementRecorded>>,
+    ) -> JoinHandle<()> {
         tokio::spawn(async move {
             // This is based on Atlas Scientific read time, plus some time to not
             // be at the edge of the value disponibility
@@ -95,6 +103,16 @@ pub trait Sensor: Send + Sync + 'static {
                     Ok(value) => {
                         self.record_measurement(value);
                         println!("Sensor reading: {value:.3}");
+                        if let Some(measurement_tx) = &measurement_tx {
+                            let info = self.info();
+                            let _ = measurement_tx.try_send(SensorMeasurementRecorded {
+                                sensor: measured_sensor_from_info(&info),
+                                measurement: SensorMeasurement {
+                                    value,
+                                    unit: measurement_unit_from_info(&info),
+                                },
+                            });
+                        }
                     }
                     Err(err) => {
                         self.record_error(&err);
@@ -104,4 +122,29 @@ pub trait Sensor: Send + Sync + 'static {
             }
         })
     }
+}
+
+fn measured_sensor_from_info(info: &SensorInfo) -> MeasuredSensor {
+    match &info.connection {
+        SensorConnection::Uart(metadata) => MeasuredSensor {
+            hardware_uid: metadata.serial_number.clone(),
+            kind: sensor_kind_from_info(info),
+            connection: SensorConnectionMetadata::Uart(metadata.clone()),
+        },
+        SensorConnection::I2c(connection) => MeasuredSensor {
+            hardware_uid: format!("i2c:{:02x}", connection.address),
+            kind: sensor_kind_from_info(info),
+            connection: SensorConnectionMetadata::I2c {
+                address: connection.address,
+            },
+        },
+    }
+}
+
+fn sensor_kind_from_info(_info: &SensorInfo) -> SensorKind {
+    SensorKind::Temperature
+}
+
+fn measurement_unit_from_info(_info: &SensorInfo) -> MeasurementUnit {
+    MeasurementUnit::Celsius
 }
