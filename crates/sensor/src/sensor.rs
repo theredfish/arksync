@@ -23,6 +23,8 @@ pub enum SensorName {
     Named(String),
 }
 
+pub const DEFAULT_MEASUREMENT_INTERVAL: Duration = Duration::from_millis(1200);
+
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SensorState {
     Active,
@@ -54,6 +56,7 @@ pub enum SensorConnection {
 pub struct SensorInfo {
     pub firmware: f64,
     pub name: SensorName,
+    pub device_uid: Option<String>,
     pub state: SensorState,
     pub state_reason: SensorStateReason,
     pub state_since: DateTime<Utc>,
@@ -66,6 +69,15 @@ pub trait Sensor: Send + Sync + 'static {
     fn info(&self) -> SensorInfo;
     fn read_measurement(&self) -> Result<f64>;
     fn check_measurement(&self, value: f64) -> Option<SensorStateReason>;
+    fn ensure_device_uid(&self) -> Result<String> {
+        let info = self.info();
+
+        Ok(info
+            .device_uid
+            .clone()
+            .unwrap_or_else(|| generated_device_uid_from_info(&info)))
+    }
+
     fn record_measurement(&self, value: f64);
     fn record_error(&self, err: &SensorError);
     fn mark_unplugged(&self);
@@ -78,7 +90,7 @@ pub trait Sensor: Send + Sync + 'static {
         tokio::spawn(async move {
             // This is based on Atlas Scientific read time, plus some time to not
             // be at the edge of the value disponibility
-            let mut ticker = interval(Duration::from_millis(1200));
+            let mut ticker = interval(DEFAULT_MEASUREMENT_INTERVAL);
             let unreachable_retry_interval = Duration::from_secs(30);
             let mut last_unreachable_retry = Instant::now() - unreachable_retry_interval;
 
@@ -105,13 +117,16 @@ pub trait Sensor: Send + Sync + 'static {
                         println!("Sensor reading: {value:.3}");
                         if let Some(measurement_tx) = &measurement_tx {
                             let info = self.info();
-                            let _ = measurement_tx.try_send(SensorMeasurementRecorded {
-                                sensor: measured_sensor_from_info(&info),
-                                measurement: SensorMeasurement {
-                                    value,
-                                    unit: measurement_unit_from_info(&info),
-                                },
-                            });
+                            if let Some(device_uid) = info.device_uid.clone() {
+                                let _ = measurement_tx.try_send(SensorMeasurementRecorded {
+                                    device_uid,
+                                    sensor: measured_sensor_from_info(&info),
+                                    measurement: SensorMeasurement {
+                                        value,
+                                        unit: measurement_unit_from_info(&info),
+                                    },
+                                });
+                            }
                         }
                     }
                     Err(err) => {
@@ -124,7 +139,37 @@ pub trait Sensor: Send + Sync + 'static {
     }
 }
 
-fn measured_sensor_from_info(info: &SensorInfo) -> MeasuredSensor {
+pub fn is_arksync_device_uid(device_uid: &str) -> bool {
+    device_uid.len() <= 16
+        && device_uid.starts_with("RTD_")
+        && device_uid
+            .chars()
+            .all(|char| char.is_ascii_uppercase() || char.is_ascii_digit() || char == '_')
+}
+
+pub fn generated_device_uid_from_info(info: &SensorInfo) -> String {
+    let mut suffix = match &info.connection {
+        SensorConnection::Uart(metadata) => sanitize_device_uid_suffix(&metadata.serial_number),
+        SensorConnection::I2c(connection) => format!("I2C{:02X}", connection.address),
+    };
+
+    if suffix.is_empty() {
+        suffix = "UNKNOWN".to_string();
+    }
+
+    suffix.truncate(12);
+    format!("RTD_{suffix}")
+}
+
+fn sanitize_device_uid_suffix(value: &str) -> String {
+    value
+        .chars()
+        .filter(|char| char.is_ascii_alphanumeric())
+        .map(|char| char.to_ascii_uppercase())
+        .collect()
+}
+
+pub(crate) fn measured_sensor_from_info(info: &SensorInfo) -> MeasuredSensor {
     match &info.connection {
         SensorConnection::Uart(metadata) => MeasuredSensor {
             hardware_uid: metadata.serial_number.clone(),

@@ -7,6 +7,7 @@ pub mod i2c;
 pub mod uart;
 
 use crate::sensor::SensorConnection;
+use std::time::Duration;
 
 pub use self::error::*;
 
@@ -55,5 +56,57 @@ pub trait CommandTransport {
 pub trait Driver: CommandTransport {
     fn connection_info(&self) -> SensorConnection;
     fn device_info(&mut self) -> Result<DeviceInfo>;
+    fn device_name(&mut self) -> Result<Option<String>> {
+        let response = self.send_command(b"Name,?")?;
+
+        parse_name_response(&response)
+    }
+
+    fn set_device_name(&mut self, device_name: &str) -> Result<()> {
+        let command = format!("Name,{device_name}");
+        self.send_command(command.as_bytes())?;
+        std::thread::sleep(Duration::from_millis(300));
+
+        Ok(())
+    }
+
+    fn clear_device_name(&mut self) -> Result<()> {
+        self.send_command(b"Name,")?;
+        std::thread::sleep(Duration::from_millis(300));
+
+        Ok(())
+    }
+
     fn status(&mut self) -> Result<Status>;
+}
+
+fn parse_name_response(response: &str) -> Result<Option<String>> {
+    let response = response.trim();
+
+    let name = response
+        .strip_prefix("?NAME,")
+        .or_else(|| response.strip_prefix("?Name,"))
+        .or_else(|| response.strip_prefix("?name,"))
+        .unwrap_or(response)
+        .trim();
+
+    if name.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(name.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_atlas_name_response() {
+        assert_eq!(
+            parse_name_response("?Name,RTD_ABC123").unwrap(),
+            Some("RTD_ABC123".to_string())
+        );
+        assert_eq!(parse_name_response("?Name,").unwrap(), None);
+    }
 }

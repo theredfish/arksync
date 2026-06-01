@@ -5,7 +5,9 @@
 use crate::application::{Hub, HubError};
 use arksync_bus::{EventEnvelope, Timestamp};
 use arksync_knot::domain::KnotEventSource;
-use arksync_sensor::infrastructure::events::{SensorEvent, SerialSensorPlugged};
+use arksync_sensor::infrastructure::events::{
+    SensorEvent, SensorProvisioned, SensorProvisioningConflict, SerialSensorPlugged,
+};
 
 pub type HubSensorEventEnvelope = EventEnvelope<SensorEvent, KnotEventSource>;
 
@@ -34,6 +36,20 @@ impl Hub {
                     event.occurred_at,
                     received_at,
                 );
+
+                Ok(())
+            }
+            SensorEvent::SensorProvisioned(SensorProvisioned { device_uid, .. }) => {
+                #[cfg(feature = "log")]
+                log::debug!("Hub accepted provisioned sensor device_uid={device_uid}");
+
+                Ok(())
+            }
+            SensorEvent::SensorProvisioningConflict(SensorProvisioningConflict {
+                reason, ..
+            }) => {
+                #[cfg(feature = "log")]
+                log::debug!("Hub accepted sensor provisioning conflict reason={reason}");
 
                 Ok(())
             }
