@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration, Instant};
 
+use crate::device_uid::DeviceUid;
 use crate::error::{Result, SensorError};
 use crate::i2c_bus::I2cConnection;
 use crate::infrastructure::events::{
@@ -56,7 +57,7 @@ pub enum SensorConnection {
 pub struct SensorInfo {
     pub firmware: f64,
     pub name: SensorName,
-    pub device_uid: Option<String>,
+    pub device_uid: Option<DeviceUid>,
     pub state: SensorState,
     pub state_reason: SensorStateReason,
     pub state_since: DateTime<Utc>,
@@ -69,13 +70,10 @@ pub trait Sensor: Send + Sync + 'static {
     fn info(&self) -> SensorInfo;
     fn read_measurement(&self) -> Result<f64>;
     fn check_measurement(&self, value: f64) -> Option<SensorStateReason>;
-    fn ensure_device_uid(&self) -> Result<String> {
+    fn ensure_device_uid(&self) -> Result<DeviceUid> {
         let info = self.info();
 
-        Ok(info
-            .device_uid
-            .clone()
-            .unwrap_or_else(|| generated_device_uid_from_info(&info)))
+        Ok(info.device_uid.clone().unwrap_or_else(DeviceUid::new))
     }
 
     fn record_measurement(&self, value: f64);
@@ -137,36 +135,6 @@ pub trait Sensor: Send + Sync + 'static {
             }
         })
     }
-}
-
-pub fn is_arksync_device_uid(device_uid: &str) -> bool {
-    device_uid.len() <= 16
-        && device_uid.starts_with("RTD_")
-        && device_uid
-            .chars()
-            .all(|char| char.is_ascii_uppercase() || char.is_ascii_digit() || char == '_')
-}
-
-pub fn generated_device_uid_from_info(info: &SensorInfo) -> String {
-    let mut suffix = match &info.connection {
-        SensorConnection::Uart(metadata) => sanitize_device_uid_suffix(&metadata.serial_number),
-        SensorConnection::I2c(connection) => format!("I2C{:02X}", connection.address),
-    };
-
-    if suffix.is_empty() {
-        suffix = "UNKNOWN".to_string();
-    }
-
-    suffix.truncate(12);
-    format!("RTD_{suffix}")
-}
-
-fn sanitize_device_uid_suffix(value: &str) -> String {
-    value
-        .chars()
-        .filter(|char| char.is_ascii_alphanumeric())
-        .map(|char| char.to_ascii_uppercase())
-        .collect()
 }
 
 pub(crate) fn measured_sensor_from_info(info: &SensorInfo) -> MeasuredSensor {

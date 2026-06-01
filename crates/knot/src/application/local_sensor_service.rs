@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::domain::{KnotEventSource, KnotId, ParentHubId};
+use crate::domain::KnotEventSource;
 use arksync_bus::{EventBus, EventBusError, EventEnvelope, EventHandler, EventId, Timestamp};
 use arksync_sensor::infrastructure::events::SensorEvent;
 use arksync_sensor::services::SensorService;
@@ -21,28 +21,23 @@ pub struct LocalKnotSensorService {
     source: KnotEventSource,
 }
 
-impl Default for LocalKnotSensorService {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl LocalKnotSensorService {
-    pub fn new() -> Self {
+    pub fn new(source: KnotEventSource) -> Self {
         Self {
             event_tx: mpsc::channel(1).0,
-            source: local_knot_source(),
+            source,
         }
     }
 
-    pub fn with_event_sender(event_tx: mpsc::Sender<LocalKnotSensorEventEnvelope>) -> Self {
-        Self {
-            event_tx,
-            source: local_knot_source(),
-        }
+    pub fn with_event_sender(
+        event_tx: mpsc::Sender<LocalKnotSensorEventEnvelope>,
+        source: KnotEventSource,
+    ) -> Self {
+        Self { event_tx, source }
     }
 
     pub async fn run(self) {
+        arksync_sensor::device_uid::rng::init_from_os_rng();
         let (sensor_event_tx, mut sensor_event_rx) = mpsc::channel(100);
         let mut sensor_bus = EventBus::new();
         sensor_bus.subscribe(TokioSensorEventHandler(sensor_event_tx));
@@ -74,13 +69,6 @@ impl LocalKnotSensorService {
 
         sensor_service.run().await;
         bridge.abort();
-    }
-}
-
-fn local_knot_source() -> KnotEventSource {
-    KnotEventSource::Knot {
-        parent_hub_id: ParentHubId::new_with_random_bytes([1; 16]),
-        knot_id: KnotId::new_with_random_bytes([2; 16]),
     }
 }
 
