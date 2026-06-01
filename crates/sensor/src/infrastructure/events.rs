@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum SensorEvent {
     SerialSensorPlugged(SerialSensorPlugged),
+    SensorProvisioned(SensorProvisioned),
+    SensorProvisioningConflict(SensorProvisioningConflict),
     SensorMeasurementRecorded(SensorMeasurementRecorded),
 }
 
@@ -20,9 +22,24 @@ pub struct SerialSensorPlugged {
     pub metadata: SerialPortMetadata,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SensorProvisioned {
+    pub device_uid: String,
+    pub sensor: MeasuredSensor,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SensorProvisioningConflict {
+    pub reason: String,
+    pub sensor: MeasuredSensor,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SensorMeasurementRecorded {
+    pub device_uid: String,
     pub sensor: MeasuredSensor,
     pub measurement: SensorMeasurement,
 }

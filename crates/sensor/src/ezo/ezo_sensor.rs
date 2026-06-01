@@ -9,7 +9,10 @@ use crate::core::temperature::DynamicRange;
 use crate::error::{Result, SensorError};
 use crate::ezo::driver::DriverError;
 use crate::ezo::driver::{CommandTransport, Driver};
-use crate::sensor::{Sensor, SensorInfo, SensorState, SensorStateReason};
+use crate::sensor::{
+    generated_device_uid_from_info, is_arksync_device_uid, Sensor, SensorInfo, SensorState,
+    SensorStateReason,
+};
 
 const UNREACHABLE_FAILURE_THRESHOLD: u32 = 3;
 
@@ -43,6 +46,54 @@ pub trait EzoSensor: Send + Sync + 'static {
     fn check_measurement(&self, _value: f64) -> Option<SensorStateReason> {
         None
     }
+
+    fn ensure_device_uid(&self) -> Result<String> {
+        let info = self
+            .data()
+            .lock()
+            .map_err(|err| SensorError::message(err.to_string()))?
+            .clone();
+
+        if let Some(device_uid) = info.device_uid {
+            return Ok(device_uid);
+        }
+
+        let mut driver = self
+            .driver()
+            .lock()
+            .map_err(|err| SensorError::source(DriverError::Read(err.to_string())))?;
+
+        match driver.device_name().map_err(SensorError::source)? {
+            Some(device_uid) if is_arksync_device_uid(&device_uid) => {
+                self.record_device_uid(&device_uid);
+                Ok(device_uid)
+            }
+            Some(rejected_name) => Err(SensorError::message(format!(
+                "sensor name '{rejected_name}' is not an ArkSync device UID"
+            ))),
+            None => {
+                let device_uid = generated_device_uid_from_info(&info);
+                driver
+                    .set_device_name(&device_uid)
+                    .map_err(SensorError::source)?;
+                let confirmed = driver.device_name().map_err(SensorError::source)?;
+
+                if confirmed.as_deref() != Some(device_uid.as_str()) {
+                    return Err(SensorError::message(format!(
+                        "failed to confirm ArkSync device UID '{device_uid}'"
+                    )));
+                }
+
+                self.record_device_uid(&device_uid);
+                Ok(device_uid)
+            }
+        }
+    }
+
+    fn record_device_uid(&self, device_uid: &str) {
+        let mut data = self.data().lock().expect("sensor info mutex poisoned");
+        data.device_uid = Some(device_uid.to_string());
+    }
 }
 
 impl<T> Sensor for T
@@ -62,6 +113,10 @@ where
 
     fn check_measurement(&self, value: f64) -> Option<SensorStateReason> {
         EzoSensor::check_measurement(self, value)
+    }
+
+    fn ensure_device_uid(&self) -> Result<String> {
+        EzoSensor::ensure_device_uid(self)
     }
 
     fn record_measurement(&self, value: f64) {

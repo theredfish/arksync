@@ -3,7 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::detect_plugged_sensors_task;
-use crate::infrastructure::events::{SensorEvent, SensorMeasurementRecorded, SerialSensorPlugged};
+use crate::infrastructure::events::{
+    SensorEvent, SensorMeasurementRecorded, SensorProvisioned, SensorProvisioningConflict,
+    SerialSensorPlugged,
+};
 use crate::sensor::Sensor;
 use crate::sensor::SensorConnection;
 use crate::services::sensor::{detect_unplugged_sensors, healthcheck};
@@ -135,6 +138,18 @@ impl<'bus> SensorService<'bus> {
                         continue;
                     }
 
+                    let device_uid = match sensor.ensure_device_uid() {
+                        Ok(device_uid) => device_uid,
+                        Err(err) => {
+                            self.emit_sensor_provisioning_conflict_event(
+                                sensor.as_ref(),
+                                err.to_string(),
+                            );
+                            continue;
+                        }
+                    };
+
+                    self.emit_sensor_provisioned_event(sensor.as_ref(), device_uid);
                     self.emit_sensor_added_event(sensor.as_ref());
                     let task = Arc::clone(&sensor).run(Some(self.measurement_tx.clone()));
                     self.sensor_tasks.insert(uuid.clone(), task);
@@ -197,6 +212,49 @@ impl<'bus> SensorService<'bus> {
         ));
     }
 
+    fn emit_sensor_provisioned_event(&mut self, sensor: &dyn Sensor, device_uid: String) {
+        let Some(event_producer) = &mut self.event_producer else {
+            return;
+        };
+
+        let info = sensor.info();
+        let measured_sensor = crate::sensor::measured_sensor_from_info(&info);
+
+        log::debug!("Sensor service produced SensorProvisioned device_uid={device_uid}");
+
+        let _ = event_producer.publish(EventEnvelope::new_with_id(
+            sensor_event_id(&device_uid),
+            (),
+            timestamp_now(),
+            SensorEvent::SensorProvisioned(SensorProvisioned {
+                device_uid,
+                sensor: measured_sensor,
+            }),
+        ));
+    }
+
+    fn emit_sensor_provisioning_conflict_event(&mut self, sensor: &dyn Sensor, reason: String) {
+        self.event_counter = self.event_counter.wrapping_add(1);
+        let Some(event_producer) = &mut self.event_producer else {
+            return;
+        };
+
+        let info = sensor.info();
+        let measured_sensor = crate::sensor::measured_sensor_from_info(&info);
+
+        log::debug!("Sensor service produced SensorProvisioningConflict reason={reason}");
+
+        let _ = event_producer.publish(EventEnvelope::new_with_id(
+            event_id_from_counter(self.event_counter),
+            (),
+            timestamp_now(),
+            SensorEvent::SensorProvisioningConflict(SensorProvisioningConflict {
+                reason,
+                sensor: measured_sensor,
+            }),
+        ));
+    }
+
     fn emit_measurement_recorded_event(&mut self, measurement: SensorMeasurementRecorded) {
         self.event_counter = self.event_counter.wrapping_add(1);
         let Some(event_producer) = &mut self.event_producer else {
@@ -204,8 +262,8 @@ impl<'bus> SensorService<'bus> {
         };
 
         log::debug!(
-            "Sensor service produced SensorMeasurementRecorded for hardware_uid={} value={}",
-            measurement.sensor.hardware_uid,
+            "Sensor service produced SensorMeasurementRecorded for device_uid={} value={}",
+            measurement.device_uid,
             measurement.measurement.value
         );
 
@@ -272,6 +330,7 @@ mod tests {
             SensorInfo {
                 firmware: 1.0,
                 name: SensorName::Unnamed,
+                device_uid: Some("RTD_TEST123".to_string()),
                 state: SensorState::Active,
                 state_reason: SensorStateReason::Plugged,
                 state_since: now,
@@ -298,7 +357,7 @@ mod tests {
 
     #[tokio::test]
     async fn emits_sensor_plugged_event_when_sensor_is_added() {
-        let (event_tx, mut event_rx) = mpsc::channel(1);
+        let (event_tx, mut event_rx) = mpsc::channel(2);
         let mut bus = arksync_bus::EventBus::new();
         bus.subscribe(move |event: EventEnvelope<SensorEvent>| {
             event_tx
@@ -312,11 +371,17 @@ mod tests {
             sensors: vec![("rtd-serial-1".to_string(), sensor)],
         });
 
-        let event = event_rx.recv().await.unwrap();
+        let provisioned_event = event_rx.recv().await.unwrap();
+        let plugged_event = event_rx.recv().await.unwrap();
         service.abort_all_sensor_tasks();
 
         assert!(matches!(
-            event.payload,
+            provisioned_event.payload,
+            SensorEvent::SensorProvisioned(SensorProvisioned { device_uid, .. })
+                if device_uid == "RTD_TEST123"
+        ));
+        assert!(matches!(
+            plugged_event.payload,
             SensorEvent::SerialSensorPlugged(SerialSensorPlugged { metadata })
                 if metadata.serial_number == "rtd-serial-1"
         ));
