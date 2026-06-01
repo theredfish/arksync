@@ -6,13 +6,11 @@ use chrono::Utc;
 use std::sync::Mutex;
 
 use crate::core::temperature::DynamicRange;
+use crate::device_uid::DeviceUid;
 use crate::error::{Result, SensorError};
 use crate::ezo::driver::DriverError;
 use crate::ezo::driver::{CommandTransport, Driver};
-use crate::sensor::{
-    generated_device_uid_from_info, is_arksync_device_uid, Sensor, SensorInfo, SensorState,
-    SensorStateReason,
-};
+use crate::sensor::{Sensor, SensorInfo, SensorState, SensorStateReason};
 
 const UNREACHABLE_FAILURE_THRESHOLD: u32 = 3;
 
@@ -47,7 +45,7 @@ pub trait EzoSensor: Send + Sync + 'static {
         None
     }
 
-    fn ensure_device_uid(&self) -> Result<String> {
+    fn ensure_device_uid(&self) -> Result<DeviceUid> {
         let info = self
             .data()
             .lock()
@@ -64,21 +62,21 @@ pub trait EzoSensor: Send + Sync + 'static {
             .map_err(|err| SensorError::source(DriverError::Read(err.to_string())))?;
 
         match driver.device_name().map_err(SensorError::source)? {
-            Some(device_uid) if is_arksync_device_uid(&device_uid) => {
+            Some(device_uid) => {
+                let device_uid = DeviceUid::try_from(device_uid).map_err(|err| {
+                    SensorError::message(format!("sensor name is not an ArkSync device UID: {err}"))
+                })?;
                 self.record_device_uid(&device_uid);
                 Ok(device_uid)
             }
-            Some(rejected_name) => Err(SensorError::message(format!(
-                "sensor name '{rejected_name}' is not an ArkSync device UID"
-            ))),
             None => {
-                let device_uid = generated_device_uid_from_info(&info);
+                let device_uid = DeviceUid::new();
                 driver
-                    .set_device_name(&device_uid)
+                    .set_device_name(device_uid.as_ref())
                     .map_err(SensorError::source)?;
                 let confirmed = driver.device_name().map_err(SensorError::source)?;
 
-                if confirmed.as_deref() != Some(device_uid.as_str()) {
+                if confirmed.as_deref() != Some(device_uid.as_ref()) {
                     return Err(SensorError::message(format!(
                         "failed to confirm ArkSync device UID '{device_uid}'"
                     )));
@@ -90,9 +88,9 @@ pub trait EzoSensor: Send + Sync + 'static {
         }
     }
 
-    fn record_device_uid(&self, device_uid: &str) {
+    fn record_device_uid(&self, device_uid: &DeviceUid) {
         let mut data = self.data().lock().expect("sensor info mutex poisoned");
-        data.device_uid = Some(device_uid.to_string());
+        data.device_uid = Some(device_uid.clone());
     }
 }
 
@@ -115,7 +113,7 @@ where
         EzoSensor::check_measurement(self, value)
     }
 
-    fn ensure_device_uid(&self) -> Result<String> {
+    fn ensure_device_uid(&self) -> Result<DeviceUid> {
         EzoSensor::ensure_device_uid(self)
     }
 

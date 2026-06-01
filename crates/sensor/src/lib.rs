@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 pub mod core;
+pub mod device_uid;
 pub mod error;
 pub mod ezo;
 pub mod i2c_bus;

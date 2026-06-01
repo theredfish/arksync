@@ -212,7 +212,11 @@ impl<'bus> SensorService<'bus> {
         ));
     }
 
-    fn emit_sensor_provisioned_event(&mut self, sensor: &dyn Sensor, device_uid: String) {
+    fn emit_sensor_provisioned_event(
+        &mut self,
+        sensor: &dyn Sensor,
+        device_uid: crate::device_uid::DeviceUid,
+    ) {
         let Some(event_producer) = &mut self.event_producer else {
             return;
         };
@@ -223,7 +227,7 @@ impl<'bus> SensorService<'bus> {
         log::debug!("Sensor service produced SensorProvisioned device_uid={device_uid}");
 
         let _ = event_producer.publish(EventEnvelope::new_with_id(
-            sensor_event_id(&device_uid),
+            sensor_event_id(device_uid.as_ref()),
             (),
             timestamp_now(),
             SensorEvent::SensorProvisioned(SensorProvisioned {
@@ -302,6 +306,7 @@ fn sensor_event_id(serial_number: &str) -> arksync_bus::EventId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::device_uid::DeviceUid;
     use crate::error::{Result, SensorError};
     use crate::sensor::{SensorInfo, SensorName, SensorState, SensorStateReason};
     use crate::serial_port::{SerialPortMetadata, DEFAULT_BAUD_RATE};
@@ -330,7 +335,7 @@ mod tests {
             SensorInfo {
                 firmware: 1.0,
                 name: SensorName::Unnamed,
-                device_uid: Some("RTD_TEST123".to_string()),
+                device_uid: Some(DeviceUid::try_from("A1B2C3D4E5F6G7H8").unwrap()),
                 state: SensorState::Active,
                 state_reason: SensorStateReason::Plugged,
                 state_since: now,
@@ -378,7 +383,7 @@ mod tests {
         assert!(matches!(
             provisioned_event.payload,
             SensorEvent::SensorProvisioned(SensorProvisioned { device_uid, .. })
-                if device_uid == "RTD_TEST123"
+                if device_uid.as_ref() == "A1B2C3D4E5F6G7H8"
         ));
         assert!(matches!(
             plugged_event.payload,

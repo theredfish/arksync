@@ -4,6 +4,7 @@
 
 //! Published sensor events consumed by runtime adapters.
 
+use crate::device_uid::DeviceUid;
 use crate::serial_port::SerialPortMetadata;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +26,7 @@ pub struct SerialSensorPlugged {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SensorProvisioned {
-    pub device_uid: String,
+    pub device_uid: DeviceUid,
     pub sensor: MeasuredSensor,
 }
 
@@ -39,7 +40,7 @@ pub struct SensorProvisioningConflict {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SensorMeasurementRecorded {
-    pub device_uid: String,
+    pub device_uid: DeviceUid,
     pub sensor: MeasuredSensor,
     pub measurement: SensorMeasurement,
 }
