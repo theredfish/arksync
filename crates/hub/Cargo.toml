@@ -16,9 +16,12 @@ arksync-knot = { workspace = true, features = ["knot-sensor-service"] }
 arksync-macros.workspace = true
 arksync-sensor.workspace = true
 arksync-utils.workspace = true
+derive_more = { workspace = true, features = ["from"] }
+eyre.workspace = true
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
+serde_json.workspace = true
 log.workspace = true
-sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid"] }
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid", "json"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 
 [lints]

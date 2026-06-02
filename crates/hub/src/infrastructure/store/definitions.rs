@@ -2,11 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::domain::SensorMeasurement;
+use crate::domain::{Sensor, SensorMeasurement};
 use arksync_bus::{EventId, Timestamp};
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::{MeasurementUnit, SensorKind};
 use arksync_utils::uuid::Uuid;
+use serde_json::Value;
 use sqlx::FromRow;
 
 #[derive(Clone, Debug)]
@@ -32,13 +33,40 @@ pub struct KnotRecord {
     pub hardware_uid: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct NewSensorRecord {
+    pub station_knot_id: Uuid,
+    pub device_uid: String,
+    pub display_name: Option<String>,
+    pub sensor_kind: String,
+    pub driver: String,
+    pub protocol: String,
+    pub connection: Value,
+    pub firmware: Option<f64>,
+    pub measurement_interval_ms: i32,
+}
+
+#[derive(Clone, Debug, FromRow)]
+pub struct SensorRecord {
+    pub id: Uuid,
+    pub station_knot_id: Uuid,
+    pub device_uid: String,
+    pub display_name: Option<String>,
+    pub sensor_kind: String,
+    pub driver: String,
+    pub protocol: String,
+    pub connection: Value,
+    pub firmware: Option<f64>,
+    pub measurement_interval_ms: i32,
+}
+
 #[derive(Clone, Debug, FromRow)]
 pub struct SensorMeasurementRecord {
     pub id: Uuid,
     pub event_id: Uuid,
     pub source_parent_hub_id: Uuid,
     pub source_knot_id: Uuid,
-    pub hardware_uid: String,
+    pub sensor_id: Uuid,
     pub sensor_kind: String,
     pub unit: String,
     pub value: f64,
@@ -58,7 +86,7 @@ impl SensorMeasurementRecord {
             event_id: event_id.as_uuid(),
             source_parent_hub_id: parent_hub_id.as_uuid(),
             source_knot_id: knot_id.as_uuid(),
-            hardware_uid: measurement.hardware_uid.clone(),
+            sensor_id: measurement.sensor_id.as_uuid(),
             sensor_kind: sensor_kind_as_str(measurement.kind).to_string(),
             unit: measurement_unit_as_str(measurement.unit).to_string(),
             value: measurement.value,
@@ -75,7 +103,7 @@ impl From<SensorMeasurementRecord> for SensorMeasurement {
                 parent_hub_id: record.source_parent_hub_id.into(),
                 knot_id: record.source_knot_id.into(),
             },
-            hardware_uid: record.hardware_uid,
+            sensor_id: record.sensor_id.into(),
             kind: sensor_kind_from_str(&record.sensor_kind),
             value: record.value,
             unit: measurement_unit_from_str(&record.unit),
@@ -85,28 +113,45 @@ impl From<SensorMeasurementRecord> for SensorMeasurement {
     }
 }
 
-fn sensor_kind_as_str(kind: SensorKind) -> &'static str {
+impl From<SensorRecord> for Sensor {
+    fn from(record: SensorRecord) -> Self {
+        Self {
+            id: record.id.into(),
+            station_knot_id: record.station_knot_id.into(),
+            device_uid: record.device_uid,
+            display_name: record.display_name,
+            kind: sensor_kind_from_str(&record.sensor_kind),
+            driver: record.driver,
+            protocol: record.protocol,
+            connection: record.connection,
+            firmware: record.firmware,
+            measurement_interval_ms: record.measurement_interval_ms,
+        }
+    }
+}
+
+pub fn sensor_kind_as_str(kind: SensorKind) -> &'static str {
     match kind {
         SensorKind::Temperature => "temperature",
         SensorKind::Custom => "custom",
     }
 }
 
-fn sensor_kind_from_str(kind: &str) -> SensorKind {
+pub fn sensor_kind_from_str(kind: &str) -> SensorKind {
     match kind {
         "temperature" => SensorKind::Temperature,
         _ => SensorKind::Custom,
     }
 }
 
-fn measurement_unit_as_str(unit: MeasurementUnit) -> &'static str {
+pub fn measurement_unit_as_str(unit: MeasurementUnit) -> &'static str {
     match unit {
         MeasurementUnit::Celsius => "celsius",
         MeasurementUnit::Raw => "raw",
     }
 }
 
-fn measurement_unit_from_str(unit: &str) -> MeasurementUnit {
+pub fn measurement_unit_from_str(unit: &str) -> MeasurementUnit {
     match unit {
         "celsius" => MeasurementUnit::Celsius,
         _ => MeasurementUnit::Raw,

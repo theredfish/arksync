@@ -4,10 +4,9 @@
 
 use arksync_bus::{EventBus, EventEnvelope, EventId, Timestamp};
 use arksync_hub::{
-    serial_sensor_from_metadata, Hub, HubSensorEventEnvelope, LocalKnotCommandHandler,
-    RegisterSensor, RemoveSensor, RenameSensor, SensorId, SensorRegistrationStatus,
+    Hub, HubSensorEventEnvelope, RegisterSensor, RemoveSensor, RenameSensor, SensorId,
+    SensorRegistrationStatus,
 };
-use arksync_knot::application::KnotCommand;
 use arksync_knot::domain::{KnotEventSource, KnotId, ParentHubId};
 use arksync_sensor::infrastructure::events::{SensorEvent, SerialSensorPlugged};
 use arksync_sensor::serial_port::{SerialPortMetadata, DEFAULT_BAUD_RATE};
@@ -124,38 +123,4 @@ fn event_bus_handler_is_the_hub_ingestion_boundary() {
         .unwrap();
 
     assert_eq!(delivered, 1);
-}
-
-#[test]
-fn hub_exposes_a_local_command_boundary_for_knot_runtime_actions() {
-    let mut hub = Hub::new();
-    let mut handler = RecordingKnotCommandHandler::default();
-    let command = KnotCommand::ListenSensor {
-        sensor: serial_sensor_from_metadata(metadata("rtd-serial-1")),
-    };
-
-    hub.handle_local_knot_command(&mut handler, command.clone())
-        .unwrap();
-
-    assert_eq!(handler.commands(), &[command]);
-}
-
-#[derive(Default)]
-struct RecordingKnotCommandHandler {
-    commands: Vec<KnotCommand>,
-}
-
-impl RecordingKnotCommandHandler {
-    fn commands(&self) -> &[KnotCommand] {
-        &self.commands
-    }
-}
-
-impl LocalKnotCommandHandler for RecordingKnotCommandHandler {
-    type Error = core::convert::Infallible;
-
-    fn handle(&mut self, command: KnotCommand) -> Result<(), Self::Error> {
-        self.commands.push(command);
-        Ok(())
-    }
 }

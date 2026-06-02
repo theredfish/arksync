@@ -143,6 +143,7 @@ pub(crate) fn measured_sensor_from_info(info: &SensorInfo) -> MeasuredSensor {
             hardware_uid: metadata.serial_number.clone(),
             kind: sensor_kind_from_info(info),
             connection: SensorConnectionMetadata::Uart(metadata.clone()),
+            firmware: Some(info.firmware),
         },
         SensorConnection::I2c(connection) => MeasuredSensor {
             hardware_uid: format!("i2c:{:02x}", connection.address),
@@ -150,6 +151,7 @@ pub(crate) fn measured_sensor_from_info(info: &SensorInfo) -> MeasuredSensor {
             connection: SensorConnectionMetadata::I2c {
                 address: connection.address,
             },
+            firmware: Some(info.firmware),
         },
     }
 }

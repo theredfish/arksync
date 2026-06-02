@@ -23,14 +23,14 @@ pub struct SerialSensorPlugged {
     pub metadata: SerialPortMetadata,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SensorProvisioned {
     pub device_uid: DeviceUid,
     pub sensor: MeasuredSensor,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SensorProvisioningConflict {
     pub reason: String,
@@ -45,12 +45,13 @@ pub struct SensorMeasurementRecorded {
     pub measurement: SensorMeasurement,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct MeasuredSensor {
     pub hardware_uid: String,
     pub kind: SensorKind,
     pub connection: SensorConnectionMetadata,
+    pub firmware: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

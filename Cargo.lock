@@ -237,8 +237,11 @@ dependencies = [
  "arksync-macros",
  "arksync-sensor",
  "arksync-utils",
+ "derive_more 2.0.1",
+ "eyre",
  "log",
  "serde",
+ "serde_json",
  "sqlx",
  "tokio",
 ]

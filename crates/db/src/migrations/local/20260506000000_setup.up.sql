@@ -103,13 +103,14 @@ where deleted_at is null;
 create table sensors (
     id uuid primary key default gen_random_uuid(),
     station_knot_id uuid not null references station_knots(id),
-    hardware_uid text,
-    name text not null,
+    device_uid text not null,
+    display_name text,
     kind sensor_kind not null,
     driver sensor_driver not null,
     protocol sensor_protocol not null,
     connection jsonb not null default '{}'::jsonb,
     firmware double precision,
+    measurement_interval_ms integer not null default 1200 check (measurement_interval_ms > 1000),
     status sensor_status not null default 'initializing',
     state_reason text not null default 'plugged',
     state_reason_details jsonb not null default '{}'::jsonb,
@@ -121,9 +122,9 @@ create table sensors (
     deleted_at timestamptz
 );
 
-create unique index sensors_hardware_uid_unique
-on sensors (hardware_uid)
-where hardware_uid is not null and deleted_at is null;
+create unique index sensors_station_knot_device_uid_unique
+on sensors (station_knot_id, device_uid)
+where deleted_at is null;
 
 create index sensors_station_knot_id_idx
 on sensors (station_knot_id)

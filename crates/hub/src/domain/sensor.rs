@@ -4,10 +4,14 @@
 
 use crate::domain::SensorId;
 use arksync_bus::Timestamp;
-use arksync_knot::domain::KnotEventSource;
-use arksync_sensor::infrastructure::events::{MeasurementUnit, SensorKind};
+use arksync_knot::domain::{KnotEventSource, KnotId};
+use arksync_sensor::device_uid::DeviceUid;
+use arksync_sensor::infrastructure::events::{
+    MeasurementUnit, SensorConnectionMetadata, SensorKind,
+};
 use arksync_sensor::serial_port::SerialPortMetadata;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -49,9 +53,35 @@ pub struct SensorOverview {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub struct PluggedSensor {
+    pub station_knot_id: KnotId,
+    pub device_uid: DeviceUid,
+    pub kind: SensorKind,
+    pub connection: SensorConnectionMetadata,
+    pub firmware: Option<f64>,
+    pub measurement_interval_ms: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct Sensor {
+    pub id: SensorId,
+    pub station_knot_id: KnotId,
+    pub device_uid: String,
+    pub display_name: Option<String>,
+    pub kind: SensorKind,
+    pub driver: String,
+    pub protocol: String,
+    pub connection: Value,
+    pub firmware: Option<f64>,
+    pub measurement_interval_ms: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct SensorMeasurement {
     pub source: KnotEventSource,
-    pub hardware_uid: String,
+    pub sensor_id: SensorId,
     pub kind: SensorKind,
     pub value: f64,
     pub unit: MeasurementUnit,
@@ -70,7 +100,7 @@ pub struct SensorMeasurementPoint {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct SensorTimeSeries {
-    pub hardware_uid: String,
+    pub sensor_id: SensorId,
     pub window_start: Timestamp,
     pub window_end: Timestamp,
     pub points: Vec<SensorMeasurementPoint>,

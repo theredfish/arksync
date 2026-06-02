@@ -4,14 +4,16 @@
 
 mod hub_runtime;
 mod hub_setup;
-mod knot_commands;
+mod sensor_errors;
 mod sensor_events;
 mod sensor_measurements;
+mod sensor_registry;
 mod sensors;
 
 pub use hub_runtime::*;
 pub use hub_setup::*;
-pub use knot_commands::*;
+pub use sensor_errors::*;
 pub use sensor_events::*;
 pub use sensor_measurements::*;
+pub use sensor_registry::*;
 pub use sensors::*;

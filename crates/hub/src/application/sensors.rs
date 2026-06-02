@@ -2,23 +2,27 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::application::LocalKnotCommandHandler;
+use crate::application::HubSensorError;
 use crate::domain::{
-    ObservedSerialSensor, RegisteredSensor, SensorId, SensorMeasurement, SensorOverview,
-    SensorRegistrationStatus,
+    ObservedSerialSensor, PluggedSensor, RegisteredSensor, Sensor, SensorId, SensorMeasurement,
+    SensorOverview, SensorRegistrationStatus,
+};
+use crate::infrastructure::store::{
+    insert_sensor as store_insert_sensor, list_sensors as store_list_sensors, sensor_kind_as_str,
+    NewSensorRecord,
 };
 use arksync_bus::Timestamp;
-use arksync_knot::application::KnotCommand;
 use arksync_knot::domain::KnotEventSource;
-use arksync_sensor::infrastructure::events::SensorMeasurementRecorded;
+use arksync_sensor::infrastructure::events::{SensorConnectionMetadata, SensorMeasurementRecorded};
+use arksync_sensor::sensor::DEFAULT_MEASUREMENT_INTERVAL;
 use arksync_sensor::serial_port::SerialPortMetadata;
+use sqlx::PgExecutor;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HubError {
     DuplicateSensorId,
     SensorAlreadyRegistered,
     SensorNotFound,
-    KnotCommandRejected,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,6 +42,40 @@ pub struct RenameSensor {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RemoveSensor {
     pub sensor_id: SensorId,
+}
+
+pub async fn list_sensors<'e, E>(executor: E) -> Result<Vec<Sensor>, HubSensorError>
+where
+    E: PgExecutor<'e>,
+{
+    let records = store_list_sensors(executor).await?;
+
+    Ok(records.into_iter().map(Sensor::from).collect())
+}
+
+pub async fn insert_sensor<'e, E>(
+    executor: E,
+    sensor: PluggedSensor,
+) -> Result<Sensor, HubSensorError>
+where
+    E: PgExecutor<'e>,
+{
+    let record = NewSensorRecord {
+        station_knot_id: sensor.station_knot_id.as_uuid(),
+        device_uid: sensor.device_uid.as_ref().to_string(),
+        display_name: None,
+        sensor_kind: sensor_kind_as_str(sensor.kind).to_string(),
+        driver: "atlas_scientific_ezo".to_string(),
+        protocol: sensor_protocol_as_str(&sensor.connection).to_string(),
+        connection: serde_json::to_value(&sensor.connection)
+            .expect("sensor connection metadata should serialize"),
+        firmware: sensor.firmware,
+        measurement_interval_ms: sensor.measurement_interval_ms,
+    };
+
+    let sensor = store_insert_sensor(executor, &record).await?;
+
+    Ok(sensor.into())
 }
 
 #[derive(Default)]
@@ -144,19 +182,6 @@ impl Hub {
         self.sensor_measurements.clone()
     }
 
-    pub fn handle_local_knot_command<Handler>(
-        &mut self,
-        handler: &mut Handler,
-        command: KnotCommand,
-    ) -> Result<(), HubError>
-    where
-        Handler: LocalKnotCommandHandler,
-    {
-        handler
-            .handle(command)
-            .map_err(|_| HubError::KnotCommandRejected)
-    }
-
     pub(crate) fn observe_serial_sensor(
         &mut self,
         source: KnotEventSource,
@@ -187,18 +212,30 @@ impl Hub {
     pub(crate) fn record_sensor_measurement(
         &mut self,
         source: KnotEventSource,
+        sensor_id: SensorId,
         event: SensorMeasurementRecorded,
         measured_at: Timestamp,
         received_at: Timestamp,
     ) {
         self.sensor_measurements.push(SensorMeasurement {
             source,
-            hardware_uid: event.sensor.hardware_uid,
+            sensor_id,
             kind: event.sensor.kind,
             value: event.measurement.value,
             unit: event.measurement.unit,
             measured_at,
             received_at,
         });
+    }
+}
+
+pub fn default_measurement_interval_ms() -> i32 {
+    DEFAULT_MEASUREMENT_INTERVAL.as_millis() as i32
+}
+
+fn sensor_protocol_as_str(connection: &SensorConnectionMetadata) -> &'static str {
+    match connection {
+        SensorConnectionMetadata::Uart(_) => "uart",
+        SensorConnectionMetadata::I2c { .. } => "i2c",
     }
 }
