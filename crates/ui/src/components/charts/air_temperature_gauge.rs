@@ -44,17 +44,17 @@ pub fn AirTemperatureGauge(#[prop(optional)] theme: Option<ArkSyncTheme>) -> imp
         let height = if height == 0.0 { 150 } else { height as u32 };
 
         let chart_config = Chart::new()
-            .tooltip(Tooltip::new().formatter("{a} <br/>{b} : {c}%"))
+            .tooltip(Tooltip::new().formatter("{a} <br/>{b} : {c} °C"))
             .series(
                 Gauge::new()
-                    .name("Pressure")
+                    .name("Temperature")
                     .progress(GaugeProgress::new().show(true))
                     .detail(
                         GaugeDetail::new()
-                            .formatter("{value}")
+                            .formatter("{value} °C")
                             .value_animation(true),
                     )
-                    .data(vec![(serie.round(), "Air temperature C°")]),
+                    .data(vec![(round_to_tenth(serie), "Air temperature")]),
             );
 
         if let Some(echarts) = chart_ref.as_ref() {
@@ -129,4 +129,8 @@ pub fn AirTemperatureGauge(#[prop(optional)] theme: Option<ArkSyncTheme>) -> imp
             <div node_ref=chart_node id="air-temperature-gauge"></div>
         </div>
     }
+}
+
+fn round_to_tenth(value: f32) -> f32 {
+    (value * 10.0).round() / 10.0
 }
