@@ -2,13 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-#![no_std]
-
-#[cfg(all(feature = "linux-gpio", feature = "esp-gpio"))]
-compile_error!("features `linux-gpio` and `esp-gpio` cannot be enabled at the same time");
-
+#[cfg(feature = "esp-gpio")]
+pub mod esp_gpio;
 #[cfg(feature = "linux-gpio")]
-extern crate std;
-
-pub mod infrastructure;
-pub mod relay;
+pub mod linux_gpio;
+#[cfg(not(any(feature = "esp-gpio", feature = "linux-gpio")))]
+pub mod simulated;
