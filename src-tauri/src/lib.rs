@@ -18,6 +18,8 @@ use tauri_plugin_log::{Builder as TauriLog, Target, TargetKind};
 use tokio::time::{interval, Duration};
 
 pub static SENSORS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+const TEMPERATURE_SERIES_WINDOW: Duration = Duration::from_secs(30 * 60);
+const TEMPERATURE_SERIES_LIMIT: i64 = 1_500;
 
 pub fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::<tauri::Wry>::default()
@@ -89,7 +91,8 @@ async fn water_temperature_sensor(app: AppHandle) {
         loop {
             interval.tick().await;
 
-            let sensor_data = load_temperature_series(Duration::from_secs(10 * 60), 120).await;
+            let sensor_data =
+                load_temperature_series(TEMPERATURE_SERIES_WINDOW, TEMPERATURE_SERIES_LIMIT).await;
 
             log::debug!("{sensor_data:#?}");
 
@@ -155,13 +158,17 @@ async fn load_temperature_gauge() -> TemperatureGaugeData {
         })
         .ok()
         .flatten()
-        .map(|measurement| measurement.value as f32)
+        .map(|measurement| round_to_tenth(measurement.value as f32))
         .unwrap_or_default();
 
     TemperatureGaugeData {
         name: "Air Temperature (C°)".to_string(),
         value,
     }
+}
+
+fn round_to_tenth(value: f32) -> f32 {
+    (value * 10.0).round() / 10.0
 }
 
 async fn load_latest_time_series(window: Duration, limit: i64) -> Option<SensorTimeSeries> {
