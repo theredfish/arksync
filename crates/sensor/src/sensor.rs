@@ -73,7 +73,7 @@ pub trait Sensor: Send + Sync + 'static {
     fn ensure_device_uid(&self) -> Result<DeviceUid> {
         let info = self.info();
 
-        Ok(info.device_uid.clone().unwrap_or_else(DeviceUid::new))
+        Ok(info.device_uid.clone().unwrap_or_default())
     }
 
     fn record_measurement(&self, value: f64);

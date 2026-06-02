@@ -17,6 +17,12 @@ pub enum DeviceUidError {
     Invalid,
 }
 
+impl Default for DeviceUid {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DeviceUid {
     pub const LEN: usize = 16;
 
