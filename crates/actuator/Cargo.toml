@@ -4,12 +4,19 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "arksync-actuator"
+path = "src/bin/arksync-actuator.rs"
+
+[features]
+default = []
+esp-gpio = []
+linux-gpio = ["dep:gpiocdev"]
+
 [dependencies]
+gpiocdev = { workspace = true, optional = true }
 log.workspace = true
 serde.workspace = true
-
-[target.'cfg(all(target_os = "linux", any(target_arch = "arm", target_arch = "aarch64")))'.dependencies]
-rppal.workspace = true
 
 [lints]
 workspace = true

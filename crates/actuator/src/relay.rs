@@ -2,7 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use core::fmt;
 use serde::Serialize;
+
+#[cfg(feature = "esp-gpio")]
+pub use crate::infrastructure::esp_gpio::EspGpioRelayDriver as RelayDriver;
+#[cfg(feature = "linux-gpio")]
+pub use crate::infrastructure::linux_gpio::LinuxGpioRelayDriver as RelayDriver;
+#[cfg(not(any(feature = "esp-gpio", feature = "linux-gpio")))]
+pub use crate::infrastructure::simulated::SimulatedRelayDriver as RelayDriver;
 
 pub const MIST_RELAY: RelaySpec = RelaySpec {
     id: "mist_relay",
@@ -53,69 +61,30 @@ impl RelayState {
     }
 }
 
-#[cfg(all(target_os = "linux", any(target_arch = "arm", target_arch = "aarch64")))]
-pub struct RelayDriver {
-    output_pin: std::sync::Mutex<rppal::gpio::OutputPin>,
+pub type RelayResult<T> = Result<T, RelayError>;
+
+#[derive(Debug)]
+pub enum RelayError {
+    BackendUnavailable,
+    GpioRequest { gpio_bcm_pin: u8 },
+    GpioSet { gpio_bcm_pin: u8 },
+    GpioLockPoisoned,
 }
 
-#[cfg(all(target_os = "linux", any(target_arch = "arm", target_arch = "aarch64")))]
-impl RelayDriver {
-    pub fn new(spec: RelaySpec) -> Self {
-        use rppal::gpio::Gpio;
-
-        let gpio = Gpio::new().unwrap_or_else(|error| {
-            panic!("Failed to access Raspberry Pi GPIO controller: {error}");
-        });
-
-        let output_pin = gpio
-            .get(spec.gpio_bcm_pin)
-            .unwrap_or_else(|error| panic!("Failed to access GPIO{}: {error}", spec.gpio_bcm_pin))
-            .into_output_high();
-
-        Self {
-            output_pin: std::sync::Mutex::new(output_pin),
+impl fmt::Display for RelayError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::BackendUnavailable => f.write_str("relay backend is not available"),
+            Self::GpioRequest { gpio_bcm_pin } => {
+                write!(
+                    f,
+                    "failed to request GPIO{gpio_bcm_pin} from /dev/gpiochip0"
+                )
+            }
+            Self::GpioSet { gpio_bcm_pin } => {
+                write!(f, "failed to set GPIO{gpio_bcm_pin}")
+            }
+            Self::GpioLockPoisoned => f.write_str("GPIO lock is poisoned"),
         }
-    }
-
-    pub fn apply(&self, state: RelayState) -> Result<(), String> {
-        let mut output_pin = self
-            .output_pin
-            .lock()
-            .map_err(|error| format!("GPIO mutex poisoned: {error}"))?;
-
-        match state.level {
-            "low" => output_pin.set_low(),
-            "high" => output_pin.set_high(),
-            level => return Err(format!("Unsupported relay level: {level}")),
-        }
-
-        Ok(())
-    }
-}
-
-#[cfg(not(all(target_os = "linux", any(target_arch = "arm", target_arch = "aarch64"))))]
-pub struct RelayDriver {
-    spec: RelaySpec,
-}
-
-#[cfg(not(all(target_os = "linux", any(target_arch = "arm", target_arch = "aarch64"))))]
-impl RelayDriver {
-    pub fn new(spec: RelaySpec) -> Self {
-        log::warn!(
-            "GPIO debug loop is running without Raspberry Pi GPIO access; state changes will only be logged."
-        );
-        Self { spec }
-    }
-
-    pub fn apply(&self, state: RelayState) -> Result<(), String> {
-        log::debug!(
-            "Simulated relay '{}' on GPIO{} -> {} ({})",
-            state.id,
-            self.spec.gpio_bcm_pin,
-            if state.active { "ON" } else { "OFF" },
-            state.level
-        );
-
-        Ok(())
     }
 }

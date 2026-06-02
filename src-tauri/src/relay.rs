@@ -18,7 +18,17 @@ pub fn spawn_debug_loop(app: AppHandle) {
             RELAY_TICK_SECONDS
         );
 
-        let driver = RelayDriver::new(MIST_RELAY);
+        let driver = match RelayDriver::new(MIST_RELAY) {
+            Ok(driver) => driver,
+            Err(error) => {
+                log::error!(
+                    "Failed to start relay debug loop for '{}' on GPIO{}: {error:?}",
+                    MIST_RELAY.id,
+                    MIST_RELAY.gpio_bcm_pin
+                );
+                return;
+            }
+        };
         let mut relay_is_active = false;
         let mut ticker = interval(Duration::from_secs(RELAY_TICK_SECONDS));
 

@@ -67,6 +67,41 @@ For adding the feed in Grafana add a `Text` panel with `Html` and add the iframe
 
 ## Deploying
 
+### Actuator Probe
+
+Build the Raspberry Pi relay probe from the desktop with:
+
+```bash
+cargo sk build actuator --target linux-rpi --profile dev
+```
+
+Use `--dry-run` to inspect the command without building:
+
+```bash
+cargo sk build actuator --target linux-rpi --profile dev --dry-run
+```
+
+This prints the `cargo build` command, including the target and linker environment:
+
+```bash
+CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc cargo build -p arksync-actuator --bin arksync-actuator --features linux-gpio --target aarch64-unknown-linux-gnu
+```
+
+Prerequisites for Raspberry Pi 4 running a 64-bit OS:
+
+```bash
+rustup target add aarch64-unknown-linux-gnu
+```
+
+Install an AArch64 Linux GNU cross compiler/linker and make sure
+`aarch64-linux-gnu-gcc` is available in `PATH`.
+
+The generated binary is:
+
+```bash
+target/aarch64-unknown-linux-gnu/debug/arksync-actuator
+```
+
 ### Development
 
 - `cargo tauri signer generate -w ~/.tauri/arksync_dev.key`
