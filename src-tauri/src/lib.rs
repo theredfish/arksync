@@ -22,10 +22,15 @@ pub static SENSORS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::n
 pub fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::<tauri::Wry>::default()
         .setup(|app| {
-            tauri::async_runtime::block_on(async { arksync_db::run().await })
-                .map_err(|err| -> Box<dyn std::error::Error> { err.into() })?;
+            tauri::async_runtime::block_on(async {
+                arksync_db::run().await?;
+                arksync_hub::setup_local_station(arksync_db::pool()).await?;
 
-            tauri::async_runtime::spawn(arksync_hub::LocalKnotRuntime::run());
+                eyre::Ok(())
+            })
+            .map_err(|err| -> Box<dyn std::error::Error> { err.into() })?;
+
+            tauri::async_runtime::spawn(arksync_hub::HubRuntime::run());
             relay::spawn_debug_loop(app.handle().clone());
             Ok(())
         })

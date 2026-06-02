@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 arksync-db.workspace = true
+arksync-hub.workspace = true
 clap = { workspace = true, features = ["derive"] }
 eyre.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

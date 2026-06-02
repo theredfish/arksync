@@ -23,7 +23,6 @@ impl Hub {
                 Ok(())
             }
             SensorEvent::SensorMeasurementRecorded(measurement) => {
-                #[cfg(feature = "log")]
                 log::debug!(
                     "Hub accepted sensor measurement hardware_uid={} value={}",
                     measurement.sensor.hardware_uid,
@@ -40,7 +39,6 @@ impl Hub {
                 Ok(())
             }
             SensorEvent::SensorProvisioned(SensorProvisioned { device_uid, .. }) => {
-                #[cfg(feature = "log")]
                 log::debug!("Hub accepted provisioned sensor device_uid={device_uid}");
 
                 Ok(())
@@ -48,7 +46,6 @@ impl Hub {
             SensorEvent::SensorProvisioningConflict(SensorProvisioningConflict {
                 reason, ..
             }) => {
-                #[cfg(feature = "log")]
                 log::debug!("Hub accepted sensor provisioning conflict reason={reason}");
 
                 Ok(())

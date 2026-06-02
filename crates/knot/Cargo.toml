@@ -7,7 +7,7 @@ license.workspace = true
 [features]
 default = []
 std = []
-local-sensor-service = ["std", "arksync-bus", "arksync-sensor", "log", "tokio/sync"]
+knot-sensor-service = ["std", "arksync-bus", "arksync-sensor", "log", "tokio/sync"]
 uuid-v4 = ["arksync-utils/uuid-v4"]
 
 [dependencies]

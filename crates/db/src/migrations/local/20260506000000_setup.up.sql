@@ -185,32 +185,3 @@ create trigger actuators_set_updated_at
 before update on actuators
 for each row
 execute function set_updated_at();
-
-create function register_local_hub_as_knot()
-returns trigger
-language plpgsql
-as $$
-begin
-    insert into station_knots (
-        station_hub_id,
-        name,
-        hardware_uid,
-        role,
-        status
-    )
-    values (
-        new.id,
-        new.name,
-        new.hardware_uid,
-        'local_hub',
-        'active'
-    );
-
-    return new;
-end;
-$$;
-
-create trigger trigger_register_local_hub_as_knot
-after insert on station_hubs
-for each row
-execute function register_local_hub_as_knot();

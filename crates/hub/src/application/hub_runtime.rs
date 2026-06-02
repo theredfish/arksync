@@ -3,21 +3,26 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::application::{persist_sensor_measurement, Hub};
+use crate::config::CONFIG;
 use arksync_bus::Timestamp;
-use arksync_knot::application::LocalKnotSensorEventEnvelope;
-use arksync_knot::application::LocalKnotSensorService;
+use arksync_knot::application::KnotSensorEventEnvelope;
+use arksync_knot::application::KnotSensorService;
 use arksync_knot::domain::{KnotEventSource, KnotId, ParentHubId};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub struct LocalKnotRuntime;
+/// Runtime for the local hub process.
+///
+/// The hub is also a local Knot: it starts the Knot sensor service in a Tokio
+/// task, receives sensor events from it, then projects and persists those
+/// events in the hub boundary.
+pub struct HubRuntime;
 
-impl LocalKnotRuntime {
+impl HubRuntime {
     pub async fn run() {
-        let (event_tx, mut event_rx) =
-            tokio::sync::mpsc::channel::<LocalKnotSensorEventEnvelope>(100);
+        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<KnotSensorEventEnvelope>(100);
         let source = local_knot_source();
         let knot = tokio::spawn(async move {
-            LocalKnotSensorService::with_event_sender(event_tx, source)
+            KnotSensorService::with_event_sender(event_tx, source)
                 .run()
                 .await;
         });
@@ -59,12 +64,9 @@ fn local_knot_source() -> KnotEventSource {
     // `sk init hub` that authenticates the station admin, generates or loads
     // the HubId + local KnotId, signs them with a certificate, and stores the
     // resulting identity bundle for the runtime to load at boot.
-    const LOCAL_PARENT_HUB_ID_RANDOM_BYTES: [u8; 16] = [1; 16];
-    const LOCAL_KNOT_ID_RANDOM_BYTES: [u8; 16] = [2; 16];
-
     KnotEventSource::Knot {
-        parent_hub_id: ParentHubId::new_with_random_bytes(LOCAL_PARENT_HUB_ID_RANDOM_BYTES),
-        knot_id: KnotId::new_with_random_bytes(LOCAL_KNOT_ID_RANDOM_BYTES),
+        parent_hub_id: ParentHubId::new_with_uuid(CONFIG.local_hub_id),
+        knot_id: KnotId::new_with_uuid(CONFIG.local_knot_id),
     }
 }
 

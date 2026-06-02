@@ -8,7 +8,6 @@ use crate::infrastructure::store::{
     insert_sensor_measurement, latest_sensor_hardware_uid, latest_sensor_measurement,
     list_sensor_measurements_since, SensorMeasurementRecord,
 };
-use alloc::string::ToString;
 use arksync_bus::Timestamp;
 use arksync_sensor::infrastructure::events::SensorEvent;
 use sqlx::PgExecutor;

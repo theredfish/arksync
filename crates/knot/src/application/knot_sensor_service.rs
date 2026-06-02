@@ -9,19 +9,19 @@ use arksync_sensor::services::SensorService;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
-pub type LocalKnotSensorEventEnvelope = EventEnvelope<SensorEvent, KnotEventSource>;
+pub type KnotSensorEventEnvelope = EventEnvelope<SensorEvent, KnotEventSource>;
 
-/// Local Knot service used by the desktop MVP.
+/// Knot sensor service used by std runtimes such as the hub runtime.
 ///
 /// This adapter deliberately delegates to the existing arksync-sensor service
 /// so the current UART detection and polling path keeps working while the Knot
 /// becomes the owner of launching sensor logic.
-pub struct LocalKnotSensorService {
-    event_tx: mpsc::Sender<LocalKnotSensorEventEnvelope>,
+pub struct KnotSensorService {
+    event_tx: mpsc::Sender<KnotSensorEventEnvelope>,
     source: KnotEventSource,
 }
 
-impl LocalKnotSensorService {
+impl KnotSensorService {
     pub fn new(source: KnotEventSource) -> Self {
         Self {
             event_tx: mpsc::channel(1).0,
@@ -30,7 +30,7 @@ impl LocalKnotSensorService {
     }
 
     pub fn with_event_sender(
-        event_tx: mpsc::Sender<LocalKnotSensorEventEnvelope>,
+        event_tx: mpsc::Sender<KnotSensorEventEnvelope>,
         source: KnotEventSource,
     ) -> Self {
         Self { event_tx, source }
@@ -85,10 +85,10 @@ fn timestamp_now() -> Timestamp {
     Timestamp::from_unix_millis(unix_millis)
 }
 
-struct TokioEnvelopeHandler(mpsc::Sender<LocalKnotSensorEventEnvelope>);
+struct TokioEnvelopeHandler(mpsc::Sender<KnotSensorEventEnvelope>);
 
 impl EventHandler<SensorEvent, KnotEventSource> for TokioEnvelopeHandler {
-    fn handle(&mut self, event: LocalKnotSensorEventEnvelope) -> Result<(), EventBusError> {
+    fn handle(&mut self, event: KnotSensorEventEnvelope) -> Result<(), EventBusError> {
         self.0
             .try_send(event)
             .map_err(|_| EventBusError::HandlerRejected)

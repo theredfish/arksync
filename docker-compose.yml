@@ -1,8 +1,8 @@
 services:
   postgres:
     build:
-      context: .
-      dockerfile: docker/postgres/Dockerfile
+      context: docker/postgres
+      dockerfile: Dockerfile
     container_name: arksync-postgres
     restart: unless-stopped
     ports:
@@ -39,6 +39,22 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:
       - grafana-data:/var/lib/grafana
+
+  prisma-studio:
+    build:
+      context: docker/prisma-studio
+      dockerfile: Dockerfile
+    container_name: arksync-prisma-studio
+    restart: unless-stopped
+    profiles:
+      - tools
+    ports:
+      - "127.0.0.1:${PRISMA_STUDIO_PORT:-5555}:5555"
+    environment:
+      DATABASE_URL: postgresql://admin:admin@postgres:5432/arksync
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
     postgres-data:

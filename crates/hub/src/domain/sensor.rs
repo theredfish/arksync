@@ -3,8 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::domain::SensorId;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
 use arksync_bus::Timestamp;
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::{MeasurementUnit, SensorKind};

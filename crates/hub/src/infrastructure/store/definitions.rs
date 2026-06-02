@@ -9,6 +9,29 @@ use arksync_sensor::infrastructure::events::{MeasurementUnit, SensorKind};
 use arksync_utils::uuid::Uuid;
 use sqlx::FromRow;
 
+#[derive(Clone, Debug)]
+pub struct SystemUserRecord {
+    pub id: Uuid,
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct HubRecord {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub name: String,
+    pub hardware_uid: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct KnotRecord {
+    pub id: Uuid,
+    pub hub_id: Uuid,
+    pub name: String,
+    pub hardware_uid: String,
+}
+
 #[derive(Clone, Debug, FromRow)]
 pub struct SensorMeasurementRecord {
     pub id: Uuid,
