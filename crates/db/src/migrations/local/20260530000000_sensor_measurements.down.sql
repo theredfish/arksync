@@ -5,4 +5,4 @@
 delete from public.part_config
 where parent_table = 'public.sensor_measurements';
 
-drop table if exists sensor_measurements cascade;
+drop table if exists sensor_measurements;

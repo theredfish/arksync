@@ -5,11 +5,35 @@
 use sqlx::PgExecutor;
 
 use crate::infrastructure::store::SensorMeasurementRecord;
+use std::fmt;
+
+#[derive(Debug)]
+pub enum SensorMeasurementStoreError {
+    Database(sqlx::Error),
+}
+
+impl fmt::Display for SensorMeasurementStoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SensorMeasurementStoreError::Database(_) => {
+                f.write_str("sensor measurement database error")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SensorMeasurementStoreError {}
+
+impl From<sqlx::Error> for SensorMeasurementStoreError {
+    fn from(err: sqlx::Error) -> Self {
+        SensorMeasurementStoreError::Database(err)
+    }
+}
 
 pub async fn insert_sensor_measurement<'e, E>(
     executor: E,
     record: &SensorMeasurementRecord,
-) -> Result<(), sqlx::Error>
+) -> Result<(), SensorMeasurementStoreError>
 where
     E: PgExecutor<'e>,
 {
@@ -19,7 +43,7 @@ where
             event_id,
             source_parent_hub_id,
             source_knot_id,
-            hardware_uid,
+            sensor_id,
             sensor_kind,
             unit,
             value,
@@ -42,7 +66,7 @@ where
     .bind(record.event_id)
     .bind(record.source_parent_hub_id)
     .bind(record.source_knot_id)
-    .bind(&record.hardware_uid)
+    .bind(record.sensor_id)
     .bind(&record.sensor_kind)
     .bind(&record.unit)
     .bind(record.value)
@@ -56,14 +80,14 @@ where
 
 pub async fn list_sensor_measurements_since<'e, E>(
     executor: E,
-    hardware_uid: &str,
+    sensor_id: arksync_utils::uuid::Uuid,
     since_unix_millis: i64,
     limit: i64,
-) -> Result<Vec<SensorMeasurementRecord>, sqlx::Error>
+) -> Result<Vec<SensorMeasurementRecord>, SensorMeasurementStoreError>
 where
     E: PgExecutor<'e>,
 {
-    sqlx::query_as(
+    let measurements = sqlx::query_as(
         r#"
         select *
         from (
@@ -72,14 +96,14 @@ where
                 event_id,
                 source_parent_hub_id,
                 source_knot_id,
-                hardware_uid,
+                sensor_id,
                 sensor_kind::text as sensor_kind,
                 unit,
                 value,
                 (extract(epoch from measured_at) * 1000)::bigint as measured_at_unix_millis,
                 (extract(epoch from received_at) * 1000)::bigint as received_at_unix_millis
             from sensor_measurements
-            where hardware_uid = $1
+            where sensor_id = $1
                 and measured_at >= to_timestamp($2::double precision / 1000.0)
             order by measured_at desc
             limit $3
@@ -87,43 +111,49 @@ where
         order by measured_at_unix_millis asc
         "#,
     )
-    .bind(hardware_uid)
+    .bind(sensor_id)
     .bind(since_unix_millis)
     .bind(limit)
     .fetch_all(executor)
-    .await
+    .await?;
+
+    Ok(measurements)
 }
 
-pub async fn latest_sensor_hardware_uid<'e, E>(executor: E) -> Result<Option<String>, sqlx::Error>
+pub async fn latest_sensor_id<'e, E>(
+    executor: E,
+) -> Result<Option<arksync_utils::uuid::Uuid>, SensorMeasurementStoreError>
 where
     E: PgExecutor<'e>,
 {
-    sqlx::query_scalar(
+    let sensor_id = sqlx::query_scalar(
         r#"
-        select hardware_uid
+        select sensor_id
         from sensor_measurements
         order by measured_at desc
         limit 1
         "#,
     )
     .fetch_optional(executor)
-    .await
+    .await?;
+
+    Ok(sensor_id)
 }
 
 pub async fn latest_sensor_measurement<'e, E>(
     executor: E,
-) -> Result<Option<SensorMeasurementRecord>, sqlx::Error>
+) -> Result<Option<SensorMeasurementRecord>, SensorMeasurementStoreError>
 where
     E: PgExecutor<'e>,
 {
-    sqlx::query_as(
+    let measurement = sqlx::query_as(
         r#"
         select
             id,
             event_id,
             source_parent_hub_id,
             source_knot_id,
-            hardware_uid,
+            sensor_id,
             sensor_kind::text as sensor_kind,
             unit,
             value,
@@ -135,5 +165,7 @@ where
         "#,
     )
     .fetch_optional(executor)
-    .await
+    .await?;
+
+    Ok(measurement)
 }

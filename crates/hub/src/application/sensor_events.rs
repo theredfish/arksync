@@ -24,16 +24,9 @@ impl Hub {
             }
             SensorEvent::SensorMeasurementRecorded(measurement) => {
                 log::debug!(
-                    "Hub accepted sensor measurement hardware_uid={} value={}",
-                    measurement.sensor.hardware_uid,
+                    "Hub accepted sensor measurement device_uid={} value={}",
+                    measurement.device_uid,
                     measurement.measurement.value
-                );
-
-                self.record_sensor_measurement(
-                    event.source,
-                    measurement,
-                    event.occurred_at,
-                    received_at,
                 );
 
                 Ok(())

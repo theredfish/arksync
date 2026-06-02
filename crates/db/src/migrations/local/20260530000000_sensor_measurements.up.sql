@@ -7,7 +7,7 @@ create table sensor_measurements (
     event_id uuid not null,
     source_parent_hub_id uuid not null,
     source_knot_id uuid not null,
-    hardware_uid text not null,
+    sensor_id uuid not null references sensors(id),
     sensor_kind sensor_kind not null,
     unit text not null,
     value double precision not null,
@@ -16,8 +16,8 @@ create table sensor_measurements (
     created_at timestamptz not null default now()
 ) partition by range (measured_at);
 
-create index sensor_measurements_hardware_uid_measured_at_idx
-on sensor_measurements (hardware_uid, measured_at desc);
+create index sensor_measurements_sensor_id_measured_at_idx
+on sensor_measurements (sensor_id, measured_at desc);
 
 select public.create_parent(
     p_parent_table := 'public.sensor_measurements',
