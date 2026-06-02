@@ -6,29 +6,20 @@ license.workspace = true
 
 [features]
 default = []
-std = ["arksync-knot/std"]
-local-knot-runtime = [
-    "std",
-    "arksync-db",
-    "arksync-knot/local-sensor-service",
-    "log",
-    "sqlx",
-    "tokio/rt",
-    "tokio/sync",
-]
 uuid-v4 = ["arksync-utils/uuid-v4"]
 
 [dependencies]
 arksync-bus.workspace = true
-arksync-db = { workspace = true, optional = true }
-arksync-knot.workspace = true
+arksync-config.workspace = true
+arksync-db.workspace = true
+arksync-knot = { workspace = true, features = ["knot-sensor-service"] }
 arksync-macros.workspace = true
 arksync-sensor.workspace = true
 arksync-utils.workspace = true
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
-log = { workspace = true, optional = true }
-sqlx = { workspace = true, optional = true, features = ["postgres", "runtime-tokio", "macros", "uuid"] }
-tokio = { workspace = true, optional = true, features = ["rt"] }
+log.workspace = true
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
 
 [lints]
 workspace = true

@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use arksync_knot::application::{
-    KnotCommand, KnotCommandHandler, KnotService, KnotServiceError, SerialSensor,
+    KnotCommand, KnotCommandHandler, KnotRuntime, KnotRuntimeError, SerialSensor,
 };
 
 fn serial_sensor(serial_number: &str) -> SerialSensor {
@@ -15,30 +15,30 @@ fn serial_sensor(serial_number: &str) -> SerialSensor {
 }
 
 #[test]
-fn knot_service_handles_sensor_listening_commands() {
+fn knot_runtime_handles_sensor_listening_commands() {
     let sensor = serial_sensor("rtd-serial-1");
-    let mut service = KnotService::new();
+    let mut runtime = KnotRuntime::new();
 
-    service
+    runtime
         .handle(KnotCommand::ListenSensor {
             sensor: sensor.clone(),
         })
         .unwrap();
 
-    assert_eq!(service.listened_serial_sensors(), &[sensor]);
+    assert_eq!(runtime.listened_serial_sensors(), &[sensor]);
 }
 
 #[test]
-fn knot_service_rejects_duplicate_listening_commands() {
+fn knot_runtime_rejects_duplicate_listening_commands() {
     let sensor = serial_sensor("rtd-serial-1");
-    let mut service = KnotService::new();
+    let mut runtime = KnotRuntime::new();
 
-    service
+    runtime
         .handle(KnotCommand::ListenSensor {
             sensor: sensor.clone(),
         })
         .unwrap();
-    let result = service.handle(KnotCommand::ListenSensor { sensor });
+    let result = runtime.handle(KnotCommand::ListenSensor { sensor });
 
-    assert_eq!(result, Err(KnotServiceError::SensorAlreadyListening));
+    assert_eq!(result, Err(KnotRuntimeError::SensorAlreadyListening));
 }

@@ -7,8 +7,6 @@ use crate::domain::{
     ObservedSerialSensor, RegisteredSensor, SensorId, SensorMeasurement, SensorOverview,
     SensorRegistrationStatus,
 };
-use alloc::string::String;
-use alloc::vec::Vec;
 use arksync_bus::Timestamp;
 use arksync_knot::application::KnotCommand;
 use arksync_knot::domain::KnotEventSource;

@@ -206,6 +206,7 @@ name = "arksync-cli"
 version = "0.1.0"
 dependencies = [
  "arksync-db",
+ "arksync-hub",
  "clap",
  "eyre",
  "tokio",
@@ -230,6 +231,7 @@ name = "arksync-hub"
 version = "0.1.0"
 dependencies = [
  "arksync-bus",
+ "arksync-config",
  "arksync-db",
  "arksync-knot",
  "arksync-macros",

@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 pub mod commands;
-#[cfg(feature = "local-sensor-service")]
-pub mod local_sensor_service;
-pub mod service;
+pub mod knot_runtime;
+#[cfg(feature = "knot-sensor-service")]
+pub mod knot_sensor_service;
 
 pub use commands::*;
-#[cfg(feature = "local-sensor-service")]
-pub use local_sensor_service::*;
-pub use service::*;
+pub use knot_runtime::*;
+#[cfg(feature = "knot-sensor-service")]
+pub use knot_sensor_service::*;

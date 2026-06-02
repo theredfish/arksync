@@ -2,9 +2,6 @@
 -- License, v. 2.0. If a copy of the MPL was not distributed with this
 -- file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-drop trigger if exists trigger_register_local_hub_as_knot on station_hubs;
-drop function if exists register_local_hub_as_knot();
-
 drop table if exists sensor_measurements;
 
 drop trigger if exists actuators_set_updated_at on actuators;
