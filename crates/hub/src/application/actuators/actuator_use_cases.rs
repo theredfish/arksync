@@ -31,7 +31,7 @@ use sqlx::PgExecutor;
 
 const LOCAL_DEMO_RELAY_DEVICE_UID: &str = "rpi-gpio17-mist-relay";
 const LOCAL_DEMO_RELAY_DISPLAY_NAME: &str = "Mist relay";
-const LOCAL_DEMO_RULE_NAME: &str = "temperature_ge_36_mist_relay";
+const LOCAL_DEMO_RULE_NAME: &str = "temperature_ge_40_mist_relay";
 
 pub async fn list_actuators<'e, E>(executor: E) -> Result<Vec<Actuator>, HubActuatorError>
 where
@@ -239,7 +239,7 @@ async fn ensure_local_demo_relay_rule(
         name: LOCAL_DEMO_RULE_NAME.to_string(),
         config_version: 1,
         enabled: true,
-        threshold: 36.0,
+        threshold: 40.0,
         active_when_matched: true,
         active_when_unmatched: false,
     };
