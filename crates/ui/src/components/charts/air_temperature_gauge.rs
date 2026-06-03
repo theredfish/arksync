@@ -5,7 +5,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use charming::{
-    element::{Easing, Tooltip},
+    element::{Easing, JsFunction, Tooltip},
     series::{Gauge, GaugeDetail, GaugeProgress},
     Animation, Chart, ChartResize, Echarts, WasmRenderer,
 };
@@ -51,7 +51,10 @@ pub fn AirTemperatureGauge(#[prop(optional)] theme: Option<ArkSyncTheme>) -> imp
                     .progress(GaugeProgress::new().show(true))
                     .detail(
                         GaugeDetail::new()
-                            .formatter("{value} °C")
+                            .formatter(JsFunction::new_with_args(
+                                "value",
+                                "return value.toFixed(1).replace('.', ',') + ' °C';",
+                            ))
                             .value_animation(true),
                     )
                     .data(vec![(round_to_tenth(serie), "Air temperature")]),
