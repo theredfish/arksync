@@ -2,8 +2,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-mod relay;
-
 use arksync_bus::Timestamp;
 use arksync_hub::SensorTimeSeries;
 use chrono::{Local, TimeZone};
@@ -33,7 +31,6 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
             .map_err(|err| -> Box<dyn std::error::Error> { err.into() })?;
 
             tauri::async_runtime::spawn(arksync_hub::HubRuntime::run());
-            relay::spawn_debug_loop(app.handle().clone());
             Ok(())
         })
         .plugin(tauri_plugin_updater::Builder::new().build())
