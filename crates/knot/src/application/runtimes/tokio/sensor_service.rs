@@ -16,12 +16,12 @@ pub type KnotSensorEventEnvelope = EventEnvelope<SensorEvent, KnotEventSource>;
 /// This adapter deliberately delegates to the existing arksync-sensor service
 /// so the current UART detection and polling path keeps working while the Knot
 /// becomes the owner of launching sensor logic.
-pub struct KnotSensorService {
+pub struct TokioKnotSensorService {
     event_tx: mpsc::Sender<KnotSensorEventEnvelope>,
     source: KnotEventSource,
 }
 
-impl KnotSensorService {
+impl TokioKnotSensorService {
     pub fn new(source: KnotEventSource) -> Self {
         Self {
             event_tx: mpsc::channel(1).0,

@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 pub mod commands;
-pub mod knot_runtime;
-#[cfg(feature = "knot-sensor-service")]
-pub mod knot_sensor_service;
+#[cfg(feature = "tokio-knot-actuator-service")]
+pub mod events;
+pub mod runtimes;
 
 pub use commands::*;
-pub use knot_runtime::*;
-#[cfg(feature = "knot-sensor-service")]
-pub use knot_sensor_service::*;
+#[cfg(feature = "tokio-knot-actuator-service")]
+pub use events::*;
+pub use runtimes::*;

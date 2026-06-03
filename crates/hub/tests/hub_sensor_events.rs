@@ -4,7 +4,7 @@
 
 use arksync_bus::{EventBus, EventEnvelope, EventId, Timestamp};
 use arksync_hub::{
-    Hub, HubSensorEventEnvelope, RegisterSensor, RemoveSensor, RenameSensor, SensorId,
+    HubSensorEventEnvelope, HubService, RegisterSensor, RemoveSensor, RenameSensor, SensorId,
     SensorRegistrationStatus,
 };
 use arksync_knot::domain::{KnotEventSource, KnotId, ParentHubId};
@@ -43,9 +43,9 @@ fn serial_sensor_plugged(serial_number: &str, occurred_at: i64) -> HubSensorEven
 
 #[test]
 fn ingests_serial_sensor_plugged_events_into_overview_projection() {
-    let mut hub = Hub::new();
+    let mut hub = HubService::new();
 
-    hub.accept_sensor_event(
+    hub.handle_sensor_event(
         serial_sensor_plugged("rtd-serial-1", 1_779_840_000_000),
         timestamp(1_779_840_000_100),
     )
@@ -70,9 +70,9 @@ fn ingests_serial_sensor_plugged_events_into_overview_projection() {
 #[test]
 fn register_rename_and_remove_sensor_update_overview_read_model() {
     let sensor_id = SensorId::new_with_random_bytes([4; 16]);
-    let mut hub = Hub::new();
+    let mut hub = HubService::new();
 
-    hub.accept_sensor_event(
+    hub.handle_sensor_event(
         serial_sensor_plugged("rtd-serial-1", 1_779_840_000_000),
         timestamp(1_779_840_000_100),
     )
@@ -111,9 +111,9 @@ fn register_rename_and_remove_sensor_update_overview_read_model() {
 #[test]
 fn event_bus_handler_is_the_hub_ingestion_boundary() {
     let mut bus = EventBus::new();
-    let mut hub = Hub::new();
+    let mut hub = HubService::new();
     bus.subscribe(move |event: HubSensorEventEnvelope| {
-        hub.accept_sensor_event(event, timestamp(1_779_840_000_100))
+        hub.handle_sensor_event(event, timestamp(1_779_840_000_100))
             .map_err(|_| arksync_bus::EventBusError::HandlerRejected)
     });
 

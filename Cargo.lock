@@ -182,6 +182,7 @@ dependencies = [
 name = "arksync-actuator"
 version = "0.1.0"
 dependencies = [
+ "arksync-bus",
  "gpiocdev",
  "log",
  "serde",
@@ -230,6 +231,7 @@ dependencies = [
 name = "arksync-hub"
 version = "0.1.0"
 dependencies = [
+ "arksync-actuator",
  "arksync-bus",
  "arksync-config",
  "arksync-db",
@@ -250,6 +252,7 @@ dependencies = [
 name = "arksync-knot"
 version = "0.1.0"
 dependencies = [
+ "arksync-actuator",
  "arksync-bus",
  "arksync-macros",
  "arksync-sensor",

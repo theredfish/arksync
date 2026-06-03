@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+extern crate alloc;
+
 pub mod core;
 pub mod device_uid;
 pub mod error;

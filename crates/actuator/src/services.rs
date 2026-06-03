@@ -1,0 +1,198 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+use alloc::string::ToString;
+use alloc::vec::Vec;
+
+use crate::infrastructure::events::{
+    ActuatorConfig, ActuatorEvent, ActuatorRuntimeStatus, AddActuator, ConfigApplied,
+    ConfigRejected, RemoveActuator, RuntimeStatus,
+};
+use arksync_bus::{EventEnvelope, EventId, EventProducer, Timestamp};
+
+pub struct ActuatorService<'bus> {
+    configs: Vec<ActuatorConfig>,
+    event_producer: Option<EventProducer<'bus, ActuatorEvent>>,
+    event_counter: u128,
+}
+
+impl Default for ActuatorService<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'bus> ActuatorService<'bus> {
+    pub fn new() -> Self {
+        Self {
+            configs: Vec::new(),
+            event_producer: None,
+            event_counter: 0,
+        }
+    }
+
+    pub fn with_event_producer(
+        mut self,
+        event_producer: EventProducer<'bus, ActuatorEvent>,
+    ) -> Self {
+        self.event_producer = Some(event_producer);
+        self
+    }
+
+    pub fn read_event(&mut self, event: ActuatorEvent, occurred_at: Timestamp) {
+        match event {
+            ActuatorEvent::AddActuator(command) => self.add_actuator(command, occurred_at),
+            ActuatorEvent::EnableActuator(command) => {
+                self.set_enabled(command.config_id, command.version, true, occurred_at);
+            }
+            ActuatorEvent::DisableActuator(command) => {
+                self.set_enabled(command.config_id, command.version, false, occurred_at);
+            }
+            ActuatorEvent::RemoveActuator(command) => self.remove_actuator(command, occurred_at),
+            ActuatorEvent::ConfigApplied(_)
+            | ActuatorEvent::ConfigRejected(_)
+            | ActuatorEvent::RuntimeStatus(_) => {}
+        }
+    }
+
+    fn add_actuator(&mut self, command: AddActuator, occurred_at: Timestamp) {
+        let config_id = command.config.config_id.clone();
+        let version = command.config.version;
+
+        if let Some(config) = self
+            .configs
+            .iter_mut()
+            .find(|config| config.config_id == config_id)
+        {
+            if config.version > version {
+                self.reject_config(
+                    config_id,
+                    version,
+                    "received stale actuator config version",
+                    occurred_at,
+                );
+                return;
+            }
+
+            *config = command.config;
+        } else {
+            self.configs.push(command.config);
+        }
+
+        self.apply_config(config_id, version, occurred_at);
+    }
+
+    fn set_enabled(
+        &mut self,
+        config_id: alloc::string::String,
+        version: u64,
+        enabled: bool,
+        occurred_at: Timestamp,
+    ) {
+        let Some(config) = self
+            .configs
+            .iter_mut()
+            .find(|config| config.config_id == config_id)
+        else {
+            self.reject_config(config_id, version, "actuator config not found", occurred_at);
+            return;
+        };
+
+        if config.version > version {
+            self.reject_config(
+                config_id,
+                version,
+                "received stale actuator config version",
+                occurred_at,
+            );
+            return;
+        }
+
+        config.version = version;
+        config.enabled = enabled;
+        self.apply_config(config_id, version, occurred_at);
+    }
+
+    fn remove_actuator(&mut self, command: RemoveActuator, occurred_at: Timestamp) {
+        let Some(index) = self
+            .configs
+            .iter()
+            .position(|config| config.config_id == command.config_id)
+        else {
+            self.reject_config(
+                command.config_id,
+                command.version,
+                "actuator config not found",
+                occurred_at,
+            );
+            return;
+        };
+
+        let removed = self.configs.remove(index);
+        self.apply_config(removed.config_id, command.version, occurred_at);
+    }
+
+    fn apply_config(
+        &mut self,
+        config_id: alloc::string::String,
+        version: u64,
+        occurred_at: Timestamp,
+    ) {
+        self.emit(
+            occurred_at,
+            ActuatorEvent::ConfigApplied(ConfigApplied { config_id, version }),
+        );
+        self.emit_runtime_status(occurred_at);
+    }
+
+    fn reject_config(
+        &mut self,
+        config_id: alloc::string::String,
+        version: u64,
+        reason: &str,
+        occurred_at: Timestamp,
+    ) {
+        self.emit(
+            occurred_at,
+            ActuatorEvent::ConfigRejected(ConfigRejected {
+                config_id,
+                version,
+                reason: reason.to_string(),
+            }),
+        );
+        self.emit_runtime_status(occurred_at);
+    }
+
+    fn emit_runtime_status(&mut self, occurred_at: Timestamp) {
+        self.emit(
+            occurred_at,
+            ActuatorEvent::RuntimeStatus(RuntimeStatus {
+                rules: Vec::new(),
+                actuators: self
+                    .configs
+                    .iter()
+                    .map(|config| ActuatorRuntimeStatus {
+                        config_id: config.config_id.clone(),
+                        version: config.version,
+                        enabled: config.enabled,
+                    })
+                    .collect(),
+                last_seen_sensor_values: Vec::new(),
+            }),
+        );
+    }
+
+    fn emit(&mut self, occurred_at: Timestamp, event: ActuatorEvent) {
+        self.event_counter = self.event_counter.wrapping_add(1);
+        let Some(event_producer) = &mut self.event_producer else {
+            return;
+        };
+        let _ = event_producer.publish(EventEnvelope::new_with_id(
+            EventId::new_with_random_bytes(self.event_counter.to_be_bytes()),
+            (),
+            occurred_at,
+            event,
+        ));
+    }
+}

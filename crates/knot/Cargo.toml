@@ -7,10 +7,15 @@ license.workspace = true
 [features]
 default = []
 std = []
-knot-sensor-service = ["std", "arksync-bus", "arksync-sensor", "log", "tokio/sync"]
+knot-sensor-service = []
+knot-actuator-service = ["arksync-actuator"]
+tokio-knot-runtime = ["std", "tokio-knot-sensor-service", "tokio-knot-actuator-service", "tokio/rt", "tokio/sync"]
+tokio-knot-sensor-service = ["std", "arksync-bus", "arksync-sensor", "log", "tokio/rt", "tokio/sync"]
+tokio-knot-actuator-service = ["std", "arksync-actuator", "arksync-bus", "log", "tokio/macros", "tokio/rt", "tokio/sync"]
 uuid-v4 = ["arksync-utils/uuid-v4"]
 
 [dependencies]
+arksync-actuator = { workspace = true, optional = true }
 arksync-bus = { workspace = true, optional = true }
 arksync-macros.workspace = true
 arksync-sensor = { workspace = true, optional = true }
