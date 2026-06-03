@@ -5,8 +5,13 @@
 use alloc::string::String;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct KnotHello {
-    pub hardware_uid: String,
+pub struct ActuatorStateChanged {
+    pub config_id: String,
+    pub actuator_id: String,
+    pub rule_id: String,
+    pub sensor_id: String,
+    pub sensor_value: f64,
+    pub active: bool,
 }

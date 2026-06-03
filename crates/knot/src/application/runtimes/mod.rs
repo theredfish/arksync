@@ -3,17 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 pub mod no_std;
-#[cfg(any(
-    feature = "tokio-knot-actuator-service",
-    feature = "tokio-knot-runtime",
-    feature = "tokio-knot-sensor-service"
-))]
+#[cfg(feature = "knot-tokio-runtime")]
 pub mod tokio;
 
 pub use no_std::*;
-#[cfg(any(
-    feature = "tokio-knot-actuator-service",
-    feature = "tokio-knot-runtime",
-    feature = "tokio-knot-sensor-service"
-))]
+#[cfg(feature = "knot-tokio-runtime")]
 pub use tokio::*;

@@ -4,6 +4,7 @@
 
 drop table if exists sensor_measurements;
 
+drop trigger if exists actuator_rules_set_updated_at on actuator_rules;
 drop trigger if exists actuators_set_updated_at on actuators;
 drop trigger if exists sensors_set_updated_at on sensors;
 drop trigger if exists station_knots_set_updated_at on station_knots;
@@ -11,6 +12,7 @@ drop trigger if exists station_hubs_set_updated_at on station_hubs;
 drop trigger if exists users_set_updated_at on users;
 drop function if exists set_updated_at();
 
+drop table if exists actuator_rules;
 drop table if exists actuators;
 drop table if exists sensors;
 drop table if exists station_knots;

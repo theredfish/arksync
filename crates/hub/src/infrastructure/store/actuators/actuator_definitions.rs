@@ -44,6 +44,31 @@ pub struct ActuatorRecord {
     pub model: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct NewActuatorRuleRecord {
+    pub actuator_id: Uuid,
+    pub sensor_id: Uuid,
+    pub name: String,
+    pub config_version: i64,
+    pub enabled: bool,
+    pub threshold: f64,
+    pub active_when_matched: bool,
+    pub active_when_unmatched: bool,
+}
+
+#[derive(Clone, Debug, FromRow)]
+pub struct ActuatorRuleRecord {
+    pub id: Uuid,
+    pub actuator_id: Uuid,
+    pub sensor_id: Uuid,
+    pub name: String,
+    pub config_version: i64,
+    pub enabled: bool,
+    pub threshold: f64,
+    pub active_when_matched: bool,
+    pub active_when_unmatched: bool,
+}
+
 impl From<ActuatorRecord> for Actuator {
     fn from(record: ActuatorRecord) -> Self {
         let connection = match actuator_protocol_from_str(&record.protocol) {

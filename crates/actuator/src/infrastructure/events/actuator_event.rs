@@ -5,8 +5,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::infrastructure::events::{
-    AddActuator, ConfigApplied, ConfigRejected, DisableActuator, EnableActuator, RemoveActuator,
-    RuntimeStatus,
+    ActuatorStateChanged, AddActuator, ConfigApplied, ConfigRejected, DisableActuator,
+    EnableActuator, RemoveActuator, RuntimeStatus,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -19,4 +19,5 @@ pub enum ActuatorEvent {
     ConfigApplied(ConfigApplied),
     ConfigRejected(ConfigRejected),
     RuntimeStatus(RuntimeStatus),
+    ActuatorStateChanged(ActuatorStateChanged),
 }

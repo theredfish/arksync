@@ -6,13 +6,15 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 
 use crate::infrastructure::events::{
-    ActuatorConfig, ActuatorEvent, ActuatorRuntimeStatus, AddActuator, ConfigApplied,
-    ConfigRejected, RemoveActuator, RuntimeStatus,
+    ActuatorConfig, ActuatorEvent, ActuatorRuntimeStatus, ActuatorStateChanged, AddActuator,
+    ConfigApplied, ConfigRejected, RemoveActuator, RuntimeStatus,
 };
+use crate::rule_engine::{RuleEngine, SensorValue};
 use arksync_bus::{EventEnvelope, EventId, EventProducer, Timestamp};
 
 pub struct ActuatorService<'bus> {
     configs: Vec<ActuatorConfig>,
+    rule_engine: RuleEngine,
     event_producer: Option<EventProducer<'bus, ActuatorEvent>>,
     event_counter: u128,
 }
@@ -27,6 +29,7 @@ impl<'bus> ActuatorService<'bus> {
     pub fn new() -> Self {
         Self {
             configs: Vec::new(),
+            rule_engine: RuleEngine::new(),
             event_producer: None,
             event_counter: 0,
         }
@@ -38,6 +41,10 @@ impl<'bus> ActuatorService<'bus> {
     ) -> Self {
         self.event_producer = Some(event_producer);
         self
+    }
+
+    pub fn configs(&self) -> &[ActuatorConfig] {
+        &self.configs
     }
 
     pub fn read_event(&mut self, event: ActuatorEvent, occurred_at: Timestamp) {
@@ -52,8 +59,37 @@ impl<'bus> ActuatorService<'bus> {
             ActuatorEvent::RemoveActuator(command) => self.remove_actuator(command, occurred_at),
             ActuatorEvent::ConfigApplied(_)
             | ActuatorEvent::ConfigRejected(_)
-            | ActuatorEvent::RuntimeStatus(_) => {}
+            | ActuatorEvent::RuntimeStatus(_)
+            | ActuatorEvent::ActuatorStateChanged(_) => {}
         }
+    }
+
+    pub fn observe_sensor_value(
+        &mut self,
+        sensor_id: alloc::string::String,
+        value: f64,
+        occurred_at: Timestamp,
+    ) {
+        let decisions = self.rule_engine.evaluate(&SensorValue { sensor_id, value });
+        if decisions.is_empty() {
+            return;
+        }
+
+        for decision in decisions {
+            self.emit(
+                occurred_at,
+                ActuatorEvent::ActuatorStateChanged(ActuatorStateChanged {
+                    config_id: decision.config_id,
+                    actuator_id: decision.actuator_id,
+                    rule_id: decision.rule_id,
+                    sensor_id: decision.sensor_id,
+                    sensor_value: decision.sensor_value,
+                    active: decision.active,
+                }),
+            );
+        }
+
+        self.emit_runtime_status(occurred_at);
     }
 
     fn add_actuator(&mut self, command: AddActuator, occurred_at: Timestamp) {
@@ -80,6 +116,7 @@ impl<'bus> ActuatorService<'bus> {
             self.configs.push(command.config);
         }
 
+        self.reload_rules();
         self.apply_config(config_id, version, occurred_at);
     }
 
@@ -111,6 +148,7 @@ impl<'bus> ActuatorService<'bus> {
 
         config.version = version;
         config.enabled = enabled;
+        self.reload_rules();
         self.apply_config(config_id, version, occurred_at);
     }
 
@@ -130,6 +168,7 @@ impl<'bus> ActuatorService<'bus> {
         };
 
         let removed = self.configs.remove(index);
+        self.reload_rules();
         self.apply_config(removed.config_id, command.version, occurred_at);
     }
 
@@ -168,7 +207,7 @@ impl<'bus> ActuatorService<'bus> {
         self.emit(
             occurred_at,
             ActuatorEvent::RuntimeStatus(RuntimeStatus {
-                rules: Vec::new(),
+                rules: self.rule_engine.statuses(),
                 actuators: self
                     .configs
                     .iter()
@@ -181,6 +220,10 @@ impl<'bus> ActuatorService<'bus> {
                 last_seen_sensor_values: Vec::new(),
             }),
         );
+    }
+
+    fn reload_rules(&mut self) {
+        self.rule_engine.replace_actuator_configs(&self.configs);
     }
 
     fn emit(&mut self, occurred_at: Timestamp, event: ActuatorEvent) {

@@ -2,23 +2,28 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_actuator::infrastructure::events::{ActuatorEvent, AddActuator};
-use arksync_actuator::services::ActuatorService;
+use arksync_actuator::infrastructure::events::ActuatorEvent;
+use arksync_actuator::relay::{RelayDriver, RelayState, MIST_RELAY};
 use arksync_bus::{EventBus, EventBusError, EventEnvelope, EventHandler, EventId, Timestamp};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
-use crate::application::{KnotActuatorEvent, KnotActuatorEventEnvelope, KnotHello};
+use crate::application::{KnotActuatorEvent, KnotActuatorEventEnvelope, KnotHello, KnotRuntime};
+
+pub enum TokioKnotActuatorInput {
+    Event(KnotActuatorEvent),
+    SensorValue { device_uid: String, value: f64 },
+}
 
 pub struct TokioKnotActuatorService {
-    event_rx: mpsc::Receiver<KnotActuatorEvent>,
+    event_rx: mpsc::Receiver<TokioKnotActuatorInput>,
     event_tx: mpsc::Sender<KnotActuatorEventEnvelope>,
     hardware_uid: String,
 }
 
 impl TokioKnotActuatorService {
     pub fn with_channels(
-        event_rx: mpsc::Receiver<KnotActuatorEvent>,
+        event_rx: mpsc::Receiver<TokioKnotActuatorInput>,
         event_tx: mpsc::Sender<KnotActuatorEventEnvelope>,
         hardware_uid: String,
     ) -> Self {
@@ -33,8 +38,9 @@ impl TokioKnotActuatorService {
         let (actuator_event_tx, mut actuator_event_rx) = mpsc::channel(100);
         let mut actuator_bus = EventBus::new();
         actuator_bus.subscribe(TokioActuatorEventHandler(actuator_event_tx));
-        let mut actuator_service =
-            ActuatorService::new().with_event_producer(actuator_bus.producer());
+        let mut knot_runtime = KnotRuntime::new()
+            .with_actuator_hardware_uid(self.hardware_uid.clone())
+            .with_actuator_event_producer(actuator_bus.producer());
         let mut event_counter = 0_u128;
         let mut envelope_bus = EventBus::new();
         envelope_bus.subscribe(TokioEnvelopeHandler(self.event_tx));
@@ -48,38 +54,33 @@ impl TokioKnotActuatorService {
 
         loop {
             tokio::select! {
-                Some(event) = self.event_rx.recv() => {
-                    match event {
-                        KnotActuatorEvent::Ack(config) => {
-                            if config.hardware_uid != self.hardware_uid {
-                                log::debug!(
-                                    "Local Knot ignored actuator config ACK for hardware_uid={}",
-                                    config.hardware_uid
+                Some(input) = self.event_rx.recv() => {
+                    match input {
+                        TokioKnotActuatorInput::Event(event) => {
+                            if let KnotActuatorEvent::Ack(config) = &event {
+                                log::info!(
+                                    "Local Knot received actuator config ACK knot_id={} configs={}",
+                                    config.knot_id,
+                                    config.actuator_configs.len()
                                 );
-                                continue;
                             }
 
-                            log::info!(
-                                "Local Knot received actuator config ACK knot_id={} configs={}",
-                                config.knot_id,
-                                config.actuator_configs.len()
+                            if let Err(err) = knot_runtime.handle_actuator_event(event, timestamp_now()) {
+                                log::debug!("Local Knot rejected actuator runtime event: {err:?}");
+                            }
+                        }
+                        TokioKnotActuatorInput::SensorValue { device_uid, value } => {
+                            knot_runtime.observe_actuator_sensor_device_value(
+                                &device_uid,
+                                value,
+                                timestamp_now(),
                             );
-
-                            for config in config.actuator_configs {
-                                actuator_service.read_event(
-                                    ActuatorEvent::AddActuator(AddActuator { config }),
-                                    timestamp_now(),
-                                );
-                            }
                         }
-                        KnotActuatorEvent::Actuator(command) => {
-                            actuator_service.read_event(command, timestamp_now());
-                        }
-                        KnotActuatorEvent::Hello(_) => {}
                     }
                 }
                 Some(actuator_envelope) = actuator_event_rx.recv() => {
                     log::debug!("Local Knot produced actuator event: {actuator_envelope:?}");
+                    apply_local_actuator_state(&actuator_envelope.payload);
                     publish_runtime_event(
                         &mut envelope_bus,
                         &mut event_counter,
@@ -88,6 +89,31 @@ impl TokioKnotActuatorService {
                 }
                 else => break,
             }
+        }
+    }
+}
+
+fn apply_local_actuator_state(event: &ActuatorEvent) {
+    let ActuatorEvent::ActuatorStateChanged(state) = event else {
+        return;
+    };
+
+    // MVP: the local runtime has a single known relay on GPIO17. Once actuator
+    // configs carry enough driver registry information, this should resolve the
+    // driver from the applied actuator config instead of using MIST_RELAY.
+    match RelayDriver::new(MIST_RELAY)
+        .and_then(|driver| driver.apply(RelayState::new(MIST_RELAY, state.active)))
+    {
+        Ok(()) => {
+            log::info!(
+                "Local Knot applied relay state actuator_id={} rule_id={} active={}",
+                state.actuator_id,
+                state.rule_id,
+                state.active
+            );
+        }
+        Err(err) => {
+            log::error!("Local Knot failed to apply relay state: {err:?}");
         }
     }
 }

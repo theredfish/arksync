@@ -34,6 +34,16 @@ pub(super) async fn handle_actuator_runtime_event(event: ActuatorEvent) -> Resul
                 .await
                 .wrap_err("failed to record local Knot actuator runtime status")?;
         }
+        ActuatorEvent::ActuatorStateChanged(state) => {
+            log::info!(
+                "Local Knot actuator state changed actuator_id={} rule_id={} sensor_id={} value={} active={}",
+                state.actuator_id,
+                state.rule_id,
+                state.sensor_id,
+                state.sensor_value,
+                state.active
+            );
+        }
         ActuatorEvent::AddActuator(_)
         | ActuatorEvent::EnableActuator(_)
         | ActuatorEvent::DisableActuator(_)

@@ -4,6 +4,7 @@
 
 mod actuator_config;
 mod actuator_event;
+mod actuator_state_changed;
 mod add_actuator;
 mod config_applied;
 mod config_rejected;
@@ -13,6 +14,7 @@ mod runtime_status;
 
 pub use actuator_config::*;
 pub use actuator_event::*;
+pub use actuator_state_changed::*;
 pub use add_actuator::*;
 pub use config_applied::*;
 pub use config_rejected::*;

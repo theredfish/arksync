@@ -13,7 +13,7 @@ arksync-actuator.workspace = true
 arksync-bus.workspace = true
 arksync-config.workspace = true
 arksync-db.workspace = true
-arksync-knot = { workspace = true, features = ["tokio-knot-runtime"] }
+arksync-knot = { workspace = true, features = ["knot-tokio-runtime"] }
 arksync-macros.workspace = true
 arksync-sensor.workspace = true
 arksync-utils.workspace = true
