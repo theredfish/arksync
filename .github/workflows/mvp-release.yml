@@ -1,0 +1,74 @@
+name: MVP release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["mvp"]
+
+concurrency:
+  group: mvp-release
+  cancel-in-progress: true
+
+jobs:
+  reset-release:
+    name: reset arksync-mvp release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete previous MVP release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete arksync-mvp --yes --cleanup-tag || true
+
+  publish-tauri:
+    name: publish Tauri MVP
+    needs: reset-release
+    environment: production
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - platform: "ubuntu-22.04-arm"
+            args: ""
+          - platform: "ubuntu-24.04"
+            args: "--target x86_64-unknown-linux-gnu"
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install dependencies (ubuntu)
+        if: contains(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils libudev-dev
+
+      - name: Install Rust Nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Trunk
+        run: cargo install trunk
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          tagName: arksync-mvp
+          releaseName: arksync-mvp
+          releaseBody: "Latest MVP build from ${{ github.sha }}."
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.args }}
