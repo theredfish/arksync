@@ -5,7 +5,7 @@
 use alloc::string::String;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ActuatorConfig {
     pub config_id: String,
@@ -13,6 +13,7 @@ pub struct ActuatorConfig {
     pub enabled: bool,
     pub device_uid: String,
     pub actuator: ActuatorDescriptor,
+    pub rules: alloc::vec::Vec<ActuatorRuleConfig>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,4 +59,30 @@ pub struct GpioActuatorConnection {
     pub pin: u16,
     pub pin_scheme: Option<String>,
     pub active_low: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ActuatorRuleConfig {
+    pub rule_id: String,
+    pub version: u64,
+    pub enabled: bool,
+    pub sensor_id: String,
+    pub assertion: ActuatorRuleAssertion,
+    pub effect: ActuatorRuleEffect,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActuatorRuleAssertion {
+    GreaterThanOrEqual { threshold: f64 },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActuatorRuleEffect {
+    SetActiveWhenMatched {
+        active_when_matched: bool,
+        active_when_unmatched: bool,
+    },
 }

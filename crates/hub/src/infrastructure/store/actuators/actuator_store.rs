@@ -5,7 +5,9 @@
 use sqlx::PgExecutor;
 use std::fmt;
 
-use crate::infrastructure::store::{ActuatorRecord, NewActuatorRecord};
+use crate::infrastructure::store::{
+    ActuatorRecord, ActuatorRuleRecord, NewActuatorRecord, NewActuatorRuleRecord,
+};
 
 #[derive(Debug)]
 pub enum ActuatorStoreError {
@@ -103,6 +105,45 @@ where
     .await?;
 
     Ok(actuators)
+}
+
+pub async fn actuator_by_station_knot_id_and_device_uid<'e, E>(
+    executor: E,
+    station_knot_id: arksync_utils::uuid::Uuid,
+    device_uid: &str,
+) -> Result<ActuatorRecord, ActuatorStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    let actuator = sqlx::query_as(
+        r#"
+        select
+            id,
+            station_knot_id,
+            device_uid,
+            display_name,
+            kind::text,
+            backend::text,
+            protocol::text,
+            config_version,
+            enabled,
+            gpio_pin,
+            pin_scheme,
+            active_low,
+            channels,
+            model
+        from actuators
+        where station_knot_id = $1
+            and device_uid = $2
+            and deleted_at is null
+        "#,
+    )
+    .bind(station_knot_id)
+    .bind(device_uid)
+    .fetch_optional(executor)
+    .await?;
+
+    actuator.ok_or(ActuatorStoreError::NotFound)
 }
 
 pub async fn insert_actuator<'e, E>(
@@ -213,4 +254,123 @@ where
     }
 
     Ok(())
+}
+
+pub async fn list_actuator_rules_by_actuator_ids<'e, E>(
+    executor: E,
+    actuator_ids: &[arksync_utils::uuid::Uuid],
+) -> Result<Vec<ActuatorRuleRecord>, ActuatorStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    if actuator_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let rules = sqlx::query_as(
+        r#"
+        select
+            id,
+            actuator_id,
+            sensor_id,
+            name,
+            config_version,
+            enabled,
+            threshold,
+            active_when_matched,
+            active_when_unmatched
+        from actuator_rules
+        where actuator_id = any($1)
+            and deleted_at is null
+        order by created_at asc
+        "#,
+    )
+    .bind(actuator_ids)
+    .fetch_all(executor)
+    .await?;
+
+    Ok(rules)
+}
+
+pub async fn actuator_rule_by_actuator_sensor_name<'e, E>(
+    executor: E,
+    actuator_id: arksync_utils::uuid::Uuid,
+    sensor_id: arksync_utils::uuid::Uuid,
+    name: &str,
+) -> Result<ActuatorRuleRecord, ActuatorStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    let rule = sqlx::query_as(
+        r#"
+        select
+            id,
+            actuator_id,
+            sensor_id,
+            name,
+            config_version,
+            enabled,
+            threshold,
+            active_when_matched,
+            active_when_unmatched
+        from actuator_rules
+        where actuator_id = $1
+            and sensor_id = $2
+            and name = $3
+            and deleted_at is null
+        "#,
+    )
+    .bind(actuator_id)
+    .bind(sensor_id)
+    .bind(name)
+    .fetch_optional(executor)
+    .await?;
+
+    rule.ok_or(ActuatorStoreError::NotFound)
+}
+
+pub async fn insert_actuator_rule<'e, E>(
+    executor: E,
+    rule: &NewActuatorRuleRecord,
+) -> Result<ActuatorRuleRecord, ActuatorStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    let inserted = sqlx::query_as(
+        r#"
+        insert into actuator_rules (
+            actuator_id,
+            sensor_id,
+            name,
+            config_version,
+            enabled,
+            threshold,
+            active_when_matched,
+            active_when_unmatched
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8)
+        returning
+            id,
+            actuator_id,
+            sensor_id,
+            name,
+            config_version,
+            enabled,
+            threshold,
+            active_when_matched,
+            active_when_unmatched
+        "#,
+    )
+    .bind(rule.actuator_id)
+    .bind(rule.sensor_id)
+    .bind(&rule.name)
+    .bind(rule.config_version)
+    .bind(rule.enabled)
+    .bind(rule.threshold)
+    .bind(rule.active_when_matched)
+    .bind(rule.active_when_unmatched)
+    .fetch_one(executor)
+    .await?;
+
+    Ok(inserted)
 }

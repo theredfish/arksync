@@ -14,4 +14,5 @@ extern crate std;
 
 pub mod infrastructure;
 pub mod relay;
+pub mod rule_engine;
 pub mod services;

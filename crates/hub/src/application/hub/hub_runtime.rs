@@ -80,7 +80,14 @@ impl HubRuntime {
 
             match event {
                 HubKnotEvent::Sensor(event) => {
-                    handle_sensor_event(event, received_at, &mut sensor_registry, &mut hub).await?;
+                    handle_sensor_event(
+                        event,
+                        received_at,
+                        &mut sensor_registry,
+                        &mut hub,
+                        &actuator_event_tx_to_knot,
+                    )
+                    .await?;
                 }
                 HubKnotEvent::Actuator(event) => {
                     handle_actuator_event(event, &actuator_event_tx_to_knot).await?;

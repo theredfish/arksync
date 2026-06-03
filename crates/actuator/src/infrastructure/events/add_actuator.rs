@@ -5,7 +5,7 @@
 use crate::infrastructure::events::ActuatorConfig;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct AddActuator {
     pub config: ActuatorConfig,

@@ -172,6 +172,29 @@ create index actuators_station_knot_id_idx
 on actuators (station_knot_id)
 where deleted_at is null;
 
+create table actuator_rules (
+    id uuid primary key default gen_random_uuid(),
+    actuator_id uuid not null references actuators(id),
+    sensor_id uuid not null references sensors(id),
+    name text not null,
+    config_version bigint not null default 1 check (config_version > 0),
+    enabled boolean not null default true,
+    threshold double precision not null,
+    active_when_matched boolean not null default true,
+    active_when_unmatched boolean not null default false,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    deleted_at timestamptz
+);
+
+create unique index actuator_rules_actuator_sensor_name_unique
+on actuator_rules (actuator_id, sensor_id, name)
+where deleted_at is null;
+
+create index actuator_rules_actuator_id_idx
+on actuator_rules (actuator_id)
+where deleted_at is null;
+
 create function set_updated_at()
 returns trigger
 language plpgsql
@@ -204,5 +227,10 @@ execute function set_updated_at();
 
 create trigger actuators_set_updated_at
 before update on actuators
+for each row
+execute function set_updated_at();
+
+create trigger actuator_rules_set_updated_at
+before update on actuator_rules
 for each row
 execute function set_updated_at();

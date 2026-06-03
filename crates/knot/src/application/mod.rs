@@ -3,11 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 pub mod commands;
-#[cfg(feature = "tokio-knot-actuator-service")]
+#[cfg(feature = "knot-nostd-runtime")]
 pub mod events;
 pub mod runtimes;
 
 pub use commands::*;
-#[cfg(feature = "tokio-knot-actuator-service")]
+#[cfg(feature = "knot-nostd-runtime")]
 pub use events::*;
 pub use runtimes::*;
