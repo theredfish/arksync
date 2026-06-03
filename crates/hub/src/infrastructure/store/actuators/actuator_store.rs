@@ -329,6 +329,34 @@ where
     rule.ok_or(ActuatorStoreError::NotFound)
 }
 
+pub async fn delete_actuator_rule_by_actuator_sensor_name<'e, E>(
+    executor: E,
+    actuator_id: arksync_utils::uuid::Uuid,
+    sensor_id: arksync_utils::uuid::Uuid,
+    name: &str,
+) -> Result<(), ActuatorStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    sqlx::query(
+        r#"
+        update actuator_rules
+        set deleted_at = now()
+        where actuator_id = $1
+            and sensor_id = $2
+            and name = $3
+            and deleted_at is null
+        "#,
+    )
+    .bind(actuator_id)
+    .bind(sensor_id)
+    .bind(name)
+    .execute(executor)
+    .await?;
+
+    Ok(())
+}
+
 pub async fn insert_actuator_rule<'e, E>(
     executor: E,
     rule: &NewActuatorRuleRecord,
