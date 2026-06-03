@@ -10,8 +10,9 @@ use crate::domain::{
 use crate::infrastructure::store::{
     actuator_backend_as_str, actuator_by_station_knot_id_and_device_uid, actuator_kind_as_str,
     actuator_protocol_as_str, actuator_rule_by_actuator_sensor_name,
-    insert_actuator as store_insert_actuator, insert_actuator_rule,
-    list_actuator_rules_by_actuator_ids, list_actuators as store_list_actuators,
+    delete_actuator_rule_by_actuator_sensor_name, insert_actuator as store_insert_actuator,
+    insert_actuator_rule, list_actuator_rules_by_actuator_ids,
+    list_actuators as store_list_actuators,
     list_actuators_by_station_knot_id as store_list_actuators_by_station_knot_id,
     list_sensors as store_list_sensors, station_knot_by_hardware_uid,
     update_actuator_runtime_status as store_update_actuator_runtime_status, ActuatorRecord,
@@ -31,6 +32,7 @@ use sqlx::PgExecutor;
 
 const LOCAL_DEMO_RELAY_DEVICE_UID: &str = "rpi-gpio17-mist-relay";
 const LOCAL_DEMO_RELAY_DISPLAY_NAME: &str = "Mist relay";
+const LEGACY_LOCAL_DEMO_RULE_NAME: &str = "temperature_ge_36_mist_relay";
 const LOCAL_DEMO_RULE_NAME: &str = "temperature_ge_40_mist_relay";
 
 pub async fn list_actuators<'e, E>(executor: E) -> Result<Vec<Actuator>, HubActuatorError>
@@ -220,6 +222,14 @@ async fn ensure_local_demo_relay_rule(
     actuator_id: Uuid,
     sensor_id: Uuid,
 ) -> Result<ActuatorRuleRecord, HubActuatorError> {
+    delete_actuator_rule_by_actuator_sensor_name(
+        executor,
+        actuator_id,
+        sensor_id,
+        LEGACY_LOCAL_DEMO_RULE_NAME,
+    )
+    .await?;
+
     match actuator_rule_by_actuator_sensor_name(
         executor,
         actuator_id,
