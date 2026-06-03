@@ -179,7 +179,7 @@ mod tests {
                 version: 1,
                 enabled: true,
                 sensor_id: "temperature-sensor".to_string(),
-                assertion: ActuatorRuleAssertion::GreaterThanOrEqual { threshold: 36.0 },
+                assertion: ActuatorRuleAssertion::GreaterThanOrEqual { threshold: 40.0 },
                 effect: ActuatorRuleEffect::SetActiveWhenMatched {
                     active_when_matched: true,
                     active_when_unmatched: false,
@@ -196,7 +196,7 @@ mod tests {
 
         let decisions = engine.evaluate(&SensorValue {
             sensor_id: "temperature-sensor".to_string(),
-            value: 36.1,
+            value: 40.0,
         });
 
         assert_eq!(decisions.len(), 1);
@@ -204,14 +204,14 @@ mod tests {
 
         let decisions = engine.evaluate(&SensorValue {
             sensor_id: "temperature-sensor".to_string(),
-            value: 37.0,
+            value: 40.1,
         });
 
         assert!(decisions.is_empty());
 
         let decisions = engine.evaluate(&SensorValue {
             sensor_id: "temperature-sensor".to_string(),
-            value: 35.9,
+            value: 39.9,
         });
 
         assert_eq!(decisions.len(), 1);
