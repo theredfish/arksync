@@ -10,6 +10,9 @@ pub struct HubId([u8; 16]);
 #[derive(UuidV4)]
 pub struct SensorId([u8; 16]);
 
+#[derive(UuidV4)]
+pub struct ActuatorId([u8; 16]);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -24,6 +27,13 @@ mod tests {
     #[test]
     fn builds_sensor_id_from_random_bytes() {
         let id = SensorId::new_with_random_bytes([2; 16]);
+
+        assert_eq!(id.as_uuid().get_version_num(), 4);
+    }
+
+    #[test]
+    fn builds_actuator_id_from_random_bytes() {
+        let id = ActuatorId::new_with_random_bytes([3; 16]);
 
         assert_eq!(id.as_uuid().get_version_num(), 4);
     }

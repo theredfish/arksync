@@ -2,63 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::domain::{Sensor, SensorMeasurement};
+use crate::domain::SensorMeasurement;
+use crate::infrastructure::store::{sensor_kind_as_str, sensor_kind_from_str};
 use arksync_bus::{EventId, Timestamp};
 use arksync_knot::domain::KnotEventSource;
-use arksync_sensor::infrastructure::events::{MeasurementUnit, SensorKind};
+use arksync_sensor::infrastructure::events::MeasurementUnit;
 use arksync_utils::uuid::Uuid;
-use serde_json::Value;
 use sqlx::FromRow;
-
-#[derive(Clone, Debug)]
-pub struct SystemUserRecord {
-    pub id: Uuid,
-    pub username: String,
-    pub password: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct HubRecord {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub name: String,
-    pub hardware_uid: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct KnotRecord {
-    pub id: Uuid,
-    pub hub_id: Uuid,
-    pub name: String,
-    pub hardware_uid: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct NewSensorRecord {
-    pub station_knot_id: Uuid,
-    pub device_uid: String,
-    pub display_name: Option<String>,
-    pub sensor_kind: String,
-    pub driver: String,
-    pub protocol: String,
-    pub connection: Value,
-    pub firmware: Option<f64>,
-    pub measurement_interval_ms: i32,
-}
-
-#[derive(Clone, Debug, FromRow)]
-pub struct SensorRecord {
-    pub id: Uuid,
-    pub station_knot_id: Uuid,
-    pub device_uid: String,
-    pub display_name: Option<String>,
-    pub sensor_kind: String,
-    pub driver: String,
-    pub protocol: String,
-    pub connection: Value,
-    pub firmware: Option<f64>,
-    pub measurement_interval_ms: i32,
-}
 
 #[derive(Clone, Debug, FromRow)]
 pub struct SensorMeasurementRecord {
@@ -110,37 +60,6 @@ impl From<SensorMeasurementRecord> for SensorMeasurement {
             measured_at: Timestamp::from_unix_millis(record.measured_at_unix_millis),
             received_at: Timestamp::from_unix_millis(record.received_at_unix_millis),
         }
-    }
-}
-
-impl From<SensorRecord> for Sensor {
-    fn from(record: SensorRecord) -> Self {
-        Self {
-            id: record.id.into(),
-            station_knot_id: record.station_knot_id.into(),
-            device_uid: record.device_uid,
-            display_name: record.display_name,
-            kind: sensor_kind_from_str(&record.sensor_kind),
-            driver: record.driver,
-            protocol: record.protocol,
-            connection: record.connection,
-            firmware: record.firmware,
-            measurement_interval_ms: record.measurement_interval_ms,
-        }
-    }
-}
-
-pub fn sensor_kind_as_str(kind: SensorKind) -> &'static str {
-    match kind {
-        SensorKind::Temperature => "temperature",
-        SensorKind::Custom => "custom",
-    }
-}
-
-pub fn sensor_kind_from_str(kind: &str) -> SensorKind {
-    match kind {
-        "temperature" => SensorKind::Temperature,
-        _ => SensorKind::Custom,
     }
 }
 

@@ -18,6 +18,9 @@ drop table if exists station_hubs;
 drop table if exists users;
 
 drop type if exists actuator_status;
+drop type if exists actuator_backend;
+drop type if exists actuator_protocol;
+drop type if exists actuator_kind;
 drop type if exists sensor_status;
 drop type if exists sensor_driver;
 drop type if exists sensor_kind;

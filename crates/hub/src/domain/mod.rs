@@ -2,10 +2,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+mod actuator;
+mod hub;
 mod id;
 mod sensor;
 mod source;
 
+pub use actuator::*;
+pub use hub::*;
 pub use id::*;
 pub use sensor::*;
 pub use source::*;

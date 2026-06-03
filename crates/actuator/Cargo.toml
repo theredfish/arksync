@@ -14,9 +14,10 @@ esp-gpio = []
 linux-gpio = ["dep:gpiocdev"]
 
 [dependencies]
+arksync-bus.workspace = true
 gpiocdev = { workspace = true, optional = true }
 log.workspace = true
-serde.workspace = true
+serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 
 [lints]
 workspace = true

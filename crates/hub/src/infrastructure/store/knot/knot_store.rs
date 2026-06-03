@@ -6,6 +6,21 @@ use sqlx::PgExecutor;
 
 use crate::infrastructure::store::KnotRecord;
 
+#[derive(Debug)]
+pub enum KnotStoreError {
+    NotFound,
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for KnotStoreError {
+    fn from(err: sqlx::Error) -> Self {
+        match err {
+            sqlx::Error::RowNotFound => Self::NotFound,
+            err => Self::Database(err),
+        }
+    }
+}
+
 pub async fn upsert_station_knot<'e, E>(executor: E, knot: &KnotRecord) -> Result<(), sqlx::Error>
 where
     E: PgExecutor<'e>,
@@ -46,4 +61,30 @@ where
     .await?;
 
     Ok(())
+}
+
+pub async fn station_knot_by_hardware_uid<'e, E>(
+    executor: E,
+    hardware_uid: &str,
+) -> Result<KnotRecord, KnotStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    let knot = sqlx::query_as(
+        r#"
+        select
+            id,
+            station_hub_id as hub_id,
+            name,
+            hardware_uid
+        from station_knots
+        where hardware_uid = $1
+            and deleted_at is null
+        "#,
+    )
+    .bind(hardware_uid)
+    .fetch_one(executor)
+    .await?;
+
+    Ok(knot)
 }

@@ -44,6 +44,19 @@ pub struct RemoveSensor {
     pub sensor_id: SensorId,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HubSensorCommand {
+    Register(RegisterSensor),
+    Rename(RenameSensor),
+    Remove(RemoveSensor),
+}
+
+pub trait HubSensorCommandHandler {
+    type Error;
+
+    fn handle(&mut self, command: HubSensorCommand) -> Result<(), Self::Error>;
+}
+
 pub async fn list_sensors<'e, E>(executor: E) -> Result<Vec<Sensor>, HubSensorError>
 where
     E: PgExecutor<'e>,
@@ -79,13 +92,13 @@ where
 }
 
 #[derive(Default)]
-pub struct Hub {
+pub struct HubService {
     registered_sensors: Vec<RegisteredSensor>,
     observed_serial_sensors: Vec<ObservedSerialSensor>,
     sensor_measurements: Vec<SensorMeasurement>,
 }
 
-impl Hub {
+impl HubService {
     pub fn new() -> Self {
         Self::default()
     }
@@ -226,6 +239,18 @@ impl Hub {
             measured_at,
             received_at,
         });
+    }
+}
+
+impl HubSensorCommandHandler for HubService {
+    type Error = HubError;
+
+    fn handle(&mut self, command: HubSensorCommand) -> Result<(), Self::Error> {
+        match command {
+            HubSensorCommand::Register(command) => self.register_sensor(command),
+            HubSensorCommand::Rename(command) => self.rename_sensor(command),
+            HubSensorCommand::Remove(command) => self.remove_sensor(command),
+        }
     }
 }
 

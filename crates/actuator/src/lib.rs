@@ -4,6 +4,8 @@
 
 #![no_std]
 
+extern crate alloc;
+
 #[cfg(all(feature = "linux-gpio", feature = "esp-gpio"))]
 compile_error!("features `linux-gpio` and `esp-gpio` cannot be enabled at the same time");
 
@@ -12,3 +14,4 @@ extern crate std;
 
 pub mod infrastructure;
 pub mod relay;
+pub mod services;
