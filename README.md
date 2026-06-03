@@ -102,6 +102,37 @@ The generated binary is:
 target/aarch64-unknown-linux-gnu/debug/arksync-actuator
 ```
 
+### Tauri App
+
+Build the local Linux desktop app:
+
+```bash
+cargo sk build app --target linux-x64
+```
+
+For a faster local check without packaging the AppImage:
+
+```bash
+cargo sk build app --target linux-x64 --profile dev --no-bundle
+```
+
+Inspect the command without building:
+
+```bash
+cargo sk build app --target linux-x64 --dry-run
+```
+
+An ARM64 target is available as a best-effort cross-build:
+
+```bash
+cargo sk build app --target linux-arm64 --profile dev --no-bundle
+```
+
+The publish workflow currently builds ARM on a native `ubuntu-22.04-arm` runner.
+Cross-building the full Tauri app from x86_64 also requires target WebKitGTK,
+AppImage, pkg-config and system library setup, so native ARM remains the
+reliable release path for now.
+
 ### Development
 
 - `cargo tauri signer generate -w ~/.tauri/arksync_dev.key`

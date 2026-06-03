@@ -165,7 +165,7 @@ jobs:
 
       - uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: libwebkit2gtk-4.1-dev libudev-dev
+          packages: libudev-dev
           version: 1.0
 
       - uses: ./.github/actions/setup-rust
@@ -202,3 +202,6 @@ jobs:
 
       - name: Check Knot no_std runtime feature
         run: cargo check -p arksync-knot --all-targets --no-default-features --features knot-nostd-runtime
+
+      - name: Check ESP actuator backend feature
+        run: cargo check -p arksync-actuator --all-targets --no-default-features --features esp-gpio
