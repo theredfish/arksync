@@ -14,8 +14,16 @@ use leptos_use::{
     UseElementBoundingReturn,
 };
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GridDebugInfo(pub bool);
+
 #[component]
-pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> impl IntoView {
+pub fn GridLayout(
+    children: Children,
+    columns: usize,
+    display_grid: bool,
+    #[prop(optional, default = false)] debug: bool,
+) -> impl IntoView {
     assert!(columns > 0, "The number of columns can't be zero");
     let grid_layout_node = NodeRef::<Div>::new();
     let UseElementBoundingReturn { width, height, .. } = use_element_bounding_with_options(
@@ -34,6 +42,7 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
     provide_context(layout);
     provide_context(drop_preview);
     provide_context(resize_preview);
+    provide_context(GridDebugInfo(debug));
 
     // Track dynamically added items
     let next_id = RwSignal::new(10_000u32);
@@ -185,6 +194,7 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
                                 row_start=0
                                 label=format!("Item {}", id)
                                 dynamic=true
+                                debug=debug
                             >
                                 <div class="p-4 text-[var(--arksync-text-muted)]">
                                     "No data yet"

@@ -8,6 +8,7 @@ use crate::components::grid::core::layout::Layout;
 use crate::components::grid::core::resize_preview::ResizePreview;
 use crate::components::grid::core::size::Size;
 use crate::components::grid::core::span::Span;
+use crate::components::grid::grid_layout::GridDebugInfo;
 use crate::components::grid::utils::draggable_item::{
     use_draggable_grid_item, UseDraggableGridItemOptions, UseDraggableGridItemReturn,
 };
@@ -36,6 +37,7 @@ pub fn GridItem(
     /// If true, adds item at top and pushes others down. If false, registers at specified position.
     #[prop(optional, default = false)]
     dynamic: bool,
+    #[prop(optional)] debug: Option<bool>,
 ) -> impl IntoView {
     let layout = use_context::<RwSignal<Layout>>().expect("should retrieve the layout context");
     let drop_preview = use_context::<RwSignal<Option<DropPreview>>>()
@@ -46,6 +48,11 @@ pub fn GridItem(
     let grid_item_ref = NodeRef::<Div>::new();
     let drag_ref = NodeRef::<Div>::new();
     let resize_button_ref = NodeRef::<Div>::new();
+    let debug = debug.unwrap_or_else(|| {
+        use_context::<GridDebugInfo>()
+            .map(|debug| debug.0)
+            .unwrap_or(false)
+    });
 
     // Initializing the grid item data
     let Size {
@@ -196,14 +203,20 @@ pub fn GridItem(
             <div node_ref=drag_ref class="w-full border-b border-[var(--arksync-panel-border)] px-4 py-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--arksync-text-muted)]">
                 { label }
             </div>
-            <div class="px-4 py-2 text-xs text-[var(--arksync-text-muted)]">
-                { move || {
-                    let Size { width, height } = resize_size.get();
-                    let GridPosition { col_start, row_start } = grid_item_data.get().grid_pos;
-                    let Position { x: left, y: top } = grid_item_data.get().px_pos;
-                    format!("position: {col_start};{row_start} | size: {width};{height} | left/top: : {left}; {top}")
-                }}
-            </div>
+            {move || {
+                debug.then(|| {
+                    view! {
+                        <div class="px-4 py-2 text-xs text-[var(--arksync-text-muted)]">
+                            { move || {
+                                let Size { width, height } = resize_size.get();
+                                let GridPosition { col_start, row_start } = grid_item_data.get().grid_pos;
+                                let Position { x: left, y: top } = grid_item_data.get().px_pos;
+                                format!("position: {col_start};{row_start} | size: {width};{height} | left/top: : {left}; {top}")
+                            }}
+                        </div>
+                    }
+                })
+            }}
             { children() }
             <div
                 node_ref=resize_button_ref
