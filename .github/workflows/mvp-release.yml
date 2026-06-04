@@ -16,10 +16,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Delete previous MVP release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release delete arksync-mvp --yes --cleanup-tag || true
+        run: gh release delete arksync-mvp --yes || true
+
+      - name: Delete previous MVP tag
+        run: git push origin :refs/tags/arksync-mvp || true
 
   publish-tauri:
     name: publish Tauri MVP
