@@ -12,16 +12,18 @@ pub fn PageLayout(
     #[prop(into)] eyebrow: String,
     #[prop(into)] title: String,
     children: Children,
-    #[prop(optional, into)] actions: ViewFn,
+    #[prop(optional, into)] actions: Option<ViewFn>,
 ) -> impl IntoView {
     view! {
         <div class="flex h-full flex-col">
-            <header class="flex items-center justify-between gap-4 px-8 pb-3 pt-8">
+            <header class="flex shrink-0 items-center justify-between gap-4 border-b border-[var(--arksync-panel-border)] bg-[var(--arksync-app-bg)] px-8 py-4">
                 <PageTitle eyebrow=eyebrow title=title />
-                {actions.run()}
+                <div class="flex items-center gap-2">
+                    {move || actions.clone().map(|actions| actions.run())}
+                </div>
             </header>
 
-            <div class="relative flex-1 overflow-y-auto overflow-x-hidden px-8 pb-8 pt-3">
+            <div class="relative flex-1 overflow-y-auto overflow-x-hidden px-8 pb-8 pt-5">
                 {children()}
             </div>
         </div>

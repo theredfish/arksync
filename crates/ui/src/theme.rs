@@ -28,6 +28,43 @@ pub struct ArkSyncThemeWrapper {
     pub json: &'static str,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct ArkSyncChartColors {
+    pub background: &'static str,
+    pub text: &'static str,
+    pub muted_text: &'static str,
+    pub grid: &'static str,
+    pub gauge_fill: &'static str,
+    pub line: &'static str,
+    pub pointer: &'static str,
+}
+
+impl ArkSyncChartColors {
+    pub fn from_dark_theme(dark_theme: bool) -> Self {
+        if dark_theme {
+            Self {
+                background: "#2c2b31",
+                text: "#f4f1f7",
+                muted_text: "#d9d6df",
+                grid: "#45424d",
+                gauge_fill: "#28554f",
+                line: "#1f5f4b",
+                pointer: "#28554f",
+            }
+        } else {
+            Self {
+                background: "#fafafa",
+                text: "#101917",
+                muted_text: "#53655c",
+                grid: "#aeb8b2",
+                gauge_fill: "#28554f",
+                line: "#1f5f4b",
+                pointer: "#28554f",
+            }
+        }
+    }
+}
+
 impl ArkSyncTheme {
     pub fn as_wrapper(&self) -> ArkSyncThemeWrapper {
         match self {

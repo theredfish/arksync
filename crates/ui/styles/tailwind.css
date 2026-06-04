@@ -3,26 +3,105 @@
 @tailwind utilities;
 
 @layer base {
+    :root,
+    .theme-dark {
+        --arksync-app-bg: #25242a;
+        --arksync-sidebar-bg: #222126;
+        --arksync-panel-bg: #2c2b31;
+        --arksync-panel-border: #3c3a43;
+        --arksync-panel-muted: #8e8998;
+        --arksync-text: #d9d6df;
+        --arksync-text-strong: #f4f1f7;
+        --arksync-text-muted: #a8a2b1;
+        --arksync-nav-bg: #2b2a30;
+        --arksync-chart-bg: #2c2b31;
+        --arksync-chart-text: #f4f1f7;
+        --arksync-chart-muted: #a8a2b1;
+        --arksync-chart-grid: #45424d;
+        --arksync-chart-gauge-fill: #28554f;
+        --arksync-chart-line: #87d7cb;
+        --arksync-primary: #36343d;
+        --arksync-primary-hover: #403d48;
+        --arksync-primary-text: #f4f1f7;
+        --arksync-action-border: #565260;
+        --arksync-action-accent: #87d7cb;
+        --arksync-nav-active-bg: #36343d;
+        --arksync-nav-active-text: #f4f1f7;
+        --arksync-preview-bg: rgb(244 241 247 / 0.08);
+        --arksync-preview-border: #6b6575;
+        --arksync-selection-bg: #4d4658;
+        --arksync-selection-text: #f4f1f7;
+    }
+
+    .theme-light {
+        --arksync-app-bg: #ffffff;
+        --arksync-sidebar-bg: #f6faf7;
+        --arksync-panel-bg: #fafafa;
+        --arksync-panel-border: #d8e0d9;
+        --arksync-panel-muted: #5f6d64;
+        --arksync-text: #304039;
+        --arksync-text-strong: #101917;
+        --arksync-text-muted: #53655c;
+        --arksync-nav-bg: #f7f8f7;
+        --arksync-chart-bg: #fafafa;
+        --arksync-chart-text: #101917;
+        --arksync-chart-muted: #53655c;
+        --arksync-chart-grid: #cbd5cb;
+        --arksync-chart-gauge-fill: #28554f;
+        --arksync-chart-line: #1f5f4b;
+        --arksync-primary: #28554f;
+        --arksync-primary-hover: #1f5f4b;
+        --arksync-primary-text: #eef3ef;
+        --arksync-action-border: #28554f;
+        --arksync-action-accent: #28554f;
+        --arksync-nav-active-bg: #28554f;
+        --arksync-nav-active-text: #ffffff;
+        --arksync-preview-bg: rgb(40 48 57 / 0.06);
+        --arksync-preview-border: #9aa59e;
+        --arksync-selection-bg: #d8e0d9;
+        --arksync-selection-text: #101917;
+    }
+
+    .theme-sidebar {
+        --arksync-sidebar-bg: #222126;
+        --arksync-panel-bg: #2c2b31;
+        --arksync-panel-border: #3c3a43;
+        --arksync-panel-muted: #8e8998;
+        --arksync-text: #d9d6df;
+        --arksync-text-strong: #f4f1f7;
+        --arksync-text-muted: #b6b0c0;
+        --arksync-nav-bg: #2b2a30;
+        --arksync-nav-active-bg: #3a3741;
+        --arksync-nav-active-text: #f4f1f7;
+        --arksync-action-border: #565260;
+        --arksync-action-accent: #87d7cb;
+    }
+
     html {
-        @apply bg-sk-carbon-950;
+        background: var(--arksync-app-bg);
     }
 
     body {
-        @apply min-h-screen bg-sk-carbon-950 text-sk-carbon-150;
+        min-height: 100vh;
+        background: var(--arksync-app-bg);
+        color: var(--arksync-text);
     }
 
     ::selection {
-        @apply bg-sk-mint-325 text-sk-sage-50;
+        background: var(--arksync-selection-bg);
+        color: var(--arksync-selection-text);
     }
 
     a[aria-current],
     a:hover {
-        @apply text-sk-aqua-50
+        color: var(--arksync-action-accent);
     }
 }
 
 @layer components {
     .arksync-panel {
-        @apply border border-sk-carbon-725 bg-sk-carbon-900 text-sk-carbon-150;
+        border: 1px solid var(--arksync-panel-border);
+        background: var(--arksync-panel-bg);
+        color: var(--arksync-text);
     }
 }
