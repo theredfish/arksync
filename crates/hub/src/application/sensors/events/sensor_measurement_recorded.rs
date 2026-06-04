@@ -95,6 +95,12 @@ async fn maybe_refresh_local_demo_actuator_config(
     )
     .await
     .wrap_err("failed to refresh local Knot actuator config after sensor measurement")?;
+    log::info!(
+        "Hub refreshes local Knot actuator config after sensor measurement sensor_id={} actuator_configs={} sensor_bindings={}",
+        sensor_id,
+        ack.actuator_configs.len(),
+        ack.sensor_bindings.len()
+    );
 
     knot_event_tx
         .send(KnotActuatorEvent::Ack(ack))

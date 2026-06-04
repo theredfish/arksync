@@ -121,9 +121,22 @@ impl<'bus> KnotRuntime<'bus> {
             .iter()
             .find(|binding| binding.device_uid == device_uid)
         else {
+            #[cfg(feature = "log")]
+            log::debug!(
+                "Knot actuator runtime ignored sensor value with no binding device_uid={} value={}",
+                device_uid,
+                value
+            );
             return;
         };
 
+        #[cfg(feature = "log")]
+        log::debug!(
+            "Knot actuator runtime mapped sensor device_uid={} to sensor_id={} value={}",
+            device_uid,
+            binding.sensor_id,
+            value
+        );
         self.actuator_service
             .observe_sensor_value(binding.sensor_id.clone(), value, occurred_at);
     }
@@ -191,9 +204,23 @@ impl<'bus> KnotRuntime<'bus> {
             return Err(KnotRuntimeError::ActuatorHardwareUidMismatch);
         }
 
+        #[cfg(feature = "log")]
+        log::info!(
+            "Knot actuator runtime applying config knot_hardware_uid={} sensor_bindings={} actuator_configs={}",
+            config.hardware_uid,
+            config.sensor_bindings.len(),
+            config.actuator_configs.len()
+        );
+
         self.sensor_bindings = config.sensor_bindings;
 
         for config in config.actuator_configs {
+            #[cfg(feature = "log")]
+            log::info!(
+                "Knot actuator runtime applies actuator config config_id={} rules={}",
+                config.config_id,
+                config.rules.len()
+            );
             self.actuator_service.read_event(
                 ActuatorEvent::AddActuator(AddActuator { config }),
                 occurred_at,

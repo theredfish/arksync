@@ -35,6 +35,7 @@ impl TokioKnotActuatorService {
     }
 
     pub async fn run(mut self) {
+        let relay_driver = local_relay_driver();
         let (actuator_event_tx, mut actuator_event_rx) = mpsc::channel(100);
         let mut actuator_bus = EventBus::new();
         actuator_bus.subscribe(TokioActuatorEventHandler(actuator_event_tx));
@@ -70,6 +71,11 @@ impl TokioKnotActuatorService {
                             }
                         }
                         TokioKnotActuatorInput::SensorValue { device_uid, value } => {
+                            log::debug!(
+                                "Local Knot actuator runtime observed sensor value device_uid={} value={}",
+                                device_uid,
+                                value
+                            );
                             knot_runtime.observe_actuator_sensor_device_value(
                                 &device_uid,
                                 value,
@@ -80,7 +86,7 @@ impl TokioKnotActuatorService {
                 }
                 Some(actuator_envelope) = actuator_event_rx.recv() => {
                     log::debug!("Local Knot produced actuator event: {actuator_envelope:?}");
-                    apply_local_actuator_state(&actuator_envelope.payload);
+                    apply_local_actuator_state(relay_driver.as_ref(), &actuator_envelope.payload);
                     publish_runtime_event(
                         &mut envelope_bus,
                         &mut event_counter,
@@ -93,17 +99,49 @@ impl TokioKnotActuatorService {
     }
 }
 
-fn apply_local_actuator_state(event: &ActuatorEvent) {
+fn local_relay_driver() -> Option<RelayDriver> {
+    match RelayDriver::new(MIST_RELAY) {
+        Ok(driver) => {
+            log::info!(
+                "Local Knot opened relay driver relay_id={} gpio_bcm_pin={} active_low={}",
+                MIST_RELAY.id,
+                MIST_RELAY.gpio_bcm_pin,
+                MIST_RELAY.active_low
+            );
+            Some(driver)
+        }
+        Err(err) => {
+            log::error!("Local Knot failed to open relay driver: {err:?}");
+            None
+        }
+    }
+}
+
+fn apply_local_actuator_state(relay_driver: Option<&RelayDriver>, event: &ActuatorEvent) {
     let ActuatorEvent::ActuatorStateChanged(state) = event else {
+        return;
+    };
+    let Some(relay_driver) = relay_driver else {
+        log::error!(
+            "Local Knot cannot apply relay state because the relay driver is unavailable actuator_id={} rule_id={} active={}",
+            state.actuator_id,
+            state.rule_id,
+            state.active
+        );
         return;
     };
 
     // MVP: the local runtime has a single known relay on GPIO17. Once actuator
     // configs carry enough driver registry information, this should resolve the
     // driver from the applied actuator config instead of using MIST_RELAY.
-    match RelayDriver::new(MIST_RELAY)
-        .and_then(|driver| driver.apply(RelayState::new(MIST_RELAY, state.active)))
-    {
+    log::info!(
+        "Local Knot applying relay state actuator_id={} rule_id={} sensor_value={} active={}",
+        state.actuator_id,
+        state.rule_id,
+        state.sensor_value,
+        state.active
+    );
+    match relay_driver.apply(RelayState::new(MIST_RELAY, state.active)) {
         Ok(()) => {
             log::info!(
                 "Local Knot applied relay state actuator_id={} rule_id={} active={}",

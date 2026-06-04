@@ -19,7 +19,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build.workspace = true
 
 [dependencies]
-arksync-actuator.workspace = true
+arksync-actuator = { workspace = true, features = ["linux-gpio"] }
 arksync-bus.workspace = true
 arksync-db.workspace = true
 arksync-hub.workspace = true
