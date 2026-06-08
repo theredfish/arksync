@@ -15,12 +15,14 @@ use charming::{
 use futures_util::StreamExt as _;
 use leptos::{html::Div, prelude::*};
 use leptos::{logging::log, IntoView};
-use leptos_use::use_element_size;
+use leptos_use::{use_element_size, use_interval_fn};
 use serde::Deserialize;
 use tauri_sys::event::listen;
 use wasm_bindgen_futures::spawn_local;
 
 use crate::theme::{ArkSyncChartColors, ArkSyncTheme};
+
+const STALE_MEASUREMENT_TIMEOUT_MS: f64 = 16_000.0;
 
 #[derive(Clone, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +40,7 @@ pub fn AirTemperatureGauge(dark_theme: RwSignal<bool>) -> impl IntoView {
         (chart_container_size.width, chart_container_size.height);
 
     let sensor_value = RwSignal::new(None::<f32>);
+    let last_measurement_at = RwSignal::new(None::<f64>);
     let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::new(RefCell::new(None));
 
     let render_responsive_chart = move |width: f64, height: f64, serie: f32, dark_theme: bool| {
@@ -150,10 +153,24 @@ pub fn AirTemperatureGauge(dark_theme: RwSignal<bool>) -> impl IntoView {
             };
 
             while let Some(sensor_data) = stream.next().await {
+                last_measurement_at.set(Some(js_sys::Date::now()));
                 sensor_value.set(Some(sensor_data.payload.value));
             }
         });
     });
+
+    use_interval_fn(
+        move || {
+            let Some(last_measurement_at) = last_measurement_at.get_untracked() else {
+                return;
+            };
+
+            if js_sys::Date::now() - last_measurement_at > STALE_MEASUREMENT_TIMEOUT_MS {
+                sensor_value.set(None);
+            }
+        },
+        1_000,
+    );
 
     Effect::watch(
         move || {
