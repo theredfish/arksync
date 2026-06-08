@@ -5,8 +5,7 @@
 use crate::application::HubSensorError;
 use crate::domain::{SensorId, SensorMeasurement, SensorMeasurementPoint, SensorTimeSeries};
 use crate::infrastructure::store::{
-    insert_sensor_measurement, latest_sensor_id, latest_sensor_measurement,
-    list_sensor_measurements_since, SensorMeasurementRecord,
+    sensor_measurements as sensor_measurement_store, SensorMeasurementRecord,
 };
 use arksync_bus::{EventId, Timestamp};
 use arksync_knot::domain::KnotEventSource;
@@ -43,7 +42,7 @@ where
     };
     let record = SensorMeasurementRecord::new(input.event_id, &measurement);
 
-    insert_sensor_measurement(executor, &record).await?;
+    sensor_measurement_store::insert_sensor_measurement(executor, &record).await?;
 
     Ok(measurement)
 }
@@ -58,7 +57,7 @@ pub async fn load_sensor_time_series<'e, E>(
 where
     E: PgExecutor<'e>,
 {
-    let records = list_sensor_measurements_since(
+    let records = sensor_measurement_store::list_sensor_measurements_since(
         executor,
         sensor_id.as_uuid(),
         window_start.unix_millis,
@@ -90,7 +89,7 @@ pub async fn load_latest_sensor_time_series(
     window_end: Timestamp,
     limit: i64,
 ) -> Result<Option<SensorTimeSeries>, HubSensorError> {
-    let Some(sensor_id) = latest_sensor_id(executor).await? else {
+    let Some(sensor_id) = sensor_measurement_store::latest_sensor_id(executor).await? else {
         return Ok(None);
     };
 
@@ -102,7 +101,7 @@ pub async fn load_latest_sensor_time_series(
 pub async fn load_latest_sensor_measurement(
     executor: &sqlx::PgPool,
 ) -> Result<Option<SensorMeasurement>, HubSensorError> {
-    let measurement = latest_sensor_measurement(executor).await?;
+    let measurement = sensor_measurement_store::latest_sensor_measurement(executor).await?;
 
     Ok(measurement.map(SensorMeasurement::from))
 }

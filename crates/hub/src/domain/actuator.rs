@@ -4,22 +4,29 @@
 
 use crate::domain::ActuatorId;
 use arksync_knot::domain::KnotId;
+use derive_more::{Display, FromStr};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Display, FromStr, PartialEq, Eq, Serialize, Deserialize)]
+#[display(rename_all = "snake_case")]
+#[from_str(rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ActuatorKind {
     Relay,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Display, FromStr, PartialEq, Eq, Serialize, Deserialize)]
+#[display(rename_all = "snake_case")]
+#[from_str(rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ActuatorBackend {
     LinuxGpiod,
     EspGpio,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Display, FromStr, PartialEq, Eq, Serialize, Deserialize)]
+#[display(rename_all = "snake_case")]
+#[from_str(rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]
 pub enum ActuatorProtocol {
     Gpio,

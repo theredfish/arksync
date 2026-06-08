@@ -8,14 +8,7 @@ use crate::domain::{
     GpioActuatorConnection, RelayActuator, SensorId,
 };
 use crate::infrastructure::store::{
-    actuator_backend_as_str, actuator_by_station_knot_id_and_device_uid, actuator_kind_as_str,
-    actuator_protocol_as_str, actuator_rule_by_actuator_sensor_name,
-    delete_actuator_rule_by_actuator_sensor_name, insert_actuator as store_insert_actuator,
-    insert_actuator_rule, list_actuator_rules_by_actuator_ids,
-    list_actuators as store_list_actuators,
-    list_actuators_by_station_knot_id as store_list_actuators_by_station_knot_id,
-    list_sensors as store_list_sensors, station_knot_by_hardware_uid,
-    update_actuator_runtime_status as store_update_actuator_runtime_status, ActuatorRecord,
+    actuators as actuator_store, knot as knot_store, sensors as sensor_store, ActuatorRecord,
     ActuatorRuleRecord, ActuatorStoreError, NewActuatorRecord, NewActuatorRuleRecord,
 };
 use arksync_actuator::infrastructure::events::{
@@ -39,7 +32,7 @@ pub async fn list_actuators<'e, E>(executor: E) -> Result<Vec<Actuator>, HubActu
 where
     E: PgExecutor<'e>,
 {
-    let records = store_list_actuators(executor).await?;
+    let records = actuator_store::list_actuators(executor).await?;
 
     Ok(records.into_iter().map(Actuator::from).collect())
 }
@@ -55,9 +48,9 @@ where
         station_knot_id: actuator.station_knot_id.as_uuid(),
         device_uid: actuator.device_uid,
         display_name: actuator.display_name,
-        kind: actuator_kind_as_str(ActuatorKind::Relay).to_string(),
-        backend: actuator_backend_as_str(actuator.backend).to_string(),
-        protocol: actuator_protocol_as_str(ActuatorProtocol::Gpio).to_string(),
+        kind: ActuatorKind::Relay.to_string(),
+        backend: actuator.backend.to_string(),
+        protocol: ActuatorProtocol::Gpio.to_string(),
         config_version: actuator.config_version,
         enabled: actuator.enabled,
         gpio_pin: Some(i32::from(actuator.connection.pin)),
@@ -66,7 +59,7 @@ where
         channels: actuator.channels,
         model: actuator.model,
     };
-    let actuator = store_insert_actuator(executor, &record).await?;
+    let actuator = actuator_store::insert_actuator(executor, &record).await?;
 
     Ok(actuator.into())
 }
@@ -75,11 +68,15 @@ pub async fn actuator_config_ack_for_knot_hardware_uid(
     executor: &sqlx::PgPool,
     hardware_uid: &str,
 ) -> Result<KnotConfig, HubActuatorError> {
-    let knot = station_knot_by_hardware_uid(executor, hardware_uid).await?;
-    let actuator_records = store_list_actuators_by_station_knot_id(executor, knot.id).await?;
-    let actuator_rules =
-        list_actuator_rules_by_actuator_ids(executor, &actuator_ids(&actuator_records)).await?;
-    let sensor_bindings = store_list_sensors(executor)
+    let knot = knot_store::station_knot_by_hardware_uid(executor, hardware_uid).await?;
+    let actuator_records =
+        actuator_store::list_actuators_by_station_knot_id(executor, knot.id).await?;
+    let actuator_rules = actuator_store::list_actuator_rules_by_actuator_ids(
+        executor,
+        &actuator_ids(&actuator_records),
+    )
+    .await?;
+    let sensor_bindings = sensor_store::list_sensors(executor)
         .await?
         .into_iter()
         .filter(|sensor| sensor.station_knot_id == knot.id)
@@ -128,7 +125,7 @@ pub async fn record_actuator_runtime_status(
     status: &RuntimeStatus,
 ) -> Result<(), HubActuatorError> {
     for actuator in &status.actuators {
-        store_update_actuator_runtime_status(
+        actuator_store::update_actuator_runtime_status(
             executor,
             &actuator.config_id,
             actuator.version as i64,
@@ -186,7 +183,7 @@ async fn ensure_local_demo_relay_actuator(
     executor: &sqlx::PgPool,
     station_knot_id: Uuid,
 ) -> Result<Actuator, HubActuatorError> {
-    match actuator_by_station_knot_id_and_device_uid(
+    match actuator_store::actuator_by_station_knot_id_and_device_uid(
         executor,
         station_knot_id,
         LOCAL_DEMO_RELAY_DEVICE_UID,
@@ -222,7 +219,7 @@ async fn ensure_local_demo_relay_rule(
     actuator_id: Uuid,
     sensor_id: Uuid,
 ) -> Result<ActuatorRuleRecord, HubActuatorError> {
-    delete_actuator_rule_by_actuator_sensor_name(
+    actuator_store::delete_actuator_rule_by_actuator_sensor_name(
         executor,
         actuator_id,
         sensor_id,
@@ -230,7 +227,7 @@ async fn ensure_local_demo_relay_rule(
     )
     .await?;
 
-    match actuator_rule_by_actuator_sensor_name(
+    match actuator_store::actuator_rule_by_actuator_sensor_name(
         executor,
         actuator_id,
         sensor_id,
@@ -254,7 +251,7 @@ async fn ensure_local_demo_relay_rule(
         active_when_unmatched: false,
     };
 
-    Ok(insert_actuator_rule(executor, &rule).await?)
+    Ok(actuator_store::insert_actuator_rule(executor, &rule).await?)
 }
 
 fn actuator_kind_to_event(kind: ActuatorKind) -> ActuatorEventKind {

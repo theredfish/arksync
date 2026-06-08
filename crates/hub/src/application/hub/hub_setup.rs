@@ -4,8 +4,7 @@
 
 use crate::config::CONFIG;
 use crate::infrastructure::store::{
-    upsert_station_hub, upsert_station_knot, upsert_system_user, HubRecord, KnotRecord,
-    SystemUserRecord,
+    hub as hub_store, knot as knot_store, HubRecord, KnotRecord, SystemUserRecord,
 };
 
 pub async fn setup_local_station(executor: &sqlx::PgPool) -> Result<(), sqlx::Error> {
@@ -27,7 +26,7 @@ pub async fn setup_local_station(executor: &sqlx::PgPool) -> Result<(), sqlx::Er
         hardware_uid: CONFIG.local_knot_hardware_uid.clone(),
     };
 
-    upsert_system_user(executor, &user).await?;
-    upsert_station_hub(executor, &hub).await?;
-    upsert_station_knot(executor, &knot).await
+    hub_store::upsert_system_user(executor, &user).await?;
+    hub_store::upsert_station_hub(executor, &hub).await?;
+    knot_store::upsert_station_knot(executor, &knot).await
 }

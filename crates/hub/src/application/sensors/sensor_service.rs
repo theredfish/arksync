@@ -7,10 +7,7 @@ use crate::domain::{
     ObservedSerialSensor, PluggedSensor, RegisteredSensor, Sensor, SensorId, SensorMeasurement,
     SensorOverview, SensorRegistrationStatus,
 };
-use crate::infrastructure::store::{
-    insert_sensor as store_insert_sensor, list_sensors as store_list_sensors, sensor_kind_as_str,
-    NewSensorRecord,
-};
+use crate::infrastructure::store::{sensors as sensor_store, NewSensorRecord};
 use arksync_bus::Timestamp;
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::{SensorConnectionMetadata, SensorMeasurementRecorded};
@@ -61,7 +58,7 @@ pub async fn list_sensors<'e, E>(executor: E) -> Result<Vec<Sensor>, HubSensorEr
 where
     E: PgExecutor<'e>,
 {
-    let records = store_list_sensors(executor).await?;
+    let records = sensor_store::list_sensors(executor).await?;
 
     Ok(records.into_iter().map(Sensor::from).collect())
 }
@@ -77,7 +74,7 @@ where
         station_knot_id: sensor.station_knot_id.as_uuid(),
         device_uid: sensor.device_uid.as_ref().to_string(),
         display_name: None,
-        sensor_kind: sensor_kind_as_str(sensor.kind).to_string(),
+        sensor_kind: sensor_store::sensor_kind_as_str(sensor.kind).to_string(),
         driver: "atlas_scientific_ezo".to_string(),
         protocol: sensor_protocol_as_str(&sensor.connection).to_string(),
         connection: serde_json::to_value(&sensor.connection)
@@ -86,7 +83,7 @@ where
         measurement_interval_ms: sensor.measurement_interval_ms,
     };
 
-    let sensor = store_insert_sensor(executor, &record).await?;
+    let sensor = sensor_store::insert_sensor(executor, &record).await?;
 
     Ok(sensor.into())
 }

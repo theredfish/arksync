@@ -7,6 +7,7 @@ use crate::domain::{
     GpioActuatorConnection,
 };
 use arksync_utils::uuid::Uuid;
+use core::str::FromStr;
 use sqlx::FromRow;
 
 #[derive(Clone, Debug)]
@@ -71,7 +72,9 @@ pub struct ActuatorRuleRecord {
 
 impl From<ActuatorRecord> for Actuator {
     fn from(record: ActuatorRecord) -> Self {
-        let connection = match actuator_protocol_from_str(&record.protocol) {
+        let protocol = ActuatorProtocol::from_str(&record.protocol)
+            .expect("actuator protocol should match database enum");
+        let connection = match protocol {
             ActuatorProtocol::Gpio => ActuatorConnection::Gpio(GpioActuatorConnection {
                 pin: record.gpio_pin.unwrap_or_default() as u16,
                 pin_scheme: record.pin_scheme,
@@ -84,54 +87,16 @@ impl From<ActuatorRecord> for Actuator {
             station_knot_id: record.station_knot_id.into(),
             device_uid: record.device_uid,
             display_name: record.display_name,
-            kind: actuator_kind_from_str(&record.kind),
-            backend: actuator_backend_from_str(&record.backend),
-            protocol: actuator_protocol_from_str(&record.protocol),
+            kind: ActuatorKind::from_str(&record.kind)
+                .expect("actuator kind should match database enum"),
+            backend: ActuatorBackend::from_str(&record.backend)
+                .expect("actuator backend should match database enum"),
+            protocol,
             connection,
             config_version: record.config_version,
             enabled: record.enabled,
             channels: record.channels,
             model: record.model,
         }
-    }
-}
-
-pub fn actuator_kind_as_str(kind: ActuatorKind) -> &'static str {
-    match kind {
-        ActuatorKind::Relay => "relay",
-    }
-}
-
-pub fn actuator_kind_from_str(kind: &str) -> ActuatorKind {
-    match kind {
-        "relay" => ActuatorKind::Relay,
-        _ => ActuatorKind::Relay,
-    }
-}
-
-pub fn actuator_backend_as_str(backend: ActuatorBackend) -> &'static str {
-    match backend {
-        ActuatorBackend::LinuxGpiod => "linux_gpiod",
-        ActuatorBackend::EspGpio => "esp_gpio",
-    }
-}
-
-pub fn actuator_backend_from_str(backend: &str) -> ActuatorBackend {
-    match backend {
-        "esp_gpio" => ActuatorBackend::EspGpio,
-        _ => ActuatorBackend::LinuxGpiod,
-    }
-}
-
-pub fn actuator_protocol_as_str(protocol: ActuatorProtocol) -> &'static str {
-    match protocol {
-        ActuatorProtocol::Gpio => "gpio",
-    }
-}
-
-pub fn actuator_protocol_from_str(protocol: &str) -> ActuatorProtocol {
-    match protocol {
-        "gpio" => ActuatorProtocol::Gpio,
-        _ => ActuatorProtocol::Gpio,
     }
 }

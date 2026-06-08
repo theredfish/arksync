@@ -17,7 +17,7 @@ arksync-knot = { workspace = true, features = ["knot-tokio-runtime"] }
 arksync-macros.workspace = true
 arksync-sensor.workspace = true
 arksync-utils.workspace = true
-derive_more = { workspace = true, features = ["from"] }
+derive_more = { workspace = true, features = ["display", "from", "from_str"] }
 eyre.workspace = true
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 serde_json.workspace = true
