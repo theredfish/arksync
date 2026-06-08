@@ -37,7 +37,7 @@ pub fn AirTemperatureGauge(dark_theme: RwSignal<bool>) -> impl IntoView {
     let (chart_container_w, chart_container_h) =
         (chart_container_size.width, chart_container_size.height);
 
-    let sensor_value = RwSignal::new(0.0);
+    let sensor_value = RwSignal::new(None::<f32>);
     let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::new(RefCell::new(None));
 
     let render_responsive_chart = move |width: f64, height: f64, serie: f32, dark_theme: bool| {
@@ -150,7 +150,7 @@ pub fn AirTemperatureGauge(dark_theme: RwSignal<bool>) -> impl IntoView {
             };
 
             while let Some(sensor_data) = stream.next().await {
-                sensor_value.set(sensor_data.payload.value);
+                sensor_value.set(Some(sensor_data.payload.value));
             }
         });
     });
@@ -164,15 +164,32 @@ pub fn AirTemperatureGauge(dark_theme: RwSignal<bool>) -> impl IntoView {
                 dark_theme.get(),
             )
         },
-        move |(width, height, sensor_value, dark_theme): &(f64, f64, f32, bool), _prev, _| {
-            render_responsive_chart(*width, *height, *sensor_value, *dark_theme);
+        move |(width, height, sensor_value, dark_theme): &(f64, f64, Option<f32>, bool),
+              _prev,
+              _| {
+            if let Some(sensor_value) = sensor_value {
+                render_responsive_chart(*width, *height, *sensor_value, *dark_theme);
+            }
         },
         false,
     );
 
     view! {
-        <div node_ref=chart_container class="w-full h-full">
-            <div node_ref=chart_node id="air-temperature-gauge"></div>
+        <div node_ref=chart_container class="relative w-full h-full">
+            <div
+                node_ref=chart_node
+                id="air-temperature-gauge"
+                class=move || if sensor_value.get().is_some() { "h-full" } else { "hidden h-full" }
+            ></div>
+            {move || {
+                sensor_value.get().is_none().then(|| {
+                    view! {
+                        <div class="arksync-no-data pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-xs uppercase tracking-[0.22em] text-[var(--arksync-text-muted)]">
+                            "No Data"
+                        </div>
+                    }
+                })
+            }}
         </div>
     }
 }

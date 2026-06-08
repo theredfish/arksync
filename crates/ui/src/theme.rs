@@ -44,9 +44,9 @@ impl ArkSyncChartColors {
         if dark_theme {
             Self {
                 background: "#2c2b31",
-                text: "#f4f1f7",
-                muted_text: "#d9d6df",
-                grid: "#45424d",
+                text: "#ffffff",
+                muted_text: "#d8d2df",
+                grid: "#5a5563",
                 gauge_fill: "#28554f",
                 line: "#1f5f4b",
                 pointer: "#28554f",
@@ -54,9 +54,9 @@ impl ArkSyncChartColors {
         } else {
             Self {
                 background: "#fafafa",
-                text: "#101917",
-                muted_text: "#53655c",
-                grid: "#aeb8b2",
+                text: "#050908",
+                muted_text: "#26332d",
+                grid: "#9aa59e",
                 gauge_fill: "#28554f",
                 line: "#1f5f4b",
                 pointer: "#28554f",

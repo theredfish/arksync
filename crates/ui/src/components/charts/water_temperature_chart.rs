@@ -38,8 +38,8 @@ pub fn WaterTemperatureChart(dark_theme: RwSignal<bool>) -> impl IntoView {
     let (chart_container_w, chart_container_h) =
         (chart_container_size.width, chart_container_size.height);
 
-    let sensor_values = RwSignal::new(Vec::<f32>::new());
-    let sensor_labels = RwSignal::new(Vec::<String>::new());
+    let sensor_values = RwSignal::new(None::<Vec<f32>>);
+    let sensor_labels = RwSignal::new(None::<Vec<String>>);
     let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::new(RefCell::new(None));
 
     let render_responsive_chart = move |width: f64,
@@ -146,8 +146,8 @@ pub fn WaterTemperatureChart(dark_theme: RwSignal<bool>) -> impl IntoView {
             };
 
             while let Some(sensor_data) = stream.next().await {
-                sensor_labels.set(sensor_data.payload.labels);
-                sensor_values.set(sensor_data.payload.value);
+                sensor_labels.set(Some(sensor_data.payload.labels));
+                sensor_values.set(Some(sensor_data.payload.value));
             }
         });
     });
@@ -165,26 +165,41 @@ pub fn WaterTemperatureChart(dark_theme: RwSignal<bool>) -> impl IntoView {
         move |(width, height, sensor_values, sensor_labels, dark_theme): &(
             f64,
             f64,
-            Vec<f32>,
-            Vec<String>,
+            Option<Vec<f32>>,
+            Option<Vec<String>>,
             bool,
         ),
               _prev,
               _| {
-            render_responsive_chart(
-                *width,
-                *height,
-                sensor_values.to_vec(),
-                sensor_labels.to_vec(),
-                *dark_theme,
-            );
+            if let (Some(sensor_values), Some(sensor_labels)) = (sensor_values, sensor_labels) {
+                render_responsive_chart(
+                    *width,
+                    *height,
+                    sensor_values.to_vec(),
+                    sensor_labels.to_vec(),
+                    *dark_theme,
+                );
+            }
         },
         false,
     );
 
     view! {
-        <div node_ref=chart_container class="w-full h-full">
-            <div node_ref=chart_node id="water-temparature-gauge"></div>
+        <div node_ref=chart_container class="relative w-full h-full">
+            <div
+                node_ref=chart_node
+                id="water-temparature-gauge"
+                class=move || if sensor_values.get().is_some() { "h-full" } else { "hidden h-full" }
+            ></div>
+            {move || {
+                sensor_values.get().is_none().then(|| {
+                    view! {
+                        <div class="arksync-no-data pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-xs uppercase tracking-[0.22em] text-[var(--arksync-text-muted)]">
+                            "No Data"
+                        </div>
+                    }
+                })
+            }}
         </div>
     }
 }

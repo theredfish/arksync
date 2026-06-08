@@ -18,6 +18,7 @@ use tokio::time::{interval, Duration};
 pub static SENSORS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
 const TEMPERATURE_SERIES_WINDOW: Duration = Duration::from_secs(30 * 60);
 const TEMPERATURE_SERIES_LIMIT: i64 = 1_500;
+const TEMPERATURE_LIVE_WINDOW: Duration = Duration::from_secs(15);
 
 pub fn builder() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::<tauri::Wry>::default()
@@ -88,12 +89,13 @@ async fn water_temperature_sensor(app: AppHandle) {
         loop {
             interval.tick().await;
 
-            let sensor_data =
-                load_temperature_series(TEMPERATURE_SERIES_WINDOW, TEMPERATURE_SERIES_LIMIT).await;
+            if let Some(sensor_data) =
+                load_temperature_series(TEMPERATURE_SERIES_WINDOW, TEMPERATURE_SERIES_LIMIT).await
+            {
+                log::debug!("{sensor_data:#?}");
 
-            log::debug!("{sensor_data:#?}");
-
-            app.emit("water_temperature_sensor", &sensor_data).unwrap();
+                app.emit("water_temperature_sensor", &sensor_data).unwrap();
+            }
         }
     });
 }
@@ -117,25 +119,24 @@ async fn air_temperature_sensor(app: AppHandle) {
         loop {
             interval.tick().await;
 
-            let sensor_data = load_temperature_gauge().await;
+            if let Some(sensor_data) = load_temperature_gauge().await {
+                log::debug!("{sensor_data:#?}");
 
-            log::debug!("{sensor_data:#?}");
-
-            app.emit("air_temperature_sensor", &sensor_data).unwrap();
+                app.emit("air_temperature_sensor", &sensor_data).unwrap();
+            }
         }
     });
 }
 
-async fn load_temperature_series(window: Duration, limit: i64) -> TemperatureSeriesData {
+async fn load_temperature_series(window: Duration, limit: i64) -> Option<TemperatureSeriesData> {
     let Some(series) = load_latest_time_series(window, limit).await else {
-        return TemperatureSeriesData {
-            name: "Water Temperature (C°)".to_string(),
-            labels: Vec::new(),
-            value: Vec::new(),
-        };
+        return None;
     };
+    if !series_has_live_measurement(&series) {
+        return None;
+    }
 
-    TemperatureSeriesData {
+    Some(TemperatureSeriesData {
         name: "Water Temperature (C°)".to_string(),
         labels: measurement_labels(&series),
         value: series
@@ -143,25 +144,26 @@ async fn load_temperature_series(window: Duration, limit: i64) -> TemperatureSer
             .iter()
             .map(|point| point.value as f32)
             .collect(),
-    }
+    })
 }
 
-async fn load_temperature_gauge() -> TemperatureGaugeData {
-    let value = arksync_hub::load_latest_sensor_measurement(arksync_db::pool())
+async fn load_temperature_gauge() -> Option<TemperatureGaugeData> {
+    let measurement = arksync_hub::load_latest_sensor_measurement(arksync_db::pool())
         .await
         .map_err(|err| {
             log::error!("Failed to load latest sensor measurement: {err:?}");
             err
         })
         .ok()
-        .flatten()
-        .map(|measurement| round_to_tenth(measurement.value as f32))
-        .unwrap_or_default();
-
-    TemperatureGaugeData {
-        name: "Air Temperature (C°)".to_string(),
-        value,
+        .flatten()?;
+    if !timestamp_is_live(measurement.measured_at) {
+        return None;
     }
+
+    Some(TemperatureGaugeData {
+        name: "Air Temperature (C°)".to_string(),
+        value: round_to_tenth(measurement.value as f32),
+    })
 }
 
 fn round_to_tenth(value: f32) -> f32 {
@@ -195,6 +197,22 @@ fn measurement_labels(series: &SensorTimeSeries) -> Vec<String> {
         .iter()
         .map(|point| format_timestamp(point.measured_at))
         .collect()
+}
+
+fn series_has_live_measurement(series: &SensorTimeSeries) -> bool {
+    series
+        .points
+        .last()
+        .map(|point| timestamp_is_live(point.measured_at))
+        .unwrap_or(false)
+}
+
+fn timestamp_is_live(timestamp: Timestamp) -> bool {
+    let now = timestamp_now();
+    let live_window_start =
+        Timestamp::from_unix_millis(now.unix_millis - TEMPERATURE_LIVE_WINDOW.as_millis() as i64);
+
+    timestamp >= live_window_start && timestamp <= now
 }
 
 fn format_timestamp(timestamp: Timestamp) -> String {
