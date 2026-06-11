@@ -3,13 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 mod actuator;
+mod dashboard;
 mod hub;
-mod id;
 mod sensor;
 mod source;
 
 pub use actuator::*;
+pub use dashboard::*;
 pub use hub::*;
-pub use id::*;
 pub use sensor::*;
 pub use source::*;

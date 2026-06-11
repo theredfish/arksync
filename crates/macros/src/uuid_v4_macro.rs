@@ -32,29 +32,45 @@ pub fn derive(input: TokenStream) -> TokenStream {
         impl #ident {
             #[cfg(feature = "uuid-v4")]
             pub fn new() -> Self {
-                Self::new_with_uuid(::arksync_utils::uuid::new_v4())
+                Self::from(::arksync_utils::uuid::new_v4())
             }
 
-            pub fn new_with_uuid(uuid: ::arksync_utils::uuid::Uuid) -> Self {
-                Self(*uuid.as_bytes())
-            }
-
-            pub fn new_with_random_bytes(bytes: [u8; 16]) -> Self {
-                Self::new_with_uuid(::arksync_utils::uuid::from_random_bytes(bytes))
-            }
-
-            pub fn as_uuid(&self) -> ::arksync_utils::uuid::Uuid {
-                ::arksync_utils::uuid::Uuid::from_bytes(self.0)
+            pub fn from_bytes(bytes: [u8; 16]) -> Self {
+                Self::from(::arksync_utils::uuid::from_bytes(bytes))
             }
 
             pub fn as_bytes(&self) -> &[u8; 16] {
                 &self.0
             }
+
+            pub fn uuid_v4(&self) -> ::arksync_utils::uuid::Uuid {
+                ::arksync_utils::uuid::Uuid::from_bytes(self.0)
+            }
         }
 
         impl From<::arksync_utils::uuid::Uuid> for #ident {
             fn from(value: ::arksync_utils::uuid::Uuid) -> Self {
-                Self::new_with_uuid(value)
+                Self(*value.as_bytes())
+            }
+        }
+
+        impl From<#ident> for ::arksync_utils::uuid::Uuid {
+            fn from(value: #ident) -> Self {
+                Self::from_bytes(value.0)
+            }
+        }
+
+        impl From<&#ident> for ::arksync_utils::uuid::Uuid {
+            fn from(value: &#ident) -> Self {
+                Self::from_bytes(value.0)
+            }
+        }
+
+        impl core::str::FromStr for #ident {
+            type Err = ::arksync_utils::uuid::Error;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
+                ::arksync_utils::uuid::Uuid::parse_str(value).map(Self::from)
             }
         }
 
@@ -68,13 +84,15 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
         impl core::fmt::Debug for #ident {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                f.debug_tuple(stringify!(#ident)).field(&self.as_uuid()).finish()
+                let uuid = self.uuid_v4();
+                f.debug_tuple(stringify!(#ident)).field(&uuid).finish()
             }
         }
 
         impl core::fmt::Display for #ident {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                core::fmt::Display::fmt(&self.as_uuid(), f)
+                let uuid = self.uuid_v4();
+                core::fmt::Display::fmt(&uuid, f)
             }
         }
 

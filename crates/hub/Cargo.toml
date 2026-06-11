@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = []
+default = ["uuid-v4"]
 uuid-v4 = ["arksync-utils/uuid-v4"]
 
 [dependencies]

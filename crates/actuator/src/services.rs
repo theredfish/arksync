@@ -232,7 +232,7 @@ impl<'bus> ActuatorService<'bus> {
             return;
         };
         let _ = event_producer.publish(EventEnvelope::new_with_id(
-            EventId::new_with_random_bytes(self.event_counter.to_be_bytes()),
+            EventId::from_bytes(self.event_counter.to_be_bytes()),
             (),
             occurred_at,
             event,

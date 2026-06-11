@@ -2,8 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::domain::HubId;
+use arksync_macros::UuidV4;
 use serde::{Deserialize, Serialize};
+
+#[derive(UuidV4)]
+pub struct HubId([u8; 16]);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -2,10 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::domain::ActuatorId;
 use arksync_knot::domain::KnotId;
+use arksync_macros::UuidV4;
 use derive_more::{Display, FromStr};
 use serde::{Deserialize, Serialize};
+
+#[derive(UuidV4)]
+pub struct ActuatorId([u8; 16]);
 
 #[derive(Clone, Copy, Debug, Display, FromStr, PartialEq, Eq, Serialize, Deserialize)]
 #[display(rename_all = "snake_case")]

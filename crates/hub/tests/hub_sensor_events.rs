@@ -25,14 +25,14 @@ fn metadata(serial_number: &str) -> SerialPortMetadata {
 
 fn source() -> KnotEventSource {
     KnotEventSource::Knot {
-        parent_hub_id: ParentHubId::new_with_random_bytes([1; 16]),
-        knot_id: KnotId::new_with_random_bytes([2; 16]),
+        parent_hub_id: ParentHubId::from_bytes([1; 16]),
+        knot_id: KnotId::from_bytes([2; 16]),
     }
 }
 
 fn serial_sensor_plugged(serial_number: &str, occurred_at: i64) -> HubSensorEventEnvelope {
     EventEnvelope::new_with_id(
-        EventId::new_with_random_bytes([3; 16]),
+        EventId::from_bytes([3; 16]),
         source(),
         timestamp(occurred_at),
         SensorEvent::SerialSensorPlugged(SerialSensorPlugged {
@@ -69,7 +69,7 @@ fn ingests_serial_sensor_plugged_events_into_overview_projection() {
 
 #[test]
 fn register_rename_and_remove_sensor_update_overview_read_model() {
-    let sensor_id = SensorId::new_with_random_bytes([4; 16]);
+    let sensor_id = SensorId::from_bytes([4; 16]);
     let mut hub = HubService::new();
 
     hub.handle_sensor_event(

@@ -281,7 +281,7 @@ impl<'bus> SensorService<'bus> {
 }
 
 fn event_id_from_counter(counter: u128) -> arksync_bus::EventId {
-    arksync_bus::EventId::new_with_random_bytes(counter.to_be_bytes())
+    arksync_bus::EventId::from_bytes(counter.to_be_bytes())
 }
 
 fn timestamp_now() -> Timestamp {
@@ -300,7 +300,7 @@ fn sensor_event_id(serial_number: &str) -> arksync_bus::EventId {
         bytes[index] = *byte;
     }
 
-    arksync_bus::EventId::new_with_random_bytes(bytes)
+    arksync_bus::EventId::from_bytes(bytes)
 }
 
 #[cfg(test)]

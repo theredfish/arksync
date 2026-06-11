@@ -157,7 +157,7 @@ fn apply_local_actuator_state(relay_driver: Option<&RelayDriver>, event: &Actuat
 }
 
 fn event_id_from_counter(counter: u128) -> EventId {
-    EventId::new_with_random_bytes(counter.to_be_bytes())
+    EventId::from_bytes(counter.to_be_bytes())
 }
 
 fn publish_runtime_event(

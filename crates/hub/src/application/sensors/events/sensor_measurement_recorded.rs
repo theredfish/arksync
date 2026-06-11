@@ -81,7 +81,7 @@ async fn maybe_refresh_local_demo_actuator_config(
 
     let KnotEventSource::Knot { knot_id, .. } = source;
 
-    if knot_id.as_uuid() != CONFIG.local_knot_id {
+    if knot_id.uuid_v4() != CONFIG.local_knot_id {
         return Ok(());
     }
 

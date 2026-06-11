@@ -27,7 +27,7 @@ impl SensorRegistry {
             .map(|sensor| {
                 (
                     SensorIdentityKey {
-                        station_knot_id: sensor.station_knot_id.as_uuid(),
+                        station_knot_id: sensor.station_knot_id.uuid_v4(),
                         device_uid: sensor.device_uid,
                     },
                     sensor.id,
@@ -46,7 +46,7 @@ impl SensorRegistry {
         sensor: PluggedSensor,
     ) -> Result<SensorId, HubSensorError> {
         let key = SensorIdentityKey {
-            station_knot_id: sensor.station_knot_id.as_uuid(),
+            station_knot_id: sensor.station_knot_id.uuid_v4(),
             device_uid: sensor.device_uid.as_ref().to_string(),
         };
 

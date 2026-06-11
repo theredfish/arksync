@@ -42,7 +42,7 @@ mod tests {
     #[test]
     fn postcard_round_trips_event_envelope() {
         let event = EventEnvelope::new_with_id(
-            EventId::new_with_random_bytes([1; 16]),
+            EventId::from_bytes([1; 16]),
             "knot:test".to_string(),
             timestamp(1_779_840_000_000),
             TestEvent::Observed {
@@ -66,7 +66,7 @@ mod tests {
             |_event: EventEnvelope<TestEvent>| Ok(()),
         );
         let event = EventEnvelope::new_with_id(
-            EventId::new_with_random_bytes([1; 16]),
+            EventId::from_bytes([1; 16]),
             (),
             timestamp(1_779_840_000_000),
             TestEvent::Observed {
@@ -87,7 +87,7 @@ mod tests {
             |_event: EventEnvelope<TestEvent>| Ok(()),
         );
         let event = EventEnvelope::new_with_id(
-            EventId::new_with_random_bytes([1; 16]),
+            EventId::from_bytes([1; 16]),
             (),
             timestamp(1_779_840_000_000),
             TestEvent::Ignored,
@@ -103,7 +103,7 @@ mod tests {
         let mut bus = EventBus::new();
         bus.subscribe(|_event: EventEnvelope<TestEvent>| Ok(()));
         let event = EventEnvelope::new_with_id(
-            EventId::new_with_random_bytes([1; 16]),
+            EventId::from_bytes([1; 16]),
             (),
             timestamp(1_779_840_000_000),
             TestEvent::Ignored,
@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn postcard_reports_buffer_too_small() {
         let event = EventEnvelope::new_with_id(
-            EventId::new_with_random_bytes([1; 16]),
+            EventId::from_bytes([1; 16]),
             (),
             timestamp(1_779_840_000_000),
             TestEvent::Observed {
@@ -135,7 +135,8 @@ mod tests {
     #[test]
     fn event_envelope_new_generates_event_id() {
         let event = EventEnvelope::new((), timestamp(1_779_840_000_000), TestEvent::Ignored);
+        let event_id = event.id.uuid_v4();
 
-        assert_eq!(event.id.as_uuid().get_version_num(), 4);
+        assert_eq!(event_id.get_version_num(), 4);
     }
 }

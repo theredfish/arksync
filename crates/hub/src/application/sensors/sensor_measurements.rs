@@ -59,7 +59,7 @@ where
 {
     let records = sensor_measurement_store::list_sensor_measurements_since(
         executor,
-        sensor_id.as_uuid(),
+        sensor_id.uuid_v4(),
         window_start.unix_millis,
         limit,
     )

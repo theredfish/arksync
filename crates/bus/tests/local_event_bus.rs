@@ -46,7 +46,7 @@ impl EventHandler<SensorEvent, TestSource> for TokioHandler {
 
 fn sensor_event() -> SensorEventEnvelope {
     EventEnvelope::new_with_id(
-        EventId::new_with_random_bytes([1; 16]),
+        EventId::from_bytes([1; 16]),
         TestSource::Knot {
             label: "rtd-knot".to_string(),
         },

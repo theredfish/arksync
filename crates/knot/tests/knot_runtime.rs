@@ -92,7 +92,7 @@ fn knot_runtime_applies_actuator_config_ack() {
         .handle_actuator_event(
             KnotActuatorEvent::Ack(KnotConfig {
                 hardware_uid: "knot-rpi-1".to_string(),
-                knot_id: KnotId::new_with_random_bytes([2; 16]),
+                knot_id: KnotId::from_bytes([2; 16]),
                 sensor_bindings: vec![],
                 actuator_configs: vec![config.clone()],
             }),
@@ -110,7 +110,7 @@ fn knot_runtime_rejects_actuator_config_for_another_hardware_uid() {
     let result = runtime.handle_actuator_event(
         KnotActuatorEvent::Ack(KnotConfig {
             hardware_uid: "another-knot".to_string(),
-            knot_id: KnotId::new_with_random_bytes([2; 16]),
+            knot_id: KnotId::from_bytes([2; 16]),
             sensor_bindings: vec![],
             actuator_configs: vec![actuator_config("relay-config-1")],
         }),

@@ -45,7 +45,7 @@ where
     E: PgExecutor<'e>,
 {
     let record = NewActuatorRecord {
-        station_knot_id: actuator.station_knot_id.as_uuid(),
+        station_knot_id: actuator.station_knot_id.uuid_v4(),
         device_uid: actuator.device_uid,
         display_name: actuator.display_name,
         kind: ActuatorKind::Relay.to_string(),
@@ -100,7 +100,7 @@ pub async fn actuator_config_ack_for_knot_hardware_uid(
 
     Ok(KnotConfig {
         hardware_uid: knot.hardware_uid,
-        knot_id: KnotId::new_with_uuid(knot.id),
+        knot_id: KnotId::from(knot.id),
         sensor_bindings,
         actuator_configs,
     })
@@ -111,11 +111,11 @@ pub async fn ensure_local_demo_temperature_relay_rule(
     station_knot_id: KnotId,
     sensor_id: SensorId,
 ) -> Result<Actuator, HubActuatorError> {
-    let station_knot_id = station_knot_id.as_uuid();
-    let sensor_id = sensor_id.as_uuid();
+    let station_knot_id = station_knot_id.uuid_v4();
+    let sensor_id = sensor_id.uuid_v4();
     let actuator = ensure_local_demo_relay_actuator(executor, station_knot_id).await?;
 
-    ensure_local_demo_relay_rule(executor, actuator.id.as_uuid(), sensor_id).await?;
+    ensure_local_demo_relay_rule(executor, actuator.id.uuid_v4(), sensor_id).await?;
 
     Ok(actuator)
 }
@@ -196,7 +196,7 @@ async fn ensure_local_demo_relay_actuator(
     }
 
     let actuator = RelayActuator {
-        station_knot_id: KnotId::new_with_uuid(station_knot_id),
+        station_knot_id: KnotId::from(station_knot_id),
         device_uid: LOCAL_DEMO_RELAY_DEVICE_UID.to_string(),
         display_name: Some(LOCAL_DEMO_RELAY_DISPLAY_NAME.to_string()),
         backend: ActuatorBackend::LinuxGpiod,

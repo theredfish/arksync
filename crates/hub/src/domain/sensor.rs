@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::domain::SensorId;
 use arksync_bus::Timestamp;
 use arksync_knot::domain::{KnotEventSource, KnotId};
+use arksync_macros::UuidV4;
 use arksync_sensor::device_uid::DeviceUid;
 use arksync_sensor::infrastructure::events::{
     MeasurementUnit, SensorConnectionMetadata, SensorKind,
@@ -12,6 +12,9 @@ use arksync_sensor::infrastructure::events::{
 use arksync_sensor::serial_port::SerialPortMetadata;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+#[derive(UuidV4)]
+pub struct SensorId([u8; 16]);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

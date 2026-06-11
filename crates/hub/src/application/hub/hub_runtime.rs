@@ -120,8 +120,8 @@ fn local_knot_source() -> KnotEventSource {
     // the HubId + local KnotId, signs them with a certificate, and stores the
     // resulting identity bundle for the runtime to load at boot.
     KnotEventSource::Knot {
-        parent_hub_id: ParentHubId::new_with_uuid(CONFIG.local_hub_id),
-        knot_id: KnotId::new_with_uuid(CONFIG.local_knot_id),
+        parent_hub_id: ParentHubId::from(CONFIG.local_hub_id),
+        knot_id: KnotId::from(CONFIG.local_knot_id),
     }
 }
 

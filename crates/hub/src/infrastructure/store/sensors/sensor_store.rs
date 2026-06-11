@@ -5,6 +5,7 @@
 use sqlx::PgExecutor;
 
 use crate::infrastructure::store::{NewSensorRecord, SensorRecord};
+use arksync_utils::uuid::Uuid;
 use std::fmt;
 
 #[derive(Debug)]
@@ -64,6 +65,107 @@ where
     .await?;
 
     Ok(sensors)
+}
+
+pub async fn sensor_by_id<'e, E>(
+    executor: E,
+    sensor_id: Uuid,
+) -> Result<SensorRecord, SensorStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    let sensor = sqlx::query_as(
+        r#"
+        select
+            id,
+            station_knot_id,
+            device_uid,
+            display_name,
+            kind::text as sensor_kind,
+            driver::text as driver,
+            protocol::text as protocol,
+            connection,
+            firmware,
+            measurement_interval_ms
+        from sensors
+        where id = $1
+            and deleted_at is null
+        "#,
+    )
+    .bind(sensor_id)
+    .fetch_optional(executor)
+    .await?;
+
+    sensor.ok_or(SensorStoreError::NotFound)
+}
+
+pub async fn sensor_by_device_uid<'e, E>(
+    executor: E,
+    device_uid: &str,
+) -> Result<SensorRecord, SensorStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    let sensor = sqlx::query_as(
+        r#"
+        select
+            id,
+            station_knot_id,
+            device_uid,
+            display_name,
+            kind::text as sensor_kind,
+            driver::text as driver,
+            protocol::text as protocol,
+            connection,
+            firmware,
+            measurement_interval_ms
+        from sensors
+        where device_uid = $1
+            and deleted_at is null
+        order by last_activity_at desc
+        limit 1
+        "#,
+    )
+    .bind(device_uid)
+    .fetch_optional(executor)
+    .await?;
+
+    sensor.ok_or(SensorStoreError::NotFound)
+}
+
+pub async fn sensor_by_station_knot_id_and_device_uid<'e, E>(
+    executor: E,
+    station_knot_id: Uuid,
+    device_uid: &str,
+) -> Result<SensorRecord, SensorStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    let sensor = sqlx::query_as(
+        r#"
+        select
+            id,
+            station_knot_id,
+            device_uid,
+            display_name,
+            kind::text as sensor_kind,
+            driver::text as driver,
+            protocol::text as protocol,
+            connection,
+            firmware,
+            measurement_interval_ms
+        from sensors
+        where station_knot_id = $1
+            and device_uid = $2
+            and deleted_at is null
+        "#,
+    )
+    .bind(station_knot_id)
+    .bind(device_uid)
+    .fetch_optional(executor)
+    .await?;
+
+    sensor.ok_or(SensorStoreError::NotFound)
 }
 
 pub async fn insert_sensor<'e, E>(

@@ -3,12 +3,14 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 pub mod actuators;
+pub mod dashboards;
 pub mod hub;
 pub mod knot;
 pub mod sensor_measurements;
 pub mod sensors;
 
 pub use actuators::*;
+pub use dashboards::*;
 pub use hub::*;
 pub use knot::*;
 pub use sensor_measurements::*;

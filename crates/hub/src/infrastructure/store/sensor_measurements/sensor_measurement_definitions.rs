@@ -33,10 +33,10 @@ impl SensorMeasurementRecord {
 
         Self {
             id: Uuid::nil(),
-            event_id: event_id.as_uuid(),
-            source_parent_hub_id: parent_hub_id.as_uuid(),
-            source_knot_id: knot_id.as_uuid(),
-            sensor_id: measurement.sensor_id.as_uuid(),
+            event_id: event_id.uuid_v4(),
+            source_parent_hub_id: parent_hub_id.uuid_v4(),
+            source_knot_id: knot_id.uuid_v4(),
+            sensor_id: measurement.sensor_id.uuid_v4(),
             sensor_kind: sensor_kind_as_str(measurement.kind).to_string(),
             unit: measurement_unit_as_str(measurement.unit).to_string(),
             value: measurement.value,
