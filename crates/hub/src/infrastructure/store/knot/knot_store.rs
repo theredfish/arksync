@@ -40,16 +40,16 @@ where
             $2,
             $3,
             $4,
-            'local_hub',
-            'awake'
+            $5::station_knot_role,
+            $6::station_knot_status
         )
         on conflict (id) do update
         set
             station_hub_id = excluded.station_hub_id,
             name = excluded.name,
             hardware_uid = excluded.hardware_uid,
-            role = 'local_hub',
-            status = 'awake',
+            role = excluded.role,
+            status = excluded.status,
             deleted_at = null
         "#,
     )
@@ -57,10 +57,82 @@ where
     .bind(knot.hub_id)
     .bind(&knot.name)
     .bind(&knot.hardware_uid)
+    .bind(&knot.role)
+    .bind(&knot.status)
     .execute(executor)
     .await?;
 
     Ok(())
+}
+
+pub async fn insert_station_knot<'e, E>(
+    executor: E,
+    knot: &KnotRecord,
+) -> Result<KnotRecord, KnotStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    let knot = sqlx::query_as(
+        r#"
+        insert into station_knots (
+            id,
+            station_hub_id,
+            name,
+            hardware_uid,
+            role,
+            status
+        )
+        values (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5::station_knot_role,
+            $6::station_knot_status
+        )
+        returning
+            id,
+            station_hub_id as hub_id,
+            name,
+            hardware_uid,
+            role::text as role,
+            status::text as status
+        "#,
+    )
+    .bind(knot.id)
+    .bind(knot.hub_id)
+    .bind(&knot.name)
+    .bind(&knot.hardware_uid)
+    .bind(&knot.role)
+    .bind(&knot.status)
+    .fetch_one(executor)
+    .await?;
+
+    Ok(knot)
+}
+
+pub async fn list_station_knots<'e, E>(executor: E) -> Result<Vec<KnotRecord>, KnotStoreError>
+where
+    E: PgExecutor<'e>,
+{
+    let knots = sqlx::query_as(
+        r#"
+        select
+            id,
+            station_hub_id as hub_id,
+            name,
+            hardware_uid,
+            role::text as role,
+            status::text as status
+        from station_knots
+        where deleted_at is null
+        order by created_at asc
+        "#,
+    )
+    .fetch_all(executor)
+    .await?;
+
+    Ok(knots)
 }
 
 pub async fn station_knot_by_hardware_uid<'e, E>(
@@ -76,7 +148,9 @@ where
             id,
             station_hub_id as hub_id,
             name,
-            hardware_uid
+            hardware_uid,
+            role::text as role,
+            status::text as status
         from station_knots
         where hardware_uid = $1
             and deleted_at is null
@@ -87,4 +161,18 @@ where
     .await?;
 
     Ok(knot)
+}
+
+pub async fn find_or_insert_station_knot_by_hardware_uid<'e, E>(
+    executor: E,
+    knot: &KnotRecord,
+) -> Result<KnotRecord, KnotStoreError>
+where
+    E: PgExecutor<'e> + Copy,
+{
+    match station_knot_by_hardware_uid(executor, &knot.hardware_uid).await {
+        Ok(knot) => Ok(knot),
+        Err(KnotStoreError::NotFound) => insert_station_knot(executor, knot).await,
+        Err(err) => Err(err),
+    }
 }

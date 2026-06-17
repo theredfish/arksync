@@ -24,6 +24,8 @@ pub async fn setup_local_station(executor: &sqlx::PgPool) -> Result<(), sqlx::Er
         hub_id: CONFIG.local_hub_id,
         name: CONFIG.local_knot_name.clone(),
         hardware_uid: CONFIG.local_knot_hardware_uid.clone(),
+        role: "local_hub".to_string(),
+        status: "awake".to_string(),
     };
 
     hub_store::upsert_system_user(executor, &user).await?;

@@ -3,14 +3,17 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use arksync_actuator::infrastructure::events::ActuatorEvent;
+use arksync_bus::EventEnvelope;
 use serde::{Deserialize, Serialize};
 
-use crate::application::{KnotConfig, KnotHello};
+use super::{ack::KnotAck, hello::KnotHello};
+
+pub type KnotMessageEnvelope = EventEnvelope<KnotMessage>;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum KnotActuatorEvent {
+pub enum KnotMessage {
     Hello(KnotHello),
-    Ack(KnotConfig),
+    Ack(KnotAck),
     Actuator(ActuatorEvent),
 }

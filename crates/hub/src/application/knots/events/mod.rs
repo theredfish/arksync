@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_knot::application::KnotConfig;
+mod knot_event_handler;
+mod knot_hello;
 
-pub(super) fn handle_actuator_ack(_config: KnotConfig) {}
+pub use knot_event_handler::*;

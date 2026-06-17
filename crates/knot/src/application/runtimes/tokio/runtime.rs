@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::application::{
-    KnotActuatorEvent, KnotActuatorEventEnvelope, KnotSensorEventEnvelope, TokioKnotActuatorInput,
+    KnotMessage, KnotMessageEnvelope, KnotSensorEventEnvelope, TokioKnotActuatorInput,
     TokioKnotActuatorService, TokioKnotSensorService,
 };
 use crate::domain::KnotEventSource;
@@ -19,8 +19,8 @@ use tokio::sync::mpsc;
 pub enum TokioKnotRuntimeEvent {
     /// Sensor event produced by the Knot sensor service.
     Sensor(KnotSensorEventEnvelope),
-    /// Actuator event produced by the Knot actuator service.
-    Actuator(KnotActuatorEventEnvelope),
+    /// Protocol message produced by the Knot runtime.
+    Knot(KnotMessageEnvelope),
 }
 
 /// Boot configuration for the Tokio Knot runtime.
@@ -51,11 +51,11 @@ impl TokioKnotRuntime {
     pub async fn run(
         config: TokioKnotRuntimeConfig,
         event_tx: mpsc::Sender<TokioKnotRuntimeEvent>,
-        actuator_event_rx: mpsc::Receiver<KnotActuatorEvent>,
+        knot_message_rx: mpsc::Receiver<KnotMessage>,
     ) {
         let (sensor_event_tx, mut sensor_event_rx) = mpsc::channel::<KnotSensorEventEnvelope>(100);
-        let (actuator_event_tx, mut actuator_event_rx_from_knot) =
-            mpsc::channel::<KnotActuatorEventEnvelope>(100);
+        let (knot_message_tx, mut knot_message_rx_from_knot) =
+            mpsc::channel::<KnotMessageEnvelope>(100);
         let (actuator_input_tx, actuator_input_rx) = mpsc::channel::<TokioKnotActuatorInput>(100);
         let sensor_source = config.source.clone();
         let sensor_knot = tokio::spawn(async move {
@@ -66,7 +66,7 @@ impl TokioKnotRuntime {
         let actuator_knot = tokio::spawn(async move {
             TokioKnotActuatorService::with_channels(
                 actuator_input_rx,
-                actuator_event_tx,
+                knot_message_tx,
                 config.hardware_uid,
             )
             .run()
@@ -75,11 +75,11 @@ impl TokioKnotRuntime {
         let actuator_input_forwarder = {
             let actuator_input_tx = actuator_input_tx.clone();
             tokio::spawn(async move {
-                let mut actuator_event_rx = actuator_event_rx;
+                let mut knot_message_rx = knot_message_rx;
 
-                while let Some(event) = actuator_event_rx.recv().await {
+                while let Some(event) = knot_message_rx.recv().await {
                     if actuator_input_tx
-                        .send(TokioKnotActuatorInput::Event(event))
+                        .send(TokioKnotActuatorInput::Message(event))
                         .await
                         .is_err()
                     {
@@ -113,9 +113,9 @@ impl TokioKnotRuntime {
             })
         };
         let actuator_forwarder = tokio::spawn(async move {
-            while let Some(event) = actuator_event_rx_from_knot.recv().await {
+            while let Some(event) = knot_message_rx_from_knot.recv().await {
                 if event_tx
-                    .send(TokioKnotRuntimeEvent::Actuator(event))
+                    .send(TokioKnotRuntimeEvent::Knot(event))
                     .await
                     .is_err()
                 {

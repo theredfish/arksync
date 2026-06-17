@@ -4,10 +4,10 @@
 
 pub mod commands;
 #[cfg(feature = "knot-nostd-runtime")]
-pub mod events;
+pub mod protocol;
 pub mod runtimes;
 
 pub use commands::*;
 #[cfg(feature = "knot-nostd-runtime")]
-pub use events::*;
+pub use protocol::*;
 pub use runtimes::*;

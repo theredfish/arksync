@@ -8,4 +8,4 @@ mod events;
 
 pub use actuator_errors::*;
 pub use actuator_use_cases::*;
-pub use events::*;
+pub(crate) use events::*;

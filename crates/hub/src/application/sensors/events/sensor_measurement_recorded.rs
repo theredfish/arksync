@@ -8,7 +8,7 @@ use crate::application::{
 };
 use crate::config::CONFIG;
 use arksync_bus::Timestamp;
-use arksync_knot::application::KnotActuatorEvent;
+use arksync_knot::application::{KnotAck, KnotMessage};
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::SensorMeasurementRecorded;
 use eyre::{eyre, Result, WrapErr};
@@ -23,7 +23,7 @@ pub(super) async fn handle_sensor_measurement_recorded(
     received_at: Timestamp,
     sensor_registry: &mut SensorRegistry,
     hub: &mut HubService,
-    knot_event_tx: &tokio::sync::mpsc::Sender<KnotActuatorEvent>,
+    knot_event_tx: &tokio::sync::mpsc::Sender<KnotMessage>,
 ) -> Result<()> {
     let plugged_sensor = extract_plugged_sensor(
         &event.source,
@@ -71,7 +71,7 @@ pub(super) async fn handle_sensor_measurement_recorded(
 async fn maybe_refresh_local_demo_actuator_config(
     source: &KnotEventSource,
     sensor_id: crate::domain::SensorId,
-    knot_event_tx: &tokio::sync::mpsc::Sender<KnotActuatorEvent>,
+    knot_event_tx: &tokio::sync::mpsc::Sender<KnotMessage>,
 ) -> Result<()> {
     static LOCAL_DEMO_ACTUATOR_CONFIG_REFRESHED: AtomicBool = AtomicBool::new(false);
 
@@ -103,7 +103,7 @@ async fn maybe_refresh_local_demo_actuator_config(
     );
 
     knot_event_tx
-        .send(KnotActuatorEvent::Ack(ack))
+        .send(KnotMessage::Ack(KnotAck { config: ack }))
         .await
         .map_err(|_| eyre!("local Knot actuator event receiver dropped"))?;
     LOCAL_DEMO_ACTUATOR_CONFIG_REFRESHED.store(true, Ordering::Relaxed);

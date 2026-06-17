@@ -4,7 +4,7 @@
 
 use crate::application::{HubError, HubService, SensorRegistry};
 use arksync_bus::Timestamp;
-use arksync_knot::application::KnotActuatorEvent;
+use arksync_knot::application::KnotMessage;
 use arksync_sensor::infrastructure::events::SensorEvent;
 use eyre::{eyre, Result};
 
@@ -58,7 +58,7 @@ pub async fn handle_sensor_event(
     received_at: Timestamp,
     sensor_registry: &mut SensorRegistry,
     hub: &mut HubService,
-    knot_event_tx: &tokio::sync::mpsc::Sender<KnotActuatorEvent>,
+    knot_event_tx: &tokio::sync::mpsc::Sender<KnotMessage>,
 ) -> Result<()> {
     log::debug!("Hub received local Knot sensor event: {event:?}");
 

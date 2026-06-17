@@ -11,4 +11,6 @@ pub struct KnotRecord {
     pub hub_id: Uuid,
     pub name: String,
     pub hardware_uid: String,
+    pub role: String,
+    pub status: String,
 }

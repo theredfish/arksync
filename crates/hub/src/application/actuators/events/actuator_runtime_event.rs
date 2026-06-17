@@ -6,7 +6,7 @@ use crate::application::record_actuator_runtime_status;
 use arksync_actuator::infrastructure::events::ActuatorEvent;
 use eyre::{Result, WrapErr};
 
-pub(super) async fn handle_actuator_runtime_event(event: ActuatorEvent) -> Result<()> {
+pub(crate) async fn handle_actuator_runtime_event(event: ActuatorEvent) -> Result<()> {
     match event {
         ActuatorEvent::ConfigApplied(applied) => {
             log::info!(

@@ -7,7 +7,7 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 #[cfg(feature = "knot-nostd-runtime")]
 use {
-    crate::application::{KnotActuatorEvent, KnotConfig, KnotSensorBinding},
+    crate::application::{KnotConfig, KnotMessage, KnotSensorBinding},
     alloc::string::String,
     arksync_actuator::infrastructure::events::{ActuatorConfig, ActuatorEvent, AddActuator},
     arksync_actuator::services::ActuatorService,
@@ -141,24 +141,24 @@ impl<'bus> KnotRuntime<'bus> {
             .observe_sensor_value(binding.sensor_id.clone(), value, occurred_at);
     }
 
-    /// Applies one Knot actuator protocol event to the no_std runtime state.
+    /// Applies one Knot protocol message to the no_std runtime state.
     ///
     /// `Ack` applies the hub-provided actuator configuration for this Knot,
     /// `Actuator` applies a direct actuator command such as enable/disable, and
     /// `Hello` is ignored because it is produced by concrete runtimes.
     #[cfg(feature = "knot-nostd-runtime")]
-    pub fn handle_actuator_event(
+    pub fn handle_knot_message(
         &mut self,
-        event: KnotActuatorEvent,
+        event: KnotMessage,
         occurred_at: Timestamp,
     ) -> Result<(), KnotRuntimeError> {
         match event {
-            KnotActuatorEvent::Ack(config) => self.apply_actuator_config(config, occurred_at),
-            KnotActuatorEvent::Actuator(event) => {
+            KnotMessage::Ack(ack) => self.apply_actuator_config(ack.config, occurred_at),
+            KnotMessage::Actuator(event) => {
                 self.actuator_service.read_event(event, occurred_at);
                 Ok(())
             }
-            KnotActuatorEvent::Hello(_) => Ok(()),
+            KnotMessage::Hello(_) => Ok(()),
         }
     }
 

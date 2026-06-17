@@ -8,23 +8,23 @@ use arksync_bus::{EventBus, EventBusError, EventEnvelope, EventHandler, EventId,
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
-use crate::application::{KnotActuatorEvent, KnotActuatorEventEnvelope, KnotHello, KnotRuntime};
+use crate::application::{KnotCapabilities, KnotMessage, KnotMessageEnvelope, KnotRuntime};
 
 pub enum TokioKnotActuatorInput {
-    Event(KnotActuatorEvent),
+    Message(KnotMessage),
     SensorValue { device_uid: String, value: f64 },
 }
 
 pub struct TokioKnotActuatorService {
     event_rx: mpsc::Receiver<TokioKnotActuatorInput>,
-    event_tx: mpsc::Sender<KnotActuatorEventEnvelope>,
+    event_tx: mpsc::Sender<KnotMessageEnvelope>,
     hardware_uid: String,
 }
 
 impl TokioKnotActuatorService {
     pub fn with_channels(
         event_rx: mpsc::Receiver<TokioKnotActuatorInput>,
-        event_tx: mpsc::Sender<KnotActuatorEventEnvelope>,
+        event_tx: mpsc::Sender<KnotMessageEnvelope>,
         hardware_uid: String,
     ) -> Self {
         Self {
@@ -48,8 +48,9 @@ impl TokioKnotActuatorService {
         publish_runtime_event(
             &mut envelope_bus,
             &mut event_counter,
-            KnotActuatorEvent::Hello(KnotHello {
+            KnotMessage::Hello(crate::application::KnotHello {
                 hardware_uid: self.hardware_uid.clone(),
+                capabilities: local_knot_capabilities(),
             }),
         );
 
@@ -57,16 +58,16 @@ impl TokioKnotActuatorService {
             tokio::select! {
                 Some(input) = self.event_rx.recv() => {
                     match input {
-                        TokioKnotActuatorInput::Event(event) => {
-                            if let KnotActuatorEvent::Ack(config) = &event {
+                        TokioKnotActuatorInput::Message(event) => {
+                            if let KnotMessage::Ack(ack) = &event {
                                 log::info!(
                                     "Local Knot received actuator config ACK knot_id={} configs={}",
-                                    config.knot_id,
-                                    config.actuator_configs.len()
+                                    ack.config.knot_id,
+                                    ack.config.actuator_configs.len()
                                 );
                             }
 
-                            if let Err(err) = knot_runtime.handle_actuator_event(event, timestamp_now()) {
+                            if let Err(err) = knot_runtime.handle_knot_message(event, timestamp_now()) {
                                 log::debug!("Local Knot rejected actuator runtime event: {err:?}");
                             }
                         }
@@ -90,7 +91,7 @@ impl TokioKnotActuatorService {
                     publish_runtime_event(
                         &mut envelope_bus,
                         &mut event_counter,
-                        KnotActuatorEvent::Actuator(actuator_envelope.payload),
+                        KnotMessage::Actuator(actuator_envelope.payload),
                     );
                 }
                 else => break,
@@ -114,6 +115,15 @@ fn local_relay_driver() -> Option<RelayDriver> {
             log::error!("Local Knot failed to open relay driver: {err:?}");
             None
         }
+    }
+}
+
+fn local_knot_capabilities() -> KnotCapabilities {
+    KnotCapabilities {
+        gpio: true,
+        uart: true,
+        i2c: false,
+        atlas_scientific_ezo: true,
     }
 }
 
@@ -161,9 +171,9 @@ fn event_id_from_counter(counter: u128) -> EventId {
 }
 
 fn publish_runtime_event(
-    envelope_bus: &mut EventBus<KnotActuatorEvent>,
+    envelope_bus: &mut EventBus<KnotMessage>,
     event_counter: &mut u128,
-    event: KnotActuatorEvent,
+    event: KnotMessage,
 ) {
     *event_counter = event_counter.wrapping_add(1);
     let envelope = EventEnvelope::new_with_id(
@@ -187,10 +197,10 @@ fn timestamp_now() -> Timestamp {
     Timestamp::from_unix_millis(unix_millis)
 }
 
-struct TokioEnvelopeHandler(mpsc::Sender<KnotActuatorEventEnvelope>);
+struct TokioEnvelopeHandler(mpsc::Sender<KnotMessageEnvelope>);
 
-impl EventHandler<KnotActuatorEvent> for TokioEnvelopeHandler {
-    fn handle(&mut self, event: KnotActuatorEventEnvelope) -> Result<(), EventBusError> {
+impl EventHandler<KnotMessage> for TokioEnvelopeHandler {
+    fn handle(&mut self, event: KnotMessageEnvelope) -> Result<(), EventBusError> {
         self.0
             .try_send(event)
             .map_err(|_| EventBusError::HandlerRejected)

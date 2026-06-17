@@ -2,15 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::application::{handle_actuator_event, handle_sensor_event, HubService, SensorRegistry};
+use crate::application::{handle_knot_event, handle_sensor_event, HubService, SensorRegistry};
 use crate::config::CONFIG;
-use arksync_bus::Timestamp;
+use arksync_bus::{EventBus, EventBusError, EventEnvelope, EventHandler, Timestamp};
 use arksync_knot::application::{
-    KnotActuatorEvent, KnotActuatorEventEnvelope, KnotSensorEventEnvelope, TokioKnotRuntime,
+    KnotMessage, KnotMessageEnvelope, KnotSensorEventEnvelope, TokioKnotRuntime,
     TokioKnotRuntimeConfig, TokioKnotRuntimeEvent,
 };
 use arksync_knot::domain::{KnotEventSource, KnotId, ParentHubId};
-use eyre::{Result, WrapErr};
+use eyre::{eyre, Result, WrapErr};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Runtime for the local hub process.
@@ -38,11 +38,23 @@ impl HubRuntime {
     }
 
     async fn try_run() -> Result<()> {
-        let (event_tx, mut event_rx) = tokio::sync::mpsc::channel::<HubKnotEvent>(100);
         let (knot_event_tx, mut knot_event_rx) =
             tokio::sync::mpsc::channel::<TokioKnotRuntimeEvent>(100);
-        let (actuator_event_tx_to_knot, actuator_event_rx_from_hub) =
-            tokio::sync::mpsc::channel::<KnotActuatorEvent>(100);
+        let (knot_message_tx_to_knot, knot_message_rx_from_hub) =
+            tokio::sync::mpsc::channel::<KnotMessage>(100);
+        let (sensor_event_tx, mut sensor_event_rx) =
+            tokio::sync::mpsc::channel::<KnotSensorEventEnvelope>(100);
+        let (knot_message_event_tx, mut knot_message_event_rx) =
+            tokio::sync::mpsc::channel::<KnotMessageEnvelope>(100);
+        let mut hub_bus = EventBus::new();
+        hub_bus.subscribe_where(
+            |event: &EventEnvelope<HubKnotEvent>| matches!(event.payload, HubKnotEvent::Sensor(_)),
+            HubSensorEventHandler(sensor_event_tx),
+        );
+        hub_bus.subscribe_where(
+            |event: &EventEnvelope<HubKnotEvent>| matches!(event.payload, HubKnotEvent::Knot(_)),
+            HubKnotMessageHandler(knot_message_event_tx),
+        );
         let source = local_knot_source();
         let knot_runtime = tokio::spawn(async move {
             TokioKnotRuntime::run(
@@ -51,66 +63,101 @@ impl HubRuntime {
                     hardware_uid: CONFIG.local_knot_hardware_uid.clone(),
                 },
                 knot_event_tx,
-                actuator_event_rx_from_hub,
+                knot_message_rx_from_hub,
             )
             .await;
         });
-        let knot_forwarder = {
-            let event_tx = event_tx.clone();
-            tokio::spawn(async move {
-                while let Some(event) = knot_event_rx.recv().await {
-                    let event = match event {
-                        TokioKnotRuntimeEvent::Sensor(event) => HubKnotEvent::Sensor(event),
-                        TokioKnotRuntimeEvent::Actuator(event) => HubKnotEvent::Actuator(event),
-                    };
-
-                    if event_tx.send(event).await.is_err() {
-                        break;
-                    }
-                }
-            })
-        };
         let mut hub = HubService::new();
         let mut sensor_registry = SensorRegistry::load(arksync_db::pool())
             .await
             .wrap_err("failed to load hub sensor registry")?;
 
-        while let Some(event) = event_rx.recv().await {
-            let received_at = timestamp_now();
-
-            match event {
-                HubKnotEvent::Sensor(event) => {
+        loop {
+            tokio::select! {
+                Some(event) = knot_event_rx.recv() => {
+                    hub_bus
+                        .publish(hub_event_envelope_from_tokio_event(event))
+                        .map_err(|err| eyre!("hub runtime bus rejected Knot event: {err:?}"))?;
+                }
+                Some(event) = sensor_event_rx.recv() => {
+                    let received_at = timestamp_now();
                     handle_sensor_event(
                         event,
                         received_at,
                         &mut sensor_registry,
                         &mut hub,
-                        &actuator_event_tx_to_knot,
+                        &knot_message_tx_to_knot,
                     )
                     .await?;
                 }
-                HubKnotEvent::Actuator(event) => {
-                    handle_actuator_event(event, &actuator_event_tx_to_knot).await?;
+                Some(event) = knot_message_event_rx.recv() => {
+                    handle_knot_event(event, &knot_message_tx_to_knot).await?;
                 }
+                else => break,
             }
         }
 
         knot_runtime
             .await
             .wrap_err("local Knot runtime task join failed")?;
-        knot_forwarder
-            .await
-            .wrap_err("local Knot runtime forwarder task join failed")?;
 
         Ok(())
     }
 }
 
+#[derive(Clone)]
 enum HubKnotEvent {
     /// Event emitted by the local Knot sensor path.
     Sensor(KnotSensorEventEnvelope),
-    /// Event emitted by the local Knot actuator path.
-    Actuator(KnotActuatorEventEnvelope),
+    /// Protocol message emitted by the local Knot runtime.
+    Knot(KnotMessageEnvelope),
+}
+
+fn hub_event_envelope_from_tokio_event(
+    event: TokioKnotRuntimeEvent,
+) -> EventEnvelope<HubKnotEvent> {
+    match event {
+        TokioKnotRuntimeEvent::Sensor(event) => {
+            EventEnvelope::new_with_id(event.id, (), event.occurred_at, HubKnotEvent::Sensor(event))
+        }
+        TokioKnotRuntimeEvent::Knot(event) => {
+            EventEnvelope::new_with_id(event.id, (), event.occurred_at, HubKnotEvent::Knot(event))
+        }
+    }
+}
+
+struct HubSensorEventHandler(tokio::sync::mpsc::Sender<KnotSensorEventEnvelope>);
+
+impl EventHandler<HubKnotEvent> for HubSensorEventHandler {
+    fn handle(
+        &mut self,
+        event: EventEnvelope<HubKnotEvent>,
+    ) -> core::result::Result<(), EventBusError> {
+        let HubKnotEvent::Sensor(event) = event.payload else {
+            return Ok(());
+        };
+
+        self.0
+            .try_send(event)
+            .map_err(|_| EventBusError::HandlerRejected)
+    }
+}
+
+struct HubKnotMessageHandler(tokio::sync::mpsc::Sender<KnotMessageEnvelope>);
+
+impl EventHandler<HubKnotEvent> for HubKnotMessageHandler {
+    fn handle(
+        &mut self,
+        event: EventEnvelope<HubKnotEvent>,
+    ) -> core::result::Result<(), EventBusError> {
+        let HubKnotEvent::Knot(event) = event.payload else {
+            return Ok(());
+        };
+
+        self.0
+            .try_send(event)
+            .map_err(|_| EventBusError::HandlerRejected)
+    }
 }
 
 fn local_knot_source() -> KnotEventSource {

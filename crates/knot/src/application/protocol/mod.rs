@@ -3,13 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 mod ack;
-mod actuator_event;
+mod config;
 mod hello;
+mod knot_message;
 
-use arksync_bus::EventEnvelope;
-
-pub type KnotActuatorEventEnvelope = EventEnvelope<KnotActuatorEvent>;
-
-pub use ack::*;
-pub use actuator_event::*;
-pub use hello::*;
+pub use ack::KnotAck;
+pub use config::{KnotConfig, KnotSensorBinding};
+pub use hello::{KnotCapabilities, KnotHello};
+pub use knot_message::{KnotMessage, KnotMessageEnvelope};
