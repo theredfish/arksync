@@ -238,6 +238,7 @@ dependencies = [
  "arksync-knot",
  "arksync-macros",
  "arksync-sensor",
+ "arksync-testing",
  "arksync-utils",
  "derive_more 2.1.1",
  "eyre",
@@ -289,6 +290,17 @@ dependencies = [
  "test-case",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "arksync-testing"
+version = "0.1.0"
+dependencies = [
+ "arksync-db",
+ "arksync-macros",
+ "eyre",
+ "sqlx",
+ "tokio",
 ]
 
 [[package]]

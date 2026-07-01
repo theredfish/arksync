@@ -25,5 +25,8 @@ log.workspace = true
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid", "json"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 
+[dev-dependencies]
+arksync-testing.workspace = true
+
 [lints]
 workspace = true

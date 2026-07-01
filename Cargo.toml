@@ -9,6 +9,7 @@ members = [
     "crates/knot",
     "crates/macros",
     "crates/sensor",
+    "crates/testing",
     "crates/ui",
     "crates/utils",
     "crates/users",
@@ -31,6 +32,7 @@ arksync-hub = { path = "crates/hub" }
 arksync-knot = { path = "crates/knot" }
 arksync-macros = { path = "crates/macros" }
 arksync-sensor = { path = "crates/sensor" }
+arksync-testing = { path = "crates/testing" }
 arksync-utils = { path = "crates/utils" }
 arksync-users = { path = "crates/users" }
 charming = { version = "0.6.0", features = ["wasm"] }

@@ -1,0 +1,15 @@
+[package]
+name = "arksync-testing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+arksync-db.workspace = true
+arksync-macros.workspace = true
+eyre.workspace = true
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "migrate"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true
