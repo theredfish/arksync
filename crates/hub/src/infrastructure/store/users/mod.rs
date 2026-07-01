@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-pub mod application;
-pub mod domain;
-pub mod stores;
+mod user_definitions;
+mod user_store;
+
+pub use user_definitions::*;
+pub use user_store::*;

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use uuid::Uuid;
+use arksync_utils::uuid::{new_v4, Uuid};
 
 #[derive(Clone, Debug)]
 pub struct User {
@@ -14,7 +14,7 @@ pub struct User {
 impl User {
     pub fn new(username: String, password: String) -> Self {
         Self {
-            id: Uuid::new_v4(),
+            id: new_v4(),
             username,
             password,
         }

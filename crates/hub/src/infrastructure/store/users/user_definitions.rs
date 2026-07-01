@@ -2,10 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use sqlx::FromRow;
-use uuid::Uuid;
-
 use crate::domain::User;
+use arksync_utils::uuid::Uuid;
+use sqlx::FromRow;
 
 #[derive(Clone, Debug, FromRow)]
 pub struct UserRecord {

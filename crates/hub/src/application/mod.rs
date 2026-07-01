@@ -7,9 +7,11 @@ pub mod dashboards;
 pub mod hub;
 pub mod knots;
 pub mod sensors;
+pub mod users;
 
 pub use actuators::*;
 pub use dashboards::*;
 pub use hub::*;
 pub use knots::*;
 pub use sensors::*;
+pub use users::*;

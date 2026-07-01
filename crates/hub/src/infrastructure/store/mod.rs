@@ -8,6 +8,7 @@ pub mod hub;
 pub mod knot;
 pub mod sensor_measurements;
 pub mod sensors;
+pub mod users;
 
 pub use actuators::*;
 pub use dashboards::*;
@@ -15,3 +16,4 @@ pub use hub::*;
 pub use knot::*;
 pub use sensor_measurements::*;
 pub use sensors::*;
+pub use users::*;

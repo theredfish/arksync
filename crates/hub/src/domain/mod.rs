@@ -7,9 +7,11 @@ mod dashboard;
 mod hub;
 mod sensor;
 mod source;
+mod user;
 
 pub use actuator::*;
 pub use dashboard::*;
 pub use hub::*;
 pub use sensor::*;
 pub use source::*;
+pub use user::*;
