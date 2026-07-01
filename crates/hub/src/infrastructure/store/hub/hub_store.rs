@@ -6,13 +6,10 @@ use sqlx::PgExecutor;
 
 use crate::infrastructure::store::{HubRecord, SystemUserRecord};
 
-pub async fn upsert_system_user<'e, E>(
-    executor: E,
+pub async fn upsert_system_user(
+    executor: impl PgExecutor<'_>,
     user: &SystemUserRecord,
-) -> Result<(), sqlx::Error>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         insert into users (
@@ -41,10 +38,10 @@ where
     Ok(())
 }
 
-pub async fn upsert_station_hub<'e, E>(executor: E, hub: &HubRecord) -> Result<(), sqlx::Error>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn upsert_station_hub(
+    executor: impl PgExecutor<'_>,
+    hub: &HubRecord,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         insert into station_hubs (

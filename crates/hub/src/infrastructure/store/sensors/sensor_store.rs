@@ -39,10 +39,9 @@ impl From<sqlx::Error> for SensorStoreError {
     }
 }
 
-pub async fn list_sensors<'e, E>(executor: E) -> Result<Vec<SensorRecord>, SensorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn list_sensors(
+    executor: impl PgExecutor<'_>,
+) -> Result<Vec<SensorRecord>, SensorStoreError> {
     let sensors = sqlx::query_as(
         r#"
         select
@@ -67,13 +66,10 @@ where
     Ok(sensors)
 }
 
-pub async fn sensor_by_id<'e, E>(
-    executor: E,
+pub async fn sensor_by_id(
+    executor: impl PgExecutor<'_>,
     sensor_id: Uuid,
-) -> Result<SensorRecord, SensorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<SensorRecord, SensorStoreError> {
     let sensor = sqlx::query_as(
         r#"
         select
@@ -99,13 +95,10 @@ where
     sensor.ok_or(SensorStoreError::NotFound)
 }
 
-pub async fn sensor_by_device_uid<'e, E>(
-    executor: E,
+pub async fn sensor_by_device_uid(
+    executor: impl PgExecutor<'_>,
     device_uid: &str,
-) -> Result<SensorRecord, SensorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<SensorRecord, SensorStoreError> {
     let sensor = sqlx::query_as(
         r#"
         select
@@ -133,14 +126,11 @@ where
     sensor.ok_or(SensorStoreError::NotFound)
 }
 
-pub async fn sensor_by_station_knot_id_and_device_uid<'e, E>(
-    executor: E,
+pub async fn sensor_by_station_knot_id_and_device_uid(
+    executor: impl PgExecutor<'_>,
     station_knot_id: Uuid,
     device_uid: &str,
-) -> Result<SensorRecord, SensorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<SensorRecord, SensorStoreError> {
     let sensor = sqlx::query_as(
         r#"
         select
@@ -168,13 +158,10 @@ where
     sensor.ok_or(SensorStoreError::NotFound)
 }
 
-pub async fn insert_sensor<'e, E>(
-    executor: E,
+pub async fn insert_sensor(
+    executor: impl PgExecutor<'_>,
     sensor: &NewSensorRecord,
-) -> Result<SensorRecord, SensorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<SensorRecord, SensorStoreError> {
     let inserted = sqlx::query_as(
         r#"
         insert into sensors (

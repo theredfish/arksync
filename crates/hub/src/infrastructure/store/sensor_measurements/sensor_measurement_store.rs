@@ -30,13 +30,10 @@ impl From<sqlx::Error> for SensorMeasurementStoreError {
     }
 }
 
-pub async fn insert_sensor_measurement<'e, E>(
-    executor: E,
+pub async fn insert_sensor_measurement(
+    executor: impl PgExecutor<'_>,
     record: &SensorMeasurementRecord,
-) -> Result<(), SensorMeasurementStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<(), SensorMeasurementStoreError> {
     sqlx::query(
         r#"
         insert into sensor_measurements (
@@ -78,15 +75,12 @@ where
     Ok(())
 }
 
-pub async fn list_sensor_measurements_since<'e, E>(
-    executor: E,
+pub async fn list_sensor_measurements_since(
+    executor: impl PgExecutor<'_>,
     sensor_id: arksync_utils::uuid::Uuid,
     since_unix_millis: i64,
     limit: i64,
-) -> Result<Vec<SensorMeasurementRecord>, SensorMeasurementStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<Vec<SensorMeasurementRecord>, SensorMeasurementStoreError> {
     let measurements = sqlx::query_as(
         r#"
         select *
@@ -120,12 +114,9 @@ where
     Ok(measurements)
 }
 
-pub async fn latest_sensor_id<'e, E>(
-    executor: E,
-) -> Result<Option<arksync_utils::uuid::Uuid>, SensorMeasurementStoreError>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn latest_sensor_id(
+    executor: impl PgExecutor<'_>,
+) -> Result<Option<arksync_utils::uuid::Uuid>, SensorMeasurementStoreError> {
     let sensor_id = sqlx::query_scalar(
         r#"
         select sensor_id
@@ -140,12 +131,9 @@ where
     Ok(sensor_id)
 }
 
-pub async fn latest_sensor_measurement<'e, E>(
-    executor: E,
-) -> Result<Option<SensorMeasurementRecord>, SensorMeasurementStoreError>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn latest_sensor_measurement(
+    executor: impl PgExecutor<'_>,
+) -> Result<Option<SensorMeasurementRecord>, SensorMeasurementStoreError> {
     let measurement = sqlx::query_as(
         r#"
         select

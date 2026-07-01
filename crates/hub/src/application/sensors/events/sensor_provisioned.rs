@@ -5,11 +5,13 @@
 use crate::application::SensorRegistry;
 use arksync_sensor::infrastructure::events::SensorProvisioned;
 use eyre::{Result, WrapErr};
+use sqlx::PgExecutor;
 
 use super::sensor_plugged::extract_plugged_sensor;
 use super::HubSensorEventEnvelope;
 
 pub(super) async fn handle_sensor_provisioned(
+    executor: impl PgExecutor<'_>,
     event: &HubSensorEventEnvelope,
     provisioned: &SensorProvisioned,
     sensor_registry: &mut SensorRegistry,
@@ -20,7 +22,7 @@ pub(super) async fn handle_sensor_provisioned(
         &provisioned.sensor,
     );
     let sensor_id = sensor_registry
-        .ensure_sensor_registered(arksync_db::pool(), plugged_sensor)
+        .ensure_sensor_registered(executor, plugged_sensor)
         .await
         .wrap_err("failed to register provisioned local Knot sensor")?;
 

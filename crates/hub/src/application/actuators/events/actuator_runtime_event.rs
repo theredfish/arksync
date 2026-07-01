@@ -5,8 +5,12 @@
 use crate::application::record_actuator_runtime_status;
 use arksync_actuator::infrastructure::events::ActuatorEvent;
 use eyre::{Result, WrapErr};
+use sqlx::PgPool;
 
-pub(crate) async fn handle_actuator_runtime_event(event: ActuatorEvent) -> Result<()> {
+pub(crate) async fn handle_actuator_runtime_event(
+    pool: &PgPool,
+    event: ActuatorEvent,
+) -> Result<()> {
     match event {
         ActuatorEvent::ConfigApplied(applied) => {
             log::info!(
@@ -30,9 +34,16 @@ pub(crate) async fn handle_actuator_runtime_event(event: ActuatorEvent) -> Resul
                 status.actuators.len(),
                 status.last_seen_sensor_values.len()
             );
-            record_actuator_runtime_status(arksync_db::pool(), &status)
+            let mut txn = pool
+                .begin()
+                .await
+                .wrap_err("failed to begin actuator runtime status transaction")?;
+            record_actuator_runtime_status(&mut txn, &status)
                 .await
                 .wrap_err("failed to record local Knot actuator runtime status")?;
+            txn.commit()
+                .await
+                .wrap_err("failed to commit actuator runtime status transaction")?;
         }
         ActuatorEvent::ActuatorStateChanged(state) => {
             log::info!(

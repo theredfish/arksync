@@ -5,14 +5,23 @@
 use crate::application::ack_knot_hello;
 use arksync_knot::application::{KnotHello, KnotMessage};
 use eyre::{eyre, Result, WrapErr};
+use sqlx::PgPool;
 
 pub(super) async fn handle_knot_hello(
+    pool: &PgPool,
     hello: KnotHello,
     knot_message_tx: &tokio::sync::mpsc::Sender<KnotMessage>,
 ) -> Result<()> {
-    let ack = ack_knot_hello(arksync_db::pool(), &hello)
+    let mut txn = pool
+        .begin()
+        .await
+        .wrap_err("failed to begin Knot Hello transaction")?;
+    let ack = ack_knot_hello(&mut txn, &hello)
         .await
         .wrap_err("failed to ACK Knot Hello")?;
+    txn.commit()
+        .await
+        .wrap_err("failed to commit Knot Hello transaction")?;
     log::info!(
         "Hub ACKs Knot hello hardware_uid={} knot_id={} actuator_configs={} sensor_bindings={}",
         ack.config.hardware_uid,

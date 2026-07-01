@@ -68,7 +68,8 @@ impl HubRuntime {
             .await;
         });
         let mut hub = HubService::new();
-        let mut sensor_registry = SensorRegistry::load(arksync_db::pool())
+        let pool = arksync_db::pool();
+        let mut sensor_registry = SensorRegistry::load(pool)
             .await
             .wrap_err("failed to load hub sensor registry")?;
 
@@ -82,6 +83,7 @@ impl HubRuntime {
                 Some(event) = sensor_event_rx.recv() => {
                     let received_at = timestamp_now();
                     handle_sensor_event(
+                        pool,
                         event,
                         received_at,
                         &mut sensor_registry,
@@ -91,7 +93,7 @@ impl HubRuntime {
                     .await?;
                 }
                 Some(event) = knot_message_event_rx.recv() => {
-                    handle_knot_event(event, &knot_message_tx_to_knot).await?;
+                    handle_knot_event(pool, event, &knot_message_tx_to_knot).await?;
                 }
                 else => break,
             }

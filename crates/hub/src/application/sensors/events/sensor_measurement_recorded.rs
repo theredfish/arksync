@@ -12,12 +12,14 @@ use arksync_knot::application::{KnotAck, KnotMessage};
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::SensorMeasurementRecorded;
 use eyre::{eyre, Result, WrapErr};
+use sqlx::PgPool;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::sensor_plugged::extract_plugged_sensor;
 use super::HubSensorEventEnvelope;
 
 pub(super) async fn handle_sensor_measurement_recorded(
+    pool: &PgPool,
     event: &HubSensorEventEnvelope,
     sensor_measurement: &SensorMeasurementRecorded,
     received_at: Timestamp,
@@ -31,7 +33,7 @@ pub(super) async fn handle_sensor_measurement_recorded(
         &sensor_measurement.sensor,
     );
     let sensor_id = sensor_registry
-        .ensure_sensor_registered(arksync_db::pool(), plugged_sensor)
+        .ensure_sensor_registered(pool, plugged_sensor)
         .await
         .wrap_err("failed to register measured local Knot sensor")?;
     let input = SensorMeasurementInput {
@@ -44,7 +46,7 @@ pub(super) async fn handle_sensor_measurement_recorded(
         measured_at: event.occurred_at,
         received_at,
     };
-    let measurement = record_sensor_measurement(arksync_db::pool(), input)
+    let measurement = record_sensor_measurement(pool, input)
         .await
         .wrap_err("failed to persist sensor measurement")?;
 
@@ -55,7 +57,7 @@ pub(super) async fn handle_sensor_measurement_recorded(
         measurement.value
     );
 
-    maybe_refresh_local_demo_actuator_config(&event.source, sensor_id, knot_event_tx).await?;
+    maybe_refresh_local_demo_actuator_config(pool, &event.source, sensor_id, knot_event_tx).await?;
 
     hub.record_sensor_measurement(
         event.source.clone(),
@@ -69,6 +71,7 @@ pub(super) async fn handle_sensor_measurement_recorded(
 }
 
 async fn maybe_refresh_local_demo_actuator_config(
+    pool: &PgPool,
     source: &KnotEventSource,
     sensor_id: crate::domain::SensorId,
     knot_event_tx: &tokio::sync::mpsc::Sender<KnotMessage>,
@@ -85,16 +88,20 @@ async fn maybe_refresh_local_demo_actuator_config(
         return Ok(());
     }
 
-    ensure_local_demo_temperature_relay_rule(arksync_db::pool(), *knot_id, sensor_id)
+    let mut txn = pool
+        .begin()
+        .await
+        .wrap_err("failed to begin local Knot actuator config transaction")?;
+    ensure_local_demo_temperature_relay_rule(&mut txn, *knot_id, sensor_id)
         .await
         .wrap_err("failed to ensure local demo relay rule")?;
 
-    let ack = actuator_config_ack_for_knot_hardware_uid(
-        arksync_db::pool(),
-        &CONFIG.local_knot_hardware_uid,
-    )
-    .await
-    .wrap_err("failed to refresh local Knot actuator config after sensor measurement")?;
+    let ack = actuator_config_ack_for_knot_hardware_uid(&mut txn, &CONFIG.local_knot_hardware_uid)
+        .await
+        .wrap_err("failed to refresh local Knot actuator config after sensor measurement")?;
+    txn.commit()
+        .await
+        .wrap_err("failed to commit local Knot actuator config transaction")?;
     log::info!(
         "Hub refreshes local Knot actuator config after sensor measurement sensor_id={} actuator_configs={} sensor_bindings={}",
         sensor_id,

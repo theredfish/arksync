@@ -40,10 +40,9 @@ impl From<sqlx::Error> for ActuatorStoreError {
     }
 }
 
-pub async fn list_actuators<'e, E>(executor: E) -> Result<Vec<ActuatorRecord>, ActuatorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn list_actuators(
+    executor: impl PgExecutor<'_>,
+) -> Result<Vec<ActuatorRecord>, ActuatorStoreError> {
     let actuators = sqlx::query_as(
         r#"
         select
@@ -71,13 +70,10 @@ where
     Ok(actuators)
 }
 
-pub async fn list_actuators_by_station_knot_id<'e, E>(
-    executor: E,
+pub async fn list_actuators_by_station_knot_id(
+    executor: impl PgExecutor<'_>,
     station_knot_id: arksync_utils::uuid::Uuid,
-) -> Result<Vec<ActuatorRecord>, ActuatorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<Vec<ActuatorRecord>, ActuatorStoreError> {
     let actuators = sqlx::query_as(
         r#"
         select
@@ -107,14 +103,11 @@ where
     Ok(actuators)
 }
 
-pub async fn actuator_by_station_knot_id_and_device_uid<'e, E>(
-    executor: E,
+pub async fn actuator_by_station_knot_id_and_device_uid(
+    executor: impl PgExecutor<'_>,
     station_knot_id: arksync_utils::uuid::Uuid,
     device_uid: &str,
-) -> Result<ActuatorRecord, ActuatorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<ActuatorRecord, ActuatorStoreError> {
     let actuator = sqlx::query_as(
         r#"
         select
@@ -146,13 +139,10 @@ where
     actuator.ok_or(ActuatorStoreError::NotFound)
 }
 
-pub async fn insert_actuator<'e, E>(
-    executor: E,
+pub async fn insert_actuator(
+    executor: impl PgExecutor<'_>,
     actuator: &NewActuatorRecord,
-) -> Result<ActuatorRecord, ActuatorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<ActuatorRecord, ActuatorStoreError> {
     let inserted = sqlx::query_as(
         r#"
         insert into actuators (
@@ -221,15 +211,12 @@ where
     Ok(inserted)
 }
 
-pub async fn update_actuator_runtime_status<'e, E>(
-    executor: E,
+pub async fn update_actuator_runtime_status(
+    executor: impl PgExecutor<'_>,
     actuator_id: &str,
     config_version: i64,
     enabled: bool,
-) -> Result<(), ActuatorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<(), ActuatorStoreError> {
     let result = sqlx::query(
         r#"
         update actuators
@@ -256,13 +243,10 @@ where
     Ok(())
 }
 
-pub async fn list_actuator_rules_by_actuator_ids<'e, E>(
-    executor: E,
+pub async fn list_actuator_rules_by_actuator_ids(
+    executor: impl PgExecutor<'_>,
     actuator_ids: &[arksync_utils::uuid::Uuid],
-) -> Result<Vec<ActuatorRuleRecord>, ActuatorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<Vec<ActuatorRuleRecord>, ActuatorStoreError> {
     if actuator_ids.is_empty() {
         return Ok(Vec::new());
     }
@@ -292,15 +276,12 @@ where
     Ok(rules)
 }
 
-pub async fn actuator_rule_by_actuator_sensor_name<'e, E>(
-    executor: E,
+pub async fn actuator_rule_by_actuator_sensor_name(
+    executor: impl PgExecutor<'_>,
     actuator_id: arksync_utils::uuid::Uuid,
     sensor_id: arksync_utils::uuid::Uuid,
     name: &str,
-) -> Result<ActuatorRuleRecord, ActuatorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<ActuatorRuleRecord, ActuatorStoreError> {
     let rule = sqlx::query_as(
         r#"
         select
@@ -329,15 +310,12 @@ where
     rule.ok_or(ActuatorStoreError::NotFound)
 }
 
-pub async fn delete_actuator_rule_by_actuator_sensor_name<'e, E>(
-    executor: E,
+pub async fn delete_actuator_rule_by_actuator_sensor_name(
+    executor: impl PgExecutor<'_>,
     actuator_id: arksync_utils::uuid::Uuid,
     sensor_id: arksync_utils::uuid::Uuid,
     name: &str,
-) -> Result<(), ActuatorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<(), ActuatorStoreError> {
     sqlx::query(
         r#"
         update actuator_rules
@@ -357,13 +335,10 @@ where
     Ok(())
 }
 
-pub async fn insert_actuator_rule<'e, E>(
-    executor: E,
+pub async fn insert_actuator_rule(
+    executor: impl PgExecutor<'_>,
     rule: &NewActuatorRuleRecord,
-) -> Result<ActuatorRuleRecord, ActuatorStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<ActuatorRuleRecord, ActuatorStoreError> {
     let inserted = sqlx::query_as(
         r#"
         insert into actuator_rules (

@@ -20,7 +20,9 @@ impl DbCommand {
 
 async fn reset_db() -> eyre::Result<()> {
     arksync_db::reset_public_schema::<MplMigrator>(arksync_db::pool()).await?;
-    arksync_hub::setup_local_station(arksync_db::pool()).await?;
+    let mut txn = arksync_db::pool().begin().await?;
+    arksync_hub::setup_local_station(&mut txn).await?;
+    txn.commit().await?;
 
     Ok(())
 }

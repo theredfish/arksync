@@ -9,13 +9,14 @@ use eyre::Result;
 use super::knot_hello::handle_knot_hello;
 
 pub async fn handle_knot_event(
+    pool: &sqlx::PgPool,
     event: KnotMessageEnvelope,
     knot_message_tx: &tokio::sync::mpsc::Sender<KnotMessage>,
 ) -> Result<()> {
     log::debug!("Hub received local Knot message: {event:?}");
 
     match event.payload {
-        KnotMessage::Hello(hello) => handle_knot_hello(hello, knot_message_tx).await?,
+        KnotMessage::Hello(hello) => handle_knot_hello(pool, hello, knot_message_tx).await?,
         KnotMessage::Ack(ack) => {
             log::debug!(
                 "Hub ignored Knot ACK echo hardware_uid={} knot_id={}",
@@ -23,7 +24,7 @@ pub async fn handle_knot_event(
                 ack.config.knot_id
             );
         }
-        KnotMessage::Actuator(event) => handle_actuator_runtime_event(event).await?,
+        KnotMessage::Actuator(event) => handle_actuator_runtime_event(pool, event).await?,
     }
 
     Ok(())

@@ -6,8 +6,9 @@ use crate::config::CONFIG;
 use crate::infrastructure::store::{
     hub as hub_store, knot as knot_store, HubRecord, KnotRecord, SystemUserRecord,
 };
+use sqlx::PgTransaction;
 
-pub async fn setup_local_station(executor: &sqlx::PgPool) -> Result<(), sqlx::Error> {
+pub async fn setup_local_station(txn: &mut PgTransaction<'_>) -> Result<(), sqlx::Error> {
     let user = SystemUserRecord {
         id: CONFIG.local_system_user_id,
         username: CONFIG.local_system_username.clone(),
@@ -28,7 +29,7 @@ pub async fn setup_local_station(executor: &sqlx::PgPool) -> Result<(), sqlx::Er
         status: "awake".to_string(),
     };
 
-    hub_store::upsert_system_user(executor, &user).await?;
-    hub_store::upsert_station_hub(executor, &hub).await?;
-    knot_store::upsert_station_knot(executor, &knot).await
+    hub_store::upsert_system_user(&mut **txn, &user).await?;
+    hub_store::upsert_station_hub(&mut **txn, &hub).await?;
+    knot_store::upsert_station_knot(&mut **txn, &knot).await
 }

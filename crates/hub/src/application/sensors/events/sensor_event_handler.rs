@@ -7,6 +7,7 @@ use arksync_bus::Timestamp;
 use arksync_knot::application::KnotMessage;
 use arksync_sensor::infrastructure::events::SensorEvent;
 use eyre::{eyre, Result};
+use sqlx::PgPool;
 
 use super::sensor_measurement_recorded::handle_sensor_measurement_recorded;
 use super::sensor_plugged::handle_sensor_plugged;
@@ -54,6 +55,7 @@ impl HubService {
 }
 
 pub async fn handle_sensor_event(
+    pool: &PgPool,
     event: HubSensorEventEnvelope,
     received_at: Timestamp,
     sensor_registry: &mut SensorRegistry,
@@ -64,10 +66,11 @@ pub async fn handle_sensor_event(
 
     match &event.payload {
         SensorEvent::SensorProvisioned(provisioned) => {
-            handle_sensor_provisioned(&event, provisioned, sensor_registry).await?;
+            handle_sensor_provisioned(pool, &event, provisioned, sensor_registry).await?;
         }
         SensorEvent::SensorMeasurementRecorded(sensor_measurement) => {
             handle_sensor_measurement_recorded(
+                pool,
                 &event,
                 sensor_measurement,
                 received_at,

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use sqlx::PgExecutor;
+use sqlx::{PgExecutor, PgTransaction};
 
 use crate::infrastructure::store::KnotRecord;
 
@@ -21,10 +21,10 @@ impl From<sqlx::Error> for KnotStoreError {
     }
 }
 
-pub async fn upsert_station_knot<'e, E>(executor: E, knot: &KnotRecord) -> Result<(), sqlx::Error>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn upsert_station_knot(
+    executor: impl PgExecutor<'_>,
+    knot: &KnotRecord,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         insert into station_knots (
@@ -65,13 +65,10 @@ where
     Ok(())
 }
 
-pub async fn insert_station_knot<'e, E>(
-    executor: E,
+pub async fn insert_station_knot(
+    executor: impl PgExecutor<'_>,
     knot: &KnotRecord,
-) -> Result<KnotRecord, KnotStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<KnotRecord, KnotStoreError> {
     let knot = sqlx::query_as(
         r#"
         insert into station_knots (
@@ -111,10 +108,9 @@ where
     Ok(knot)
 }
 
-pub async fn list_station_knots<'e, E>(executor: E) -> Result<Vec<KnotRecord>, KnotStoreError>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn list_station_knots(
+    executor: impl PgExecutor<'_>,
+) -> Result<Vec<KnotRecord>, KnotStoreError> {
     let knots = sqlx::query_as(
         r#"
         select
@@ -135,13 +131,10 @@ where
     Ok(knots)
 }
 
-pub async fn station_knot_by_hardware_uid<'e, E>(
-    executor: E,
+pub async fn station_knot_by_hardware_uid(
+    executor: impl PgExecutor<'_>,
     hardware_uid: &str,
-) -> Result<KnotRecord, KnotStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<KnotRecord, KnotStoreError> {
     let knot = sqlx::query_as(
         r#"
         select
@@ -163,16 +156,13 @@ where
     Ok(knot)
 }
 
-pub async fn find_or_insert_station_knot_by_hardware_uid<'e, E>(
-    executor: E,
+pub async fn find_or_insert_station_knot_by_hardware_uid(
+    txn: &mut PgTransaction<'_>,
     knot: &KnotRecord,
-) -> Result<KnotRecord, KnotStoreError>
-where
-    E: PgExecutor<'e> + Copy,
-{
-    match station_knot_by_hardware_uid(executor, &knot.hardware_uid).await {
+) -> Result<KnotRecord, KnotStoreError> {
+    match station_knot_by_hardware_uid(&mut **txn, &knot.hardware_uid).await {
         Ok(knot) => Ok(knot),
-        Err(KnotStoreError::NotFound) => insert_station_knot(executor, knot).await,
+        Err(KnotStoreError::NotFound) => insert_station_knot(&mut **txn, knot).await,
         Err(err) => Err(err),
     }
 }

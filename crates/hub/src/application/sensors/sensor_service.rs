@@ -54,22 +54,16 @@ pub trait HubSensorCommandHandler {
     fn handle(&mut self, command: HubSensorCommand) -> Result<(), Self::Error>;
 }
 
-pub async fn list_sensors<'e, E>(executor: E) -> Result<Vec<Sensor>, HubSensorError>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn list_sensors(executor: impl PgExecutor<'_>) -> Result<Vec<Sensor>, HubSensorError> {
     let records = sensor_store::list_sensors(executor).await?;
 
     Ok(records.into_iter().map(Sensor::from).collect())
 }
 
-pub async fn insert_sensor<'e, E>(
-    executor: E,
+pub async fn insert_sensor(
+    executor: impl PgExecutor<'_>,
     sensor: PluggedSensor,
-) -> Result<Sensor, HubSensorError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<Sensor, HubSensorError> {
     let record = NewSensorRecord {
         station_knot_id: sensor.station_knot_id.uuid_v4(),
         device_uid: sensor.device_uid.as_ref().to_string(),

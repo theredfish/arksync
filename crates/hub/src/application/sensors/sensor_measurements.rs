@@ -24,13 +24,10 @@ pub struct SensorMeasurementInput {
     pub received_at: Timestamp,
 }
 
-pub async fn record_sensor_measurement<'e, E>(
-    executor: E,
+pub async fn record_sensor_measurement(
+    executor: impl PgExecutor<'_>,
     input: SensorMeasurementInput,
-) -> Result<SensorMeasurement, HubSensorError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<SensorMeasurement, HubSensorError> {
     let measurement = SensorMeasurement {
         source: input.source,
         sensor_id: input.sensor_id,
@@ -47,16 +44,13 @@ where
     Ok(measurement)
 }
 
-pub async fn load_sensor_time_series<'e, E>(
-    executor: E,
+pub async fn load_sensor_time_series(
+    executor: impl PgExecutor<'_>,
     sensor_id: SensorId,
     window_start: Timestamp,
     window_end: Timestamp,
     limit: i64,
-) -> Result<SensorTimeSeries, HubSensorError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<SensorTimeSeries, HubSensorError> {
     let records = sensor_measurement_store::list_sensor_measurements_since(
         executor,
         sensor_id.uuid_v4(),
@@ -84,7 +78,7 @@ where
 }
 
 pub async fn load_latest_sensor_time_series(
-    executor: &sqlx::PgPool,
+    executor: impl PgExecutor<'_> + Copy,
     window_start: Timestamp,
     window_end: Timestamp,
     limit: i64,
@@ -99,7 +93,7 @@ pub async fn load_latest_sensor_time_series(
 }
 
 pub async fn load_latest_sensor_measurement(
-    executor: &sqlx::PgPool,
+    executor: impl PgExecutor<'_>,
 ) -> Result<Option<SensorMeasurement>, HubSensorError> {
     let measurement = sensor_measurement_store::latest_sensor_measurement(executor).await?;
 

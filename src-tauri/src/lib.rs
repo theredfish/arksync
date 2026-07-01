@@ -25,7 +25,9 @@ pub fn builder() -> tauri::Builder<tauri::Wry> {
         .setup(|app| {
             tauri::async_runtime::block_on(async {
                 arksync_db::run().await?;
-                arksync_hub::setup_local_station(arksync_db::pool()).await?;
+                let mut txn = arksync_db::pool().begin().await?;
+                arksync_hub::setup_local_station(&mut txn).await?;
+                txn.commit().await?;
 
                 eyre::Ok(())
             })

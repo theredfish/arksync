@@ -39,12 +39,9 @@ impl From<sqlx::Error> for DashboardStoreError {
     }
 }
 
-pub async fn list_dashboards<'e, E>(
-    executor: E,
-) -> Result<Vec<DashboardRecord>, DashboardStoreError>
-where
-    E: PgExecutor<'e>,
-{
+pub async fn list_dashboards(
+    executor: impl PgExecutor<'_>,
+) -> Result<Vec<DashboardRecord>, DashboardStoreError> {
     let dashboards = sqlx::query_as(
         r#"
         select
@@ -61,13 +58,10 @@ where
     Ok(dashboards)
 }
 
-pub async fn dashboard_by_id<'e, E>(
-    executor: E,
+pub async fn dashboard_by_id(
+    executor: impl PgExecutor<'_>,
     dashboard_id: Uuid,
-) -> Result<DashboardRecord, DashboardStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<DashboardRecord, DashboardStoreError> {
     let dashboard = sqlx::query_as(
         r#"
         select
@@ -85,13 +79,10 @@ where
     dashboard.ok_or(DashboardStoreError::NotFound)
 }
 
-pub async fn dashboard_by_name<'e, E>(
-    executor: E,
+pub async fn dashboard_by_name(
+    executor: impl PgExecutor<'_>,
     name: &str,
-) -> Result<DashboardRecord, DashboardStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<DashboardRecord, DashboardStoreError> {
     let dashboard = sqlx::query_as(
         r#"
         select
@@ -109,13 +100,10 @@ where
     dashboard.ok_or(DashboardStoreError::NotFound)
 }
 
-pub async fn insert_dashboard<'e, E>(
-    executor: E,
+pub async fn insert_dashboard(
+    executor: impl PgExecutor<'_>,
     dashboard: &Dashboard,
-) -> Result<DashboardRecord, DashboardStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<DashboardRecord, DashboardStoreError> {
     let inserted = sqlx::query_as(
         r#"
         insert into dashboards (
@@ -139,13 +127,10 @@ where
     Ok(inserted)
 }
 
-pub async fn list_dashboard_components<'e, E>(
-    executor: E,
+pub async fn list_dashboard_components(
+    executor: impl PgExecutor<'_>,
     dashboard_id: Uuid,
-) -> Result<Vec<DashboardComponentRecord>, DashboardStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<Vec<DashboardComponentRecord>, DashboardStoreError> {
     let components = sqlx::query_as(
         r#"
         select
@@ -169,13 +154,10 @@ where
     Ok(components)
 }
 
-pub async fn insert_dashboard_component<'e, E>(
-    executor: E,
+pub async fn insert_dashboard_component(
+    executor: impl PgExecutor<'_>,
     component: &DashboardComponent,
-) -> Result<DashboardComponentRecord, DashboardStoreError>
-where
-    E: PgExecutor<'e>,
-{
+) -> Result<DashboardComponentRecord, DashboardStoreError> {
     let inserted = sqlx::query_as(
         r#"
         insert into dashboard_components (
