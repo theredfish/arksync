@@ -9,7 +9,7 @@ use core::marker::PhantomData;
 use {
     crate::application::{KnotConfig, KnotMessage, KnotSensorBinding},
     alloc::string::String,
-    arksync_actuator::infrastructure::events::{ActuatorConfig, ActuatorEvent, AddActuator},
+    arksync_actuator::application::protocol::{ActuatorConfig, ActuatorMessage, AddActuator},
     arksync_actuator::services::ActuatorService,
     arksync_bus::{EventProducer, Timestamp},
 };
@@ -21,12 +21,12 @@ pub enum KnotRuntimeError {
     SensorAlreadyListening,
     /// The requested serial sensor is not tracked by this Knot.
     SensorNotListening,
-    /// The actuator runtime received a config before its hardware UID was set.
+    /// The runtime received a config before its Knot hardware UID was set.
     #[cfg(feature = "knot-nostd-runtime")]
-    ActuatorHardwareUidNotConfigured,
+    KnotHardwareUidNotConfigured,
     /// The actuator config targets another Knot hardware UID.
     #[cfg(feature = "knot-nostd-runtime")]
-    ActuatorHardwareUidMismatch,
+    KnotHardwareUidMismatch,
 }
 
 /// Platform-agnostic Knot runtime state.
@@ -40,7 +40,7 @@ pub struct KnotRuntime<'bus> {
     listened_serial_sensors: Vec<SerialSensor>,
     _bus: PhantomData<&'bus ()>,
     #[cfg(feature = "knot-nostd-runtime")]
-    actuator_hardware_uid: Option<String>,
+    hardware_uid: Option<String>,
     #[cfg(feature = "knot-nostd-runtime")]
     sensor_bindings: Vec<KnotSensorBinding>,
     #[cfg(feature = "knot-nostd-runtime")]
@@ -60,10 +60,10 @@ impl<'bus> KnotRuntime<'bus> {
         &self.listened_serial_sensors
     }
 
-    /// Stores the hardware UID used to validate actuator configuration ACKs.
+    /// Stores this Knot's hardware UID used to validate configuration ACKs.
     #[cfg(feature = "knot-nostd-runtime")]
-    pub fn with_actuator_hardware_uid(mut self, hardware_uid: String) -> Self {
-        self.actuator_hardware_uid = Some(hardware_uid);
+    pub fn with_hardware_uid(mut self, hardware_uid: String) -> Self {
+        self.hardware_uid = Some(hardware_uid);
         self
     }
 
@@ -75,7 +75,7 @@ impl<'bus> KnotRuntime<'bus> {
     #[cfg(feature = "knot-nostd-runtime")]
     pub fn with_actuator_event_producer(
         mut self,
-        event_producer: EventProducer<'bus, ActuatorEvent>,
+        event_producer: EventProducer<'bus, ActuatorMessage>,
     ) -> Self {
         self.actuator_service = self.actuator_service.with_event_producer(event_producer);
         self
@@ -154,8 +154,8 @@ impl<'bus> KnotRuntime<'bus> {
     ) -> Result<(), KnotRuntimeError> {
         match event {
             KnotMessage::Ack(ack) => self.apply_actuator_config(ack.config, occurred_at),
-            KnotMessage::Actuator(event) => {
-                self.actuator_service.read_event(event, occurred_at);
+            KnotMessage::Actuator(message) => {
+                self.actuator_service.handle_message(message, occurred_at);
                 Ok(())
             }
             KnotMessage::Hello(_) => Ok(()),
@@ -196,12 +196,12 @@ impl<'bus> KnotRuntime<'bus> {
         config: KnotConfig,
         occurred_at: Timestamp,
     ) -> Result<(), KnotRuntimeError> {
-        let Some(hardware_uid) = &self.actuator_hardware_uid else {
-            return Err(KnotRuntimeError::ActuatorHardwareUidNotConfigured);
+        let Some(hardware_uid) = &self.hardware_uid else {
+            return Err(KnotRuntimeError::KnotHardwareUidNotConfigured);
         };
 
         if config.hardware_uid != *hardware_uid {
-            return Err(KnotRuntimeError::ActuatorHardwareUidMismatch);
+            return Err(KnotRuntimeError::KnotHardwareUidMismatch);
         }
 
         #[cfg(feature = "log")]
@@ -221,8 +221,8 @@ impl<'bus> KnotRuntime<'bus> {
                 config.config_id,
                 config.rules.len()
             );
-            self.actuator_service.read_event(
-                ActuatorEvent::AddActuator(AddActuator { config }),
+            self.actuator_service.handle_message(
+                ActuatorMessage::AddActuator(AddActuator { config }),
                 occurred_at,
             );
         }

@@ -5,7 +5,7 @@
 use crate::domain::KnotId;
 use alloc::string::String;
 use alloc::vec::Vec;
-use arksync_actuator::infrastructure::events::ActuatorConfig;
+use arksync_actuator::application::protocol::ActuatorConfig;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

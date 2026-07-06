@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 mod actuator_config;
-mod actuator_event;
+mod actuator_message;
 mod actuator_state_changed;
 mod add_actuator;
 mod config_applied;
@@ -13,7 +13,7 @@ mod remove_actuator;
 mod runtime_status;
 
 pub use actuator_config::*;
-pub use actuator_event::*;
+pub use actuator_message::*;
 pub use actuator_state_changed::*;
 pub use add_actuator::*;
 pub use config_applied::*;

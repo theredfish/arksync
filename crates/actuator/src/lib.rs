@@ -12,6 +12,7 @@ compile_error!("features `linux-gpio` and `esp-gpio` cannot be enabled at the sa
 #[cfg(feature = "linux-gpio")]
 extern crate std;
 
+pub mod application;
 pub mod infrastructure;
 pub mod relay;
 pub mod rule_engine;

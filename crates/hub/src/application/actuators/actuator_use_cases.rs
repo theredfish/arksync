@@ -11,12 +11,12 @@ use crate::infrastructure::store::{
     actuators as actuator_store, knot as knot_store, sensors as sensor_store, ActuatorRecord,
     ActuatorRuleRecord, ActuatorStoreError, NewActuatorRecord, NewActuatorRuleRecord,
 };
-use arksync_actuator::infrastructure::events::{
-    ActuatorBackend as ActuatorEventBackend, ActuatorConfig,
-    ActuatorConnection as ActuatorEventConnection, ActuatorDescriptor,
-    ActuatorKind as ActuatorEventKind, ActuatorProtocol as ActuatorEventProtocol,
+use arksync_actuator::application::protocol::{
+    ActuatorBackend as ProtocolActuatorBackend, ActuatorConfig,
+    ActuatorConnection as ProtocolActuatorConnection, ActuatorDescriptor,
+    ActuatorKind as ProtocolActuatorKind, ActuatorProtocol as ProtocolActuatorProtocol,
     ActuatorRuleAssertion, ActuatorRuleConfig, ActuatorRuleEffect,
-    GpioActuatorConnection as ActuatorEventGpioConnection, RuntimeStatus,
+    GpioActuatorConnection as ProtocolGpioActuatorConnection, RuntimeStatus,
 };
 use arksync_knot::application::{KnotConfig, KnotSensorBinding};
 use arksync_knot::domain::KnotId;
@@ -144,10 +144,10 @@ pub fn actuator_config_from_actuator(
         device_uid: actuator.device_uid.clone(),
         actuator: ActuatorDescriptor {
             id: actuator.id.to_string(),
-            kind: actuator_kind_to_event(actuator.kind),
-            backend: actuator_backend_to_event(actuator.backend),
-            protocol: actuator_protocol_to_event(actuator.protocol),
-            connection: actuator_connection_to_event(&actuator.connection),
+            kind: actuator_kind_to_protocol(actuator.kind),
+            backend: actuator_backend_to_protocol(actuator.backend),
+            protocol: actuator_protocol_to_protocol(actuator.protocol),
+            connection: actuator_connection_to_protocol(&actuator.connection),
             channels: actuator.channels,
             model: actuator.model.clone(),
         },
@@ -250,29 +250,29 @@ async fn ensure_local_demo_relay_rule(
     Ok(actuator_store::insert_actuator_rule(&mut **txn, &rule).await?)
 }
 
-fn actuator_kind_to_event(kind: ActuatorKind) -> ActuatorEventKind {
+fn actuator_kind_to_protocol(kind: ActuatorKind) -> ProtocolActuatorKind {
     match kind {
-        ActuatorKind::Relay => ActuatorEventKind::Relay,
+        ActuatorKind::Relay => ProtocolActuatorKind::Relay,
     }
 }
 
-fn actuator_backend_to_event(backend: ActuatorBackend) -> ActuatorEventBackend {
+fn actuator_backend_to_protocol(backend: ActuatorBackend) -> ProtocolActuatorBackend {
     match backend {
-        ActuatorBackend::LinuxGpiod => ActuatorEventBackend::LinuxGpiod,
-        ActuatorBackend::EspGpio => ActuatorEventBackend::EspGpio,
+        ActuatorBackend::LinuxGpiod => ProtocolActuatorBackend::LinuxGpiod,
+        ActuatorBackend::EspGpio => ProtocolActuatorBackend::EspGpio,
     }
 }
 
-fn actuator_protocol_to_event(protocol: ActuatorProtocol) -> ActuatorEventProtocol {
+fn actuator_protocol_to_protocol(protocol: ActuatorProtocol) -> ProtocolActuatorProtocol {
     match protocol {
-        ActuatorProtocol::Gpio => ActuatorEventProtocol::Gpio,
+        ActuatorProtocol::Gpio => ProtocolActuatorProtocol::Gpio,
     }
 }
 
-fn actuator_connection_to_event(connection: &ActuatorConnection) -> ActuatorEventConnection {
+fn actuator_connection_to_protocol(connection: &ActuatorConnection) -> ProtocolActuatorConnection {
     match connection {
         ActuatorConnection::Gpio(connection) => {
-            ActuatorEventConnection::Gpio(ActuatorEventGpioConnection {
+            ProtocolActuatorConnection::Gpio(ProtocolGpioActuatorConnection {
                 pin: connection.pin,
                 pin_scheme: connection.pin_scheme.clone(),
                 active_low: connection.active_low,

@@ -3,23 +3,23 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::application::record_actuator_runtime_status;
-use arksync_actuator::infrastructure::events::ActuatorEvent;
+use arksync_actuator::application::protocol::ActuatorMessage;
 use eyre::{Result, WrapErr};
 use sqlx::PgPool;
 
 pub(crate) async fn handle_actuator_runtime_event(
     pool: &PgPool,
-    event: ActuatorEvent,
+    event: ActuatorMessage,
 ) -> Result<()> {
     match event {
-        ActuatorEvent::ConfigApplied(applied) => {
+        ActuatorMessage::ConfigApplied(applied) => {
             log::info!(
                 "Local Knot applied actuator config config_id={} version={}",
                 applied.config_id,
                 applied.version
             );
         }
-        ActuatorEvent::ConfigRejected(rejected) => {
+        ActuatorMessage::ConfigRejected(rejected) => {
             log::error!(
                 "Local Knot rejected actuator config config_id={} version={} reason={}",
                 rejected.config_id,
@@ -27,7 +27,7 @@ pub(crate) async fn handle_actuator_runtime_event(
                 rejected.reason
             );
         }
-        ActuatorEvent::RuntimeStatus(status) => {
+        ActuatorMessage::RuntimeStatus(status) => {
             log::debug!(
                 "Local Knot actuator runtime status rules={} actuators={} last_seen_sensor_values={}",
                 status.rules.len(),
@@ -45,7 +45,7 @@ pub(crate) async fn handle_actuator_runtime_event(
                 .await
                 .wrap_err("failed to commit actuator runtime status transaction")?;
         }
-        ActuatorEvent::ActuatorStateChanged(state) => {
+        ActuatorMessage::ActuatorStateChanged(state) => {
             log::info!(
                 "Local Knot actuator state changed actuator_id={} rule_id={} sensor_id={} value={} active={}",
                 state.actuator_id,
@@ -55,10 +55,10 @@ pub(crate) async fn handle_actuator_runtime_event(
                 state.active
             );
         }
-        ActuatorEvent::AddActuator(_)
-        | ActuatorEvent::EnableActuator(_)
-        | ActuatorEvent::DisableActuator(_)
-        | ActuatorEvent::RemoveActuator(_) => {}
+        ActuatorMessage::AddActuator(_)
+        | ActuatorMessage::EnableActuator(_)
+        | ActuatorMessage::DisableActuator(_)
+        | ActuatorMessage::RemoveActuator(_) => {}
     }
 
     Ok(())

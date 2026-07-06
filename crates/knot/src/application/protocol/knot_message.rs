@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_actuator::infrastructure::events::ActuatorEvent;
+use arksync_actuator::application::protocol::ActuatorMessage;
 use arksync_bus::EventEnvelope;
 use serde::{Deserialize, Serialize};
 
@@ -15,5 +15,5 @@ pub type KnotMessageEnvelope = EventEnvelope<KnotMessage>;
 pub enum KnotMessage {
     Hello(KnotHello),
     Ack(KnotAck),
-    Actuator(ActuatorEvent),
+    Actuator(ActuatorMessage),
 }

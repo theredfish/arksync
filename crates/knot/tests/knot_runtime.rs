@@ -7,7 +7,7 @@ use arksync_knot::application::{
 };
 #[cfg(feature = "knot-nostd-runtime")]
 use {
-    arksync_actuator::infrastructure::events::{
+    arksync_actuator::application::protocol::{
         ActuatorBackend, ActuatorConfig, ActuatorConnection, ActuatorDescriptor, ActuatorKind,
         ActuatorProtocol, GpioActuatorConnection,
     },
@@ -86,7 +86,7 @@ fn timestamp() -> Timestamp {
 #[test]
 fn knot_runtime_applies_actuator_config_ack() {
     let config = actuator_config("relay-config-1");
-    let mut runtime = KnotRuntime::new().with_actuator_hardware_uid("knot-rpi-1".to_string());
+    let mut runtime = KnotRuntime::new().with_hardware_uid("knot-rpi-1".to_string());
 
     runtime
         .handle_knot_message(
@@ -108,7 +108,7 @@ fn knot_runtime_applies_actuator_config_ack() {
 #[cfg(feature = "knot-nostd-runtime")]
 #[test]
 fn knot_runtime_rejects_actuator_config_for_another_hardware_uid() {
-    let mut runtime = KnotRuntime::new().with_actuator_hardware_uid("knot-rpi-1".to_string());
+    let mut runtime = KnotRuntime::new().with_hardware_uid("knot-rpi-1".to_string());
     let result = runtime.handle_knot_message(
         KnotMessage::Ack(KnotAck {
             config: KnotConfig {
@@ -121,6 +121,6 @@ fn knot_runtime_rejects_actuator_config_for_another_hardware_uid() {
         timestamp(),
     );
 
-    assert_eq!(result, Err(KnotRuntimeError::ActuatorHardwareUidMismatch));
+    assert_eq!(result, Err(KnotRuntimeError::KnotHardwareUidMismatch));
     assert!(runtime.actuator_configs().is_empty());
 }

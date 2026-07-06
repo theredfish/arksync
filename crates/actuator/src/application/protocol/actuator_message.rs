@@ -4,14 +4,14 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::infrastructure::events::{
+use crate::application::protocol::{
     ActuatorStateChanged, AddActuator, ConfigApplied, ConfigRejected, DisableActuator,
     EnableActuator, RemoveActuator, RuntimeStatus,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ActuatorEvent {
+pub enum ActuatorMessage {
     AddActuator(AddActuator),
     EnableActuator(EnableActuator),
     DisableActuator(DisableActuator),

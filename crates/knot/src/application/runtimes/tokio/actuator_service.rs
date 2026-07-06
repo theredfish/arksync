@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_actuator::infrastructure::events::ActuatorEvent;
+use arksync_actuator::application::protocol::ActuatorMessage;
 use arksync_actuator::relay::{RelayDriver, RelayState, MIST_RELAY};
 use arksync_bus::{EventBus, EventBusError, EventEnvelope, EventHandler, EventId, Timestamp};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -40,7 +40,7 @@ impl TokioKnotActuatorService {
         let mut actuator_bus = EventBus::new();
         actuator_bus.subscribe(TokioActuatorEventHandler(actuator_event_tx));
         let mut knot_runtime = KnotRuntime::new()
-            .with_actuator_hardware_uid(self.hardware_uid.clone())
+            .with_hardware_uid(self.hardware_uid.clone())
             .with_actuator_event_producer(actuator_bus.producer());
         let mut event_counter = 0_u128;
         let mut envelope_bus = EventBus::new();
@@ -127,8 +127,8 @@ fn local_knot_capabilities() -> KnotCapabilities {
     }
 }
 
-fn apply_local_actuator_state(relay_driver: Option<&RelayDriver>, event: &ActuatorEvent) {
-    let ActuatorEvent::ActuatorStateChanged(state) = event else {
+fn apply_local_actuator_state(relay_driver: Option<&RelayDriver>, event: &ActuatorMessage) {
+    let ActuatorMessage::ActuatorStateChanged(state) = event else {
         return;
     };
     let Some(relay_driver) = relay_driver else {
@@ -207,10 +207,10 @@ impl EventHandler<KnotMessage> for TokioEnvelopeHandler {
     }
 }
 
-struct TokioActuatorEventHandler(mpsc::Sender<EventEnvelope<ActuatorEvent>>);
+struct TokioActuatorEventHandler(mpsc::Sender<EventEnvelope<ActuatorMessage>>);
 
-impl EventHandler<ActuatorEvent> for TokioActuatorEventHandler {
-    fn handle(&mut self, event: EventEnvelope<ActuatorEvent>) -> Result<(), EventBusError> {
+impl EventHandler<ActuatorMessage> for TokioActuatorEventHandler {
+    fn handle(&mut self, event: EventEnvelope<ActuatorMessage>) -> Result<(), EventBusError> {
         self.0
             .try_send(event)
             .map_err(|_| EventBusError::HandlerRejected)

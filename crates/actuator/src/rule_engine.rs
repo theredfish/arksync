@@ -5,7 +5,7 @@
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use crate::infrastructure::events::{
+use crate::application::protocol::{
     ActuatorConfig, ActuatorRuleAssertion, ActuatorRuleConfig, ActuatorRuleEffect,
     RuleRuntimeStatus,
 };
@@ -148,7 +148,7 @@ impl ActuatorRuleEffect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infrastructure::events::{
+    use crate::application::protocol::{
         ActuatorBackend, ActuatorConnection, ActuatorDescriptor, ActuatorKind, ActuatorProtocol,
         GpioActuatorConnection,
     };

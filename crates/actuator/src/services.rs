@@ -5,8 +5,8 @@
 use alloc::string::ToString;
 use alloc::vec::Vec;
 
-use crate::infrastructure::events::{
-    ActuatorConfig, ActuatorEvent, ActuatorRuntimeStatus, ActuatorStateChanged, AddActuator,
+use crate::application::protocol::{
+    ActuatorConfig, ActuatorMessage, ActuatorRuntimeStatus, ActuatorStateChanged, AddActuator,
     ConfigApplied, ConfigRejected, RemoveActuator, RuntimeStatus,
 };
 use crate::rule_engine::{RuleEngine, SensorValue};
@@ -15,7 +15,7 @@ use arksync_bus::{EventEnvelope, EventId, EventProducer, Timestamp};
 pub struct ActuatorService<'bus> {
     configs: Vec<ActuatorConfig>,
     rule_engine: RuleEngine,
-    event_producer: Option<EventProducer<'bus, ActuatorEvent>>,
+    event_producer: Option<EventProducer<'bus, ActuatorMessage>>,
     event_counter: u128,
 }
 
@@ -37,7 +37,7 @@ impl<'bus> ActuatorService<'bus> {
 
     pub fn with_event_producer(
         mut self,
-        event_producer: EventProducer<'bus, ActuatorEvent>,
+        event_producer: EventProducer<'bus, ActuatorMessage>,
     ) -> Self {
         self.event_producer = Some(event_producer);
         self
@@ -47,20 +47,20 @@ impl<'bus> ActuatorService<'bus> {
         &self.configs
     }
 
-    pub fn read_event(&mut self, event: ActuatorEvent, occurred_at: Timestamp) {
-        match event {
-            ActuatorEvent::AddActuator(command) => self.add_actuator(command, occurred_at),
-            ActuatorEvent::EnableActuator(command) => {
+    pub fn handle_message(&mut self, message: ActuatorMessage, occurred_at: Timestamp) {
+        match message {
+            ActuatorMessage::AddActuator(command) => self.add_actuator(command, occurred_at),
+            ActuatorMessage::EnableActuator(command) => {
                 self.set_enabled(command.config_id, command.version, true, occurred_at);
             }
-            ActuatorEvent::DisableActuator(command) => {
+            ActuatorMessage::DisableActuator(command) => {
                 self.set_enabled(command.config_id, command.version, false, occurred_at);
             }
-            ActuatorEvent::RemoveActuator(command) => self.remove_actuator(command, occurred_at),
-            ActuatorEvent::ConfigApplied(_)
-            | ActuatorEvent::ConfigRejected(_)
-            | ActuatorEvent::RuntimeStatus(_)
-            | ActuatorEvent::ActuatorStateChanged(_) => {}
+            ActuatorMessage::RemoveActuator(command) => self.remove_actuator(command, occurred_at),
+            ActuatorMessage::ConfigApplied(_)
+            | ActuatorMessage::ConfigRejected(_)
+            | ActuatorMessage::RuntimeStatus(_)
+            | ActuatorMessage::ActuatorStateChanged(_) => {}
         }
     }
 
@@ -78,7 +78,7 @@ impl<'bus> ActuatorService<'bus> {
         for decision in decisions {
             self.emit(
                 occurred_at,
-                ActuatorEvent::ActuatorStateChanged(ActuatorStateChanged {
+                ActuatorMessage::ActuatorStateChanged(ActuatorStateChanged {
                     config_id: decision.config_id,
                     actuator_id: decision.actuator_id,
                     rule_id: decision.rule_id,
@@ -180,7 +180,7 @@ impl<'bus> ActuatorService<'bus> {
     ) {
         self.emit(
             occurred_at,
-            ActuatorEvent::ConfigApplied(ConfigApplied { config_id, version }),
+            ActuatorMessage::ConfigApplied(ConfigApplied { config_id, version }),
         );
         self.emit_runtime_status(occurred_at);
     }
@@ -194,7 +194,7 @@ impl<'bus> ActuatorService<'bus> {
     ) {
         self.emit(
             occurred_at,
-            ActuatorEvent::ConfigRejected(ConfigRejected {
+            ActuatorMessage::ConfigRejected(ConfigRejected {
                 config_id,
                 version,
                 reason: reason.to_string(),
@@ -206,7 +206,7 @@ impl<'bus> ActuatorService<'bus> {
     fn emit_runtime_status(&mut self, occurred_at: Timestamp) {
         self.emit(
             occurred_at,
-            ActuatorEvent::RuntimeStatus(RuntimeStatus {
+            ActuatorMessage::RuntimeStatus(RuntimeStatus {
                 rules: self.rule_engine.statuses(),
                 actuators: self
                     .configs
@@ -226,7 +226,7 @@ impl<'bus> ActuatorService<'bus> {
         self.rule_engine.replace_actuator_configs(&self.configs);
     }
 
-    fn emit(&mut self, occurred_at: Timestamp, event: ActuatorEvent) {
+    fn emit(&mut self, occurred_at: Timestamp, event: ActuatorMessage) {
         self.event_counter = self.event_counter.wrapping_add(1);
         let Some(event_producer) = &mut self.event_producer else {
             return;
