@@ -8,7 +8,7 @@
     "rust-analyzer": {
       "initialization_options": {
         "cargo": {
-          "allFeatures": true,
+          "allFeatures": false,
           "buildScripts": { "enable": true },
         },
         "checkOnSave": true,
