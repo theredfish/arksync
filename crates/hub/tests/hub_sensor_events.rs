@@ -7,7 +7,7 @@ use arksync_hub::{
     HubSensorEventEnvelope, HubService, RegisterSensor, RemoveSensor, RenameSensor, SensorId,
     SensorRegistrationStatus,
 };
-use arksync_knot::domain::{KnotEventSource, KnotId, ParentHubId};
+use arksync_knot::domain::{KnotEventSource, KnotHubId, KnotId};
 use arksync_sensor::infrastructure::events::{SensorEvent, SerialSensorPlugged};
 use arksync_sensor::serial_port::{SerialPortMetadata, DEFAULT_BAUD_RATE};
 
@@ -25,7 +25,7 @@ fn metadata(serial_number: &str) -> SerialPortMetadata {
 
 fn source() -> KnotEventSource {
     KnotEventSource::Knot {
-        parent_hub_id: ParentHubId::from_bytes([1; 16]),
+        hub_id: KnotHubId::from_bytes([1; 16]),
         knot_id: KnotId::from_bytes([2; 16]),
     }
 }

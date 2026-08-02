@@ -8,7 +8,7 @@ use arksync_macros::UuidV4;
 pub struct KnotId([u8; 16]);
 
 #[derive(UuidV4)]
-pub struct ParentHubId([u8; 16]);
+pub struct KnotHubId([u8; 16]);
 
 #[cfg(test)]
 mod tests {
@@ -18,7 +18,7 @@ mod tests {
     fn hub_and_knot_ids_can_share_same_uuid_bytes() {
         let bytes = [1; 16];
         let knot_id = KnotId::from_bytes(bytes);
-        let parent_hub_id = ParentHubId::from_bytes(bytes);
+        let parent_hub_id = KnotHubId::from_bytes(bytes);
 
         assert_eq!(knot_id.as_bytes(), parent_hub_id.as_bytes());
         assert_eq!(knot_id.uuid_v4(), parent_hub_id.uuid_v4());

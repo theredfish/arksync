@@ -27,7 +27,7 @@ pub struct SensorMeasurementRecord {
 impl SensorMeasurementRecord {
     pub fn new(event_id: EventId, measurement: &SensorMeasurement) -> Self {
         let KnotEventSource::Knot {
-            parent_hub_id,
+            hub_id: parent_hub_id,
             knot_id,
         } = measurement.source;
 
@@ -50,7 +50,7 @@ impl From<SensorMeasurementRecord> for SensorMeasurement {
     fn from(record: SensorMeasurementRecord) -> Self {
         Self {
             source: KnotEventSource::Knot {
-                parent_hub_id: record.source_parent_hub_id.into(),
+                hub_id: record.source_parent_hub_id.into(),
                 knot_id: record.source_knot_id.into(),
             },
             sensor_id: record.sensor_id.into(),
