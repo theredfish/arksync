@@ -1,49 +1,49 @@
 {
   "languages": {
     "Rust": {
-      "language_servers": [
-        "rust-analyzer",
-        "tailwindcss-language-server",
-        "..."
-      ]
-    }
+      "language_servers": ["rust-analyzer", "tailwindcss-language-server", "..."],
+    },
   },
   "lsp": {
+    "rust-analyzer": {
+      "initialization_options": {
+        "cargo": {
+          "allFeatures": false,
+          "buildScripts": { "enable": true },
+        },
+        "checkOnSave": true,
+        "procMacro": { "enable": true },
+      },
+    },
     "tailwindcss-language-server": {
       "settings": {
         "includeLanguages": {
-          "rust": "html"
+          "rust": "html",
         },
-        "classAttributes": [
-          "class",
-          "attr:class"
-        ],
+        "classAttributes": ["class", "attr:class"],
         "experimental": {
           "classRegex": [
             "\\bclass\\s*=\\s*\"([^\"]*)\"",
             "\\battr:class\\s*=\\s*\"([^\"]*)\"",
             "\\bclass\\s*=\\s*format!\\(\\s*\"([^\"]*)\"",
-            "\\battr:class\\s*=\\s*format!\\(\\s*\"([^\"]*)\""
-          ]
+            "\\battr:class\\s*=\\s*format!\\(\\s*\"([^\"]*)\"",
+          ],
         },
         "tailwindCSS": {
           "includeLanguages": {
-            "rust": "html"
+            "rust": "html",
           },
-          "classAttributes": [
-            "class",
-            "attr:class"
-          ],
+          "classAttributes": ["class", "attr:class"],
           "experimental": {
             "classRegex": [
               "\\bclass\\s*=\\s*\"([^\"]*)\"",
               "\\battr:class\\s*=\\s*\"([^\"]*)\"",
               "\\bclass\\s*=\\s*format!\\(\\s*\"([^\"]*)\"",
-              "\\battr:class\\s*=\\s*format!\\(\\s*\"([^\"]*)\""
-            ]
-          }
-        }
-      }
-    }
-  }
+              "\\battr:class\\s*=\\s*format!\\(\\s*\"([^\"]*)\"",
+            ],
+          },
+        },
+      },
+    },
+  },
 }

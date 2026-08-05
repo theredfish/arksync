@@ -12,7 +12,7 @@ pub use config::{Config, CONFIG};
 pub use migrations::{Migrator, MplMigrator};
 pub use postgres::{connect_db, pool, PG_POOL};
 pub use postgres_reset::reset_public_schema;
-pub use postgres_setup::setup;
+pub use postgres_setup::{setup, setup_pool};
 
 pub async fn run() -> eyre::Result<()> {
     setup().await?;

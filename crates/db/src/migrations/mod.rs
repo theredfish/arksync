@@ -7,7 +7,3 @@ mod mpl_migrator;
 
 pub use migrator::Migrator;
 pub use mpl_migrator::MplMigrator;
-
-pub async fn run() -> Result<(), sqlx::migrate::MigrateError> {
-    MplMigrator::run().await
-}

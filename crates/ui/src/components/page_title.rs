@@ -8,9 +8,10 @@ use leptos::IntoView;
 #[component]
 pub fn PageTitle(#[prop(into)] eyebrow: String, #[prop(into)] title: String) -> impl IntoView {
     view! {
-        <div>
-            <div class="font-mono text-[10px] uppercase tracking-[0.24em] text-sk-carbon-475">{eyebrow}</div>
-            <h1 class="mt-2 text-4xl font-semibold text-sk-carbon-50">{title}</h1>
+        <div class="flex min-w-0 items-center gap-2 font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--arksync-text-muted)]">
+            <span>{eyebrow}</span>
+            <span class="text-[var(--arksync-panel-muted)]">"/"</span>
+            <span class="truncate text-[var(--arksync-text-strong)]">{title}</span>
         </div>
     }
 }

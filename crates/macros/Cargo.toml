@@ -1,0 +1,25 @@
+[package]
+name = "arksync-macros"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+proc-macro = true
+
+[features]
+default = []
+uuid-v4 = []
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn = { workspace = true, features = ["full"] }
+
+[dev-dependencies]
+arksync-utils.workspace = true
+serde.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

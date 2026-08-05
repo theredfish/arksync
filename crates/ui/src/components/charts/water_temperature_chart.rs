@@ -3,8 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use charming::{
-    component::{Axis, Title},
-    element::{AxisType, Color, Easing, TextStyle},
+    component::Axis,
+    element::{
+        AxisLabel, AxisLine, AxisLineStyle, AxisType, Color, Easing, ItemStyle, LineStyle,
+        SplitLine,
+    },
     series::Line,
     Animation, Chart, ChartResize, Echarts, WasmRenderer,
 };
@@ -17,45 +20,84 @@ use std::rc::Rc;
 use tauri_sys::event::listen;
 use wasm_bindgen_futures::spawn_local;
 
-use crate::theme::ArkSyncTheme;
+use crate::theme::{ArkSyncChartColors, ArkSyncTheme};
 
 #[derive(Clone, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct SensorData {
     name: String,
-    value: [f32; 7],
+    labels: Vec<String>,
+    value: Vec<f32>,
 }
 
 #[component]
-pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> impl IntoView {
+pub fn WaterTemperatureChart(dark_theme: RwSignal<bool>) -> impl IntoView {
     let chart_container = NodeRef::<Div>::new();
     let chart_node = NodeRef::<Div>::new();
     let chart_container_size = use_element_size(chart_container);
     let (chart_container_w, chart_container_h) =
         (chart_container_size.width, chart_container_size.height);
 
-    let sensor_values = RwSignal::new(vec![0.0; 7]);
+    let sensor_values = RwSignal::new(None::<Vec<f32>>);
+    let sensor_labels = RwSignal::new(None::<Vec<String>>);
     let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::new(RefCell::new(None));
 
-    let render_responsive_chart = move |width: f64, height: f64, serie: Vec<f32>| {
+    let render_responsive_chart = move |width: f64,
+                                        height: f64,
+                                        serie: Vec<f32>,
+                                        labels: Vec<String>,
+                                        dark_theme: bool| {
         let chart_instance: Rc<RefCell<Option<Echarts>>> = Rc::clone(&chart_instance);
         let mut chart_ref = chart_instance.borrow_mut();
         let width = if width == 0.0 { 300 } else { width as u32 };
         let height = if height == 0.0 { 150 } else { height as u32 };
+        let chart_theme = ArkSyncChartColors::from_dark_theme(dark_theme);
 
         let chart_config = Chart::new()
-            .title(
-                Title::new()
-                    .text("Water Temperature (C°)".to_string())
-                    .text_style(TextStyle::new().color(Color::Value("#39344a".to_string()))),
+            .background_color(Color::Value(chart_theme.background.to_string()))
+            .series(
+                Line::new()
+                    .show_symbol(false)
+                    .line_style(
+                        LineStyle::new()
+                            .color(Color::Value(chart_theme.line.to_string()))
+                            .width(2.0),
+                    )
+                    .item_style(ItemStyle::new().color(Color::Value(chart_theme.line.to_string())))
+                    .data(serie),
             )
-            .series(Line::new().data(serie))
             .x_axis(
                 Axis::new()
                     .type_(AxisType::Category)
-                    .data(vec!["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]),
+                    .axis_label(
+                        AxisLabel::new()
+                            .interval(axis_label_interval(labels.len()))
+                            .color(Color::Value(chart_theme.muted_text.to_string())),
+                    )
+                    .axis_line(
+                        AxisLine::new().line_style(
+                            AxisLineStyle::new()
+                                .color((1.0, Color::Value(chart_theme.grid.to_string()))),
+                        ),
+                    )
+                    .data(labels),
             )
-            .y_axis(Axis::new().type_(AxisType::Value));
+            .y_axis(
+                Axis::new()
+                    .type_(AxisType::Value)
+                    .axis_label(
+                        AxisLabel::new().color(Color::Value(chart_theme.muted_text.to_string())),
+                    )
+                    .axis_line(
+                        AxisLine::new().line_style(
+                            AxisLineStyle::new()
+                                .color((1.0, Color::Value(chart_theme.grid.to_string()))),
+                        ),
+                    )
+                    .split_line(SplitLine::new().line_style(
+                        LineStyle::new().color(Color::Value(chart_theme.grid.to_string())),
+                    )),
+            );
 
         if let Some(echarts) = chart_ref.as_ref() {
             WasmRenderer::update(echarts, &chart_config);
@@ -73,7 +115,13 @@ pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> i
                 },
             );
         } else {
-            let theme = theme.unwrap_or_default().as_wrapper().charming_theme;
+            let theme = if dark_theme {
+                ArkSyncTheme::Chalk
+            } else {
+                ArkSyncTheme::Walden
+            }
+            .as_wrapper()
+            .charming_theme;
             let renderer = WasmRenderer::new(width, height).theme(theme);
             let echarts = renderer
                 .render("water-temparature-gauge", &chart_config)
@@ -98,7 +146,8 @@ pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> i
             };
 
             while let Some(sensor_data) = stream.next().await {
-                sensor_values.set(sensor_data.payload.value.to_vec());
+                sensor_labels.set(Some(sensor_data.payload.labels));
+                sensor_values.set(Some(sensor_data.payload.value));
             }
         });
     });
@@ -109,17 +158,56 @@ pub fn WaterTemperatureChart(#[prop(optional)] theme: Option<ArkSyncTheme>) -> i
                 chart_container_w.get(),
                 chart_container_h.get(),
                 sensor_values.get(),
+                sensor_labels.get(),
+                dark_theme.get(),
             )
         },
-        move |(width, height, sensor_values): &(f64, f64, Vec<f32>), _prev, _| {
-            render_responsive_chart(*width, *height, sensor_values.to_vec());
+        move |(width, height, sensor_values, sensor_labels, dark_theme): &(
+            f64,
+            f64,
+            Option<Vec<f32>>,
+            Option<Vec<String>>,
+            bool,
+        ),
+              _prev,
+              _| {
+            if let (Some(sensor_values), Some(sensor_labels)) = (sensor_values, sensor_labels) {
+                render_responsive_chart(
+                    *width,
+                    *height,
+                    sensor_values.to_vec(),
+                    sensor_labels.to_vec(),
+                    *dark_theme,
+                );
+            }
         },
         false,
     );
 
     view! {
-        <div node_ref=chart_container class="w-full h-full">
-            <div node_ref=chart_node id="water-temparature-gauge"></div>
+        <div node_ref=chart_container class="relative w-full h-full">
+            <div
+                node_ref=chart_node
+                id="water-temparature-gauge"
+                class=move || if sensor_values.get().is_some() { "h-full" } else { "hidden h-full" }
+            ></div>
+            {move || {
+                sensor_values.get().is_none().then(|| {
+                    view! {
+                        <div class="arksync-no-data pointer-events-none absolute inset-0 flex items-center justify-center font-mono text-xs uppercase tracking-[0.22em] text-[var(--arksync-text-muted)]">
+                            "No Data"
+                        </div>
+                    }
+                })
+            }}
         </div>
+    }
+}
+
+fn axis_label_interval(label_count: usize) -> f64 {
+    if label_count <= 8 {
+        0.0
+    } else {
+        (label_count / 8) as f64
     }
 }

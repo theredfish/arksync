@@ -14,8 +14,16 @@ use leptos_use::{
     UseElementBoundingReturn,
 };
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GridDebugInfo(pub bool);
+
 #[component]
-pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> impl IntoView {
+pub fn GridLayout(
+    children: Children,
+    columns: usize,
+    display_grid: bool,
+    #[prop(optional, default = false)] debug: bool,
+) -> impl IntoView {
     assert!(columns > 0, "The number of columns can't be zero");
     let grid_layout_node = NodeRef::<Div>::new();
     let UseElementBoundingReturn { width, height, .. } = use_element_bounding_with_options(
@@ -34,6 +42,7 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
     provide_context(layout);
     provide_context(drop_preview);
     provide_context(resize_preview);
+    provide_context(GridDebugInfo(debug));
 
     // Track dynamically added items
     let next_id = RwSignal::new(10_000u32);
@@ -84,7 +93,7 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
             actions=move || view! {
                 <button
                     on:click=add_item
-                    class="rounded-md border border-sk-mint-325 bg-sk-mint-450 px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] text-sk-aqua-50 transition-colors hover:bg-sk-mint-400"
+                    class="rounded-md border border-[var(--arksync-action-border)] bg-[var(--arksync-primary)] px-4 py-2 font-mono text-xs uppercase tracking-[0.18em] text-[var(--arksync-primary-text)] shadow-sm transition-colors hover:bg-[var(--arksync-primary-hover)]"
                 >
                     "Add Item"
                 </button>
@@ -105,14 +114,14 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
 
                                     view! {
                                         <div
-                                            class=move || format!("absolute {border_t_b} {border_l_r} border-sk-carbon-800")
+                                            class=move || format!("absolute {border_t_b} {border_l_r} border-[var(--arksync-panel-border)]")
                                             style={ move || {
                                                 format!("left: {}px; top: {}px; width: {}px; height: {}px;", col * cell_w as usize, row * cell_h as usize, cell_w, cell_h)
                                             }}
                                         >
                                             {
                                                 if row == 0 {
-                                                    Some(view! { <span class="text-xs text-sk-carbon-500">{format!("{col}")}</span> })
+                                                    Some(view! { <span class="text-xs text-[var(--arksync-text-muted)]">{format!("{col}")}</span> })
                                                 } else {
                                                     None
                                                 }
@@ -139,7 +148,7 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
 
                             view! {
                                 <div
-                                    class="pointer-events-none absolute rounded-lg border border-dashed border-sk-mint-325 bg-sk-mint-450/10"
+                                    class="pointer-events-none absolute rounded-lg border border-dashed border-[var(--arksync-preview-border)] bg-[var(--arksync-preview-bg)]"
                                     data-preview-for=preview.item_id.to_string()
                                     style=format!(
                                         "left: {visual_left}px; top: {visual_top}px; width: {visual_width}px; height: {visual_height}px; z-index: 999; transition: left 120ms ease-out, top 120ms ease-out, width 120ms ease-out, height 120ms ease-out;"
@@ -162,7 +171,7 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
 
                             view! {
                                 <div
-                                    class="pointer-events-none absolute rounded-lg border border-dashed border-sk-mint-325 bg-sk-mint-450/10"
+                                    class="pointer-events-none absolute rounded-lg border border-dashed border-[var(--arksync-preview-border)] bg-[var(--arksync-preview-bg)]"
                                     data-resize-preview-for=preview.item_id.to_string()
                                     style=format!(
                                         "left: {visual_left}px; top: {visual_top}px; width: {visual_width}px; height: {visual_height}px; z-index: 999; transition: left 120ms ease-out, top 120ms ease-out, width 120ms ease-out, height 120ms ease-out;"
@@ -185,8 +194,9 @@ pub fn GridLayout(children: Children, columns: usize, display_grid: bool) -> imp
                                 row_start=0
                                 label=format!("Item {}", id)
                                 dynamic=true
+                                debug=debug
                             >
-                                <div class="p-4 text-sk-carbon-500">
+                                <div class="p-4 text-[var(--arksync-text-muted)]">
                                     "No data yet"
                                 </div>
                             </GridItem>

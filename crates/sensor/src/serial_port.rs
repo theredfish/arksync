@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use serde::{Deserialize, Serialize};
 use serialport::{SerialPortInfo, SerialPortType};
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -12,7 +13,7 @@ pub const DEFAULT_BAUD_RATE: u32 = 9600;
 pub const SERIAL_PORT_CONN_TIMEOUT: u64 = 1000; // Timeout acts as safety net for response-based reading
 
 /// Metadata about a serial port (no active connection)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SerialPortMetadata {
     pub port_name: String,
     pub serial_number: String,

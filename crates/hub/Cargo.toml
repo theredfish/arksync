@@ -1,0 +1,32 @@
+[package]
+name = "arksync-hub"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["uuid-v4"]
+uuid-v4 = ["arksync-utils/uuid-v4"]
+
+[dependencies]
+arksync-actuator.workspace = true
+arksync-bus.workspace = true
+arksync-config.workspace = true
+arksync-db.workspace = true
+arksync-knot = { workspace = true, features = ["knot-tokio-runtime"] }
+arksync-macros.workspace = true
+arksync-sensor.workspace = true
+arksync-utils.workspace = true
+derive_more = { workspace = true, features = ["display", "from", "from_str"] }
+eyre.workspace = true
+serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
+serde_json.workspace = true
+log.workspace = true
+sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid", "json"] }
+tokio = { workspace = true, features = ["rt", "sync"] }
+
+[dev-dependencies]
+arksync-testing.workspace = true
+
+[lints]
+workspace = true

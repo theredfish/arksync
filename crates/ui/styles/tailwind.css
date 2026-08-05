@@ -3,26 +3,119 @@
 @tailwind utilities;
 
 @layer base {
+    :root,
+    .theme-dark {
+        --arksync-app-bg: #25242a;
+        --arksync-sidebar-bg: #222126;
+        --arksync-panel-bg: #2c2b31;
+        --arksync-panel-border: #4a4652;
+        --arksync-panel-muted: #b5afbf;
+        --arksync-text: #e5e1ea;
+        --arksync-text-strong: #ffffff;
+        --arksync-text-muted: #c8c2cf;
+        --arksync-nav-bg: #2b2a30;
+        --arksync-chart-bg: #2c2b31;
+        --arksync-chart-text: #ffffff;
+        --arksync-chart-muted: #d8d2df;
+        --arksync-chart-grid: #5a5563;
+        --arksync-chart-gauge-fill: #28554f;
+        --arksync-chart-line: #87d7cb;
+        --arksync-primary: #36343d;
+        --arksync-primary-hover: #403d48;
+        --arksync-primary-text: #f4f1f7;
+        --arksync-action-border: #6b6575;
+        --arksync-action-accent: #87d7cb;
+        --arksync-nav-active-bg: #36343d;
+        --arksync-nav-active-text: #f4f1f7;
+        --arksync-preview-bg: rgb(244 241 247 / 0.08);
+        --arksync-preview-border: #6b6575;
+        --arksync-selection-bg: #4d4658;
+        --arksync-selection-text: #f4f1f7;
+    }
+
+    .theme-light {
+        --arksync-app-bg: #ffffff;
+        --arksync-sidebar-bg: #f6faf7;
+        --arksync-panel-bg: #fafafa;
+        --arksync-panel-border: #c3ccc5;
+        --arksync-panel-muted: #35433c;
+        --arksync-text: #17211d;
+        --arksync-text-strong: #050908;
+        --arksync-text-muted: #24312b;
+        --arksync-nav-bg: #f7f8f7;
+        --arksync-chart-bg: #fafafa;
+        --arksync-chart-text: #101917;
+        --arksync-chart-muted: #26332d;
+        --arksync-chart-grid: #9aa59e;
+        --arksync-chart-gauge-fill: #28554f;
+        --arksync-chart-line: #1f5f4b;
+        --arksync-primary: #28554f;
+        --arksync-primary-hover: #1f5f4b;
+        --arksync-primary-text: #eef3ef;
+        --arksync-action-border: #28554f;
+        --arksync-action-accent: #28554f;
+        --arksync-nav-active-bg: #28554f;
+        --arksync-nav-active-text: #ffffff;
+        --arksync-preview-bg: rgb(40 48 57 / 0.06);
+        --arksync-preview-border: #7f8c84;
+        --arksync-selection-bg: #d8e0d9;
+        --arksync-selection-text: #101917;
+    }
+
+    .theme-sidebar {
+        --arksync-sidebar-bg: #222126;
+        --arksync-panel-bg: #2c2b31;
+        --arksync-panel-border: #4a4652;
+        --arksync-panel-muted: #b5afbf;
+        --arksync-text: #e5e1ea;
+        --arksync-text-strong: #ffffff;
+        --arksync-text-muted: #cbc5d3;
+        --arksync-nav-bg: #2b2a30;
+        --arksync-nav-active-bg: #3a3741;
+        --arksync-nav-active-text: #f4f1f7;
+        --arksync-action-border: #6b6575;
+        --arksync-action-accent: #87d7cb;
+    }
+
     html {
-        @apply bg-sk-carbon-950;
+        background: var(--arksync-app-bg);
     }
 
     body {
-        @apply min-h-screen bg-sk-carbon-950 text-sk-carbon-150;
+        min-height: 100vh;
+        background: var(--arksync-app-bg);
+        color: var(--arksync-text);
     }
 
     ::selection {
-        @apply bg-sk-mint-325 text-sk-sage-50;
+        background: var(--arksync-selection-bg);
+        color: var(--arksync-selection-text);
     }
 
     a[aria-current],
     a:hover {
-        @apply text-sk-aqua-50
+        color: var(--arksync-action-accent);
     }
 }
 
 @layer components {
     .arksync-panel {
-        @apply border border-sk-carbon-725 bg-sk-carbon-900 text-sk-carbon-150;
+        border: 1px solid var(--arksync-panel-border);
+        background: var(--arksync-panel-bg);
+        color: var(--arksync-text);
+    }
+
+    .arksync-no-data {
+        animation: arksync-no-data-pulse 2.4s ease-in-out infinite;
+    }
+}
+
+@keyframes arksync-no-data-pulse {
+    0%, 100% {
+        opacity: 0.38;
+    }
+
+    50% {
+        opacity: 0.9;
     }
 }

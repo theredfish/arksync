@@ -4,11 +4,17 @@
 
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration, Instant};
 
+use crate::device_uid::DeviceUid;
 use crate::error::{Result, SensorError};
 use crate::i2c_bus::I2cConnection;
+use crate::infrastructure::events::{
+    MeasuredSensor, MeasurementUnit, SensorConnectionMetadata, SensorKind, SensorMeasurement,
+    SensorMeasurementRecorded,
+};
 use crate::serial_port::SerialPortMetadata;
 
 #[derive(Debug, Clone, Default)]
@@ -17,6 +23,8 @@ pub enum SensorName {
     Unnamed,
     Named(String),
 }
+
+pub const DEFAULT_MEASUREMENT_INTERVAL: Duration = Duration::from_millis(1200);
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SensorState {
@@ -49,6 +57,7 @@ pub enum SensorConnection {
 pub struct SensorInfo {
     pub firmware: f64,
     pub name: SensorName,
+    pub device_uid: Option<DeviceUid>,
     pub state: SensorState,
     pub state_reason: SensorStateReason,
     pub state_since: DateTime<Utc>,
@@ -61,16 +70,25 @@ pub trait Sensor: Send + Sync + 'static {
     fn info(&self) -> SensorInfo;
     fn read_measurement(&self) -> Result<f64>;
     fn check_measurement(&self, value: f64) -> Option<SensorStateReason>;
+    fn ensure_device_uid(&self) -> Result<DeviceUid> {
+        let info = self.info();
+
+        Ok(info.device_uid.clone().unwrap_or_default())
+    }
+
     fn record_measurement(&self, value: f64);
     fn record_error(&self, err: &SensorError);
     fn mark_unplugged(&self);
 
     /// Spawn the main background task for this sensor.
-    fn run(self: Arc<Self>) -> JoinHandle<()> {
+    fn run(
+        self: Arc<Self>,
+        measurement_tx: Option<mpsc::Sender<SensorMeasurementRecorded>>,
+    ) -> JoinHandle<()> {
         tokio::spawn(async move {
             // This is based on Atlas Scientific read time, plus some time to not
             // be at the edge of the value disponibility
-            let mut ticker = interval(Duration::from_millis(1200));
+            let mut ticker = interval(DEFAULT_MEASUREMENT_INTERVAL);
             let unreachable_retry_interval = Duration::from_secs(30);
             let mut last_unreachable_retry = Instant::now() - unreachable_retry_interval;
 
@@ -95,6 +113,19 @@ pub trait Sensor: Send + Sync + 'static {
                     Ok(value) => {
                         self.record_measurement(value);
                         println!("Sensor reading: {value:.3}");
+                        if let Some(measurement_tx) = &measurement_tx {
+                            let info = self.info();
+                            if let Some(device_uid) = info.device_uid.clone() {
+                                let _ = measurement_tx.try_send(SensorMeasurementRecorded {
+                                    device_uid,
+                                    sensor: measured_sensor_from_info(&info),
+                                    measurement: SensorMeasurement {
+                                        value,
+                                        unit: measurement_unit_from_info(&info),
+                                    },
+                                });
+                            }
+                        }
                     }
                     Err(err) => {
                         self.record_error(&err);
@@ -104,4 +135,31 @@ pub trait Sensor: Send + Sync + 'static {
             }
         })
     }
+}
+
+pub(crate) fn measured_sensor_from_info(info: &SensorInfo) -> MeasuredSensor {
+    match &info.connection {
+        SensorConnection::Uart(metadata) => MeasuredSensor {
+            hardware_uid: metadata.serial_number.clone(),
+            kind: sensor_kind_from_info(info),
+            connection: SensorConnectionMetadata::Uart(metadata.clone()),
+            firmware: Some(info.firmware),
+        },
+        SensorConnection::I2c(connection) => MeasuredSensor {
+            hardware_uid: format!("i2c:{:02x}", connection.address),
+            kind: sensor_kind_from_info(info),
+            connection: SensorConnectionMetadata::I2c {
+                address: connection.address,
+            },
+            firmware: Some(info.firmware),
+        },
+    }
+}
+
+fn sensor_kind_from_info(_info: &SensorInfo) -> SensorKind {
+    SensorKind::Temperature
+}
+
+fn measurement_unit_from_info(_info: &SensorInfo) -> MeasurementUnit {
+    MeasurementUnit::Celsius
 }

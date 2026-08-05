@@ -10,5 +10,8 @@ eyre.workspace = true
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "migrate", "uuid"] }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros"] }
+
 [lints]
 workspace = true

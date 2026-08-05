@@ -66,6 +66,7 @@ impl<D: Driver> Rtd<D> {
             data: Mutex::new(SensorInfo {
                 firmware,
                 name: SensorName::Unnamed,
+                device_uid: None,
                 state: SensorState::Initializing,
                 state_reason: SensorStateReason::Plugged,
                 state_since: now,

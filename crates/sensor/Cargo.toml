@@ -4,13 +4,22 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["std"]
+std = ["critical-section/std", "rand/os_rng"]
+
 # [lib]
 # name = "arksync_lib"
 # crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
+arksync-bus.workspace = true
 chrono.workspace = true
+critical-section = { version = "1", default-features = false }
 eyre.workspace = true
+log.workspace = true
+rand = { workspace = true, default-features = false, features = ["small_rng"] }
+serde.workspace = true
 serialport.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tokio-util.workspace = true

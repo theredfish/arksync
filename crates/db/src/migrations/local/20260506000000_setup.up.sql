@@ -39,6 +39,19 @@ create type sensor_status as enum (
     'unreachable'
 );
 
+create type actuator_kind as enum (
+    'relay'
+);
+
+create type actuator_protocol as enum (
+    'gpio'
+);
+
+create type actuator_backend as enum (
+    'linux_gpiod',
+    'esp_gpio'
+);
+
 create type actuator_status as enum (
     'active',
     'disabled',
@@ -103,13 +116,14 @@ where deleted_at is null;
 create table sensors (
     id uuid primary key default gen_random_uuid(),
     station_knot_id uuid not null references station_knots(id),
-    hardware_uid text,
-    name text not null,
+    device_uid text not null,
+    display_name text,
     kind sensor_kind not null,
     driver sensor_driver not null,
     protocol sensor_protocol not null,
     connection jsonb not null default '{}'::jsonb,
     firmware double precision,
+    measurement_interval_ms integer not null default 1200 check (measurement_interval_ms > 1000),
     status sensor_status not null default 'initializing',
     state_reason text not null default 'plugged',
     state_reason_details jsonb not null default '{}'::jsonb,
@@ -121,9 +135,9 @@ create table sensors (
     deleted_at timestamptz
 );
 
-create unique index sensors_hardware_uid_unique
-on sensors (hardware_uid)
-where hardware_uid is not null and deleted_at is null;
+create unique index sensors_station_knot_device_uid_unique
+on sensors (station_knot_id, device_uid)
+where deleted_at is null;
 
 create index sensors_station_knot_id_idx
 on sensors (station_knot_id)
@@ -132,23 +146,53 @@ where deleted_at is null;
 create table actuators (
     id uuid primary key default gen_random_uuid(),
     station_knot_id uuid not null references station_knots(id),
-    hardware_uid text,
-    name text not null,
-    kind text not null,
-    protocol text not null,
-    connection jsonb not null default '{}'::jsonb,
+    device_uid text not null,
+    display_name text,
+    kind actuator_kind not null,
+    backend actuator_backend not null,
+    protocol actuator_protocol not null,
+    config_version bigint not null default 1 check (config_version > 0),
+    enabled boolean not null default true,
+    gpio_pin integer check (gpio_pin is null or gpio_pin >= 0),
+    pin_scheme text,
+    active_low boolean not null default true,
+    channels integer check (channels is null or channels > 0),
+    model text,
     status actuator_status not null default 'active',
     created_at timestamptz not null default now(),
     updated_at timestamptz not null default now(),
     deleted_at timestamptz
 );
 
-create unique index actuators_hardware_uid_unique
-on actuators (hardware_uid)
-where hardware_uid is not null and deleted_at is null;
+create unique index actuators_station_knot_device_uid_unique
+on actuators (station_knot_id, device_uid)
+where deleted_at is null;
 
 create index actuators_station_knot_id_idx
 on actuators (station_knot_id)
+where deleted_at is null;
+
+create table actuator_rules (
+    id uuid primary key default gen_random_uuid(),
+    actuator_id uuid not null references actuators(id),
+    sensor_id uuid not null references sensors(id),
+    name text not null,
+    config_version bigint not null default 1 check (config_version > 0),
+    enabled boolean not null default true,
+    threshold double precision not null,
+    active_when_matched boolean not null default true,
+    active_when_unmatched boolean not null default false,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    deleted_at timestamptz
+);
+
+create unique index actuator_rules_actuator_sensor_name_unique
+on actuator_rules (actuator_id, sensor_id, name)
+where deleted_at is null;
+
+create index actuator_rules_actuator_id_idx
+on actuator_rules (actuator_id)
 where deleted_at is null;
 
 create function set_updated_at()
@@ -186,31 +230,7 @@ before update on actuators
 for each row
 execute function set_updated_at();
 
-create function register_local_hub_as_knot()
-returns trigger
-language plpgsql
-as $$
-begin
-    insert into station_knots (
-        station_hub_id,
-        name,
-        hardware_uid,
-        role,
-        status
-    )
-    values (
-        new.id,
-        new.name,
-        new.hardware_uid,
-        'local_hub',
-        'active'
-    );
-
-    return new;
-end;
-$$;
-
-create trigger trigger_register_local_hub_as_knot
-after insert on station_hubs
+create trigger actuator_rules_set_updated_at
+before update on actuator_rules
 for each row
-execute function register_local_hub_as_knot();
+execute function set_updated_at();

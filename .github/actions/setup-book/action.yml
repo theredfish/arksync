@@ -1,0 +1,31 @@
+name: Setup book
+description: Restore or install the pinned mdBook toolchain.
+
+inputs:
+  mdbook-version:
+    description: mdBook version to install.
+    required: true
+  mdbook-mermaid-version:
+    description: mdBook Mermaid version to install.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore book tools
+      id: cache
+      uses: actions/cache@v4
+      with:
+        key: book-tools-${{ runner.os }}-${{ runner.arch }}-${{ inputs.mdbook-version }}-${{ inputs.mdbook-mermaid-version }}
+        path: |
+          ~/.cargo/bin/mdbook
+          ~/.cargo/bin/mdbook-mermaid
+
+    - name: Install book tools
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: taiki-e/install-action@v2
+      with:
+        fallback: none
+        tool: |
+          mdbook@${{ inputs.mdbook-version }}
+          mdbook-mermaid@${{ inputs.mdbook-mermaid-version }}

@@ -4,6 +4,8 @@
 
 use clap::{Parser, Subcommand};
 
+mod book;
+mod build;
 mod db;
 
 #[derive(Debug, Parser)]
@@ -17,6 +19,10 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     #[command(subcommand)]
+    Book(book::BookCommand),
+    #[command(subcommand)]
+    Build(build::BuildCommand),
+    #[command(subcommand)]
     Db(db::DbCommand),
 }
 
@@ -25,6 +31,8 @@ async fn main() -> eyre::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Book(cmd) => cmd.exec(),
+        Command::Build(cmd) => cmd.exec(),
         Command::Db(cmd) => cmd.exec().await,
     }
 }

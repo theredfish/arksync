@@ -1,0 +1,125 @@
+name: Book
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+    paths:
+      - ".github/actions/setup-book/**"
+      - ".github/workflows/book.yml"
+      - "docs/**"
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+    paths:
+      - ".github/actions/setup-book/**"
+      - ".github/workflows/book.yml"
+      - "docs/**"
+
+concurrency:
+  group: book-pages
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  MDBOOK_VERSION: "0.5.4"
+  MDBOOK_MERMAID_VERSION: "0.17.0"
+
+jobs:
+  publish:
+    name: publish book
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    env:
+      BOOK_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && 'stable' || 'dev' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-book
+        with:
+          mdbook-version: ${{ env.MDBOOK_VERSION }}
+          mdbook-mermaid-version: ${{ env.MDBOOK_MERMAID_VERSION }}
+
+      - name: Test book
+        env:
+          MDBOOK_OUTPUT__HTML__SITE_URL: /arksync/version/${{ env.BOOK_VERSION }}/
+        run: mdbook test docs
+
+      - name: Build book
+        env:
+          MDBOOK_OUTPUT__HTML__SITE_URL: /arksync/version/${{ env.BOOK_VERSION }}/
+        run: mdbook build docs
+
+      - name: Publish book
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          destination_dir: version/${{ env.BOOK_VERSION }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/book
+
+  preview:
+    name: publish PR preview
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+      deployments: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-book
+        if: github.event.action != 'closed'
+        with:
+          mdbook-version: ${{ env.MDBOOK_VERSION }}
+          mdbook-mermaid-version: ${{ env.MDBOOK_MERMAID_VERSION }}
+
+      - name: Test book
+        if: github.event.action != 'closed'
+        env:
+          MDBOOK_OUTPUT__HTML__SITE_URL: /arksync/pr-preview/pr-${{ github.event.number }}/
+        run: mdbook test docs
+
+      - name: Build book
+        if: github.event.action != 'closed'
+        env:
+          MDBOOK_OUTPUT__HTML__SITE_URL: /arksync/pr-preview/pr-${{ github.event.number }}/
+        run: mdbook build docs
+
+      - name: Publish preview
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          action: auto
+          comment: true
+          preview-branch: gh-pages
+          qr-code: false
+          source-dir: docs/book
+          wait-for-pages-deployment: true
+
+  validate-external-preview:
+    name: validate external PR book
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ./.github/actions/setup-book
+        with:
+          mdbook-version: ${{ env.MDBOOK_VERSION }}
+          mdbook-mermaid-version: ${{ env.MDBOOK_MERMAID_VERSION }}
+
+      - name: Test book
+        run: mdbook test docs
+
+      - name: Build book
+        run: mdbook build docs
