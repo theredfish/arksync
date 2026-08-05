@@ -1,0 +1,20 @@
+[book]
+authors = ["Station Knot"]
+description = "Technical documentation for the ArkSync environmental monitoring and control system."
+language = "en"
+src = "src"
+title = "ArkSync"
+
+[build]
+build-dir = "book"
+create-missing = false
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output.html]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+edit-url-template = "https://github.com/theredfish/arksync/edit/main/docs/{path}"
+git-repository-icon = "fab-github"
+git-repository-url = "https://github.com/theredfish/arksync"
+site-url = "/arksync/"

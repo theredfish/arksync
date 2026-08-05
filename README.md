@@ -19,6 +19,33 @@ docker exec influxdb influx setup \
 
 [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
 
+## Documentation
+
+ArkSync book: [stable](https://theredfish.github.io/arksync/version/stable/) |
+[dev](https://theredfish.github.io/arksync/version/dev/).
+
+Install the documentation tools with:
+
+```bash
+cargo install mdbook --version 0.5.4 --locked
+cargo install mdbook-mermaid --version 0.17.0 --locked
+```
+
+Build the book with:
+
+```bash
+cargo sk book build
+```
+
+For a local preview with automatic rebuild and browser reload:
+
+```bash
+cargo sk book watch
+```
+
+Use `cargo sk book watch --headless` when running without a local browser. The preview address and
+port can be changed with `--hostname` and `--port`.
+
 ## Troubleshooting
 
 ### GBM Buffer
