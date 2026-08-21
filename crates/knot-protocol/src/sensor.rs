@@ -5,6 +5,7 @@
 use alloc::{string::String, vec::Vec};
 use serde::{Deserialize, Serialize};
 
+/// Sensor messages emitted by a Knot toward its Hub.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnotSensorMessage {
     Plugged(KnotSensorPlugged),
@@ -30,6 +31,7 @@ pub struct KnotSensorProvisioningConflict {
     pub sensor: KnotSensorDescriptor,
 }
 
+/// Batch of sensor values processed atomically under one envelope [`arksync_bus::EventId`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KnotSensorMeasurementBatch {
     pub measurements: Vec<KnotSensorMeasurement>,

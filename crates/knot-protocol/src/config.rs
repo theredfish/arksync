@@ -5,6 +5,7 @@
 use alloc::{string::String, vec::Vec};
 use serde::{Deserialize, Serialize};
 
+/// Complete versioned runtime configuration supplied by a Hub to one Knot.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KnotConfig {
     pub version: u64,

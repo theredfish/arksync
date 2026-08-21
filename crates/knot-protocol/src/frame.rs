@@ -4,10 +4,14 @@
 
 use crate::KnotEnvelope;
 
+/// Prefix identifying an ArkSync Knot frame before decoding its payload.
 pub const KNOT_FRAME_MAGIC: [u8; 4] = *b"ARSK";
+/// Wire representation version encoded in every Knot frame.
 pub const KNOT_PROTOCOL_VERSION: u8 = 1;
+/// Number of bytes preceding the Postcard payload.
 pub const KNOT_FRAME_HEADER_LEN: usize = KNOT_FRAME_MAGIC.len() + 1;
 
+/// Failure while encoding or decoding a Knot protocol frame.
 #[derive(Debug, PartialEq)]
 pub enum KnotFrameError {
     BufferTooSmall,
@@ -35,6 +39,7 @@ impl From<postcard::Error> for KnotFrameError {
     }
 }
 
+/// Encodes one complete Knot envelope into a caller-provided bounded buffer.
 pub fn encode_knot_frame<'buffer>(
     envelope: &KnotEnvelope,
     buffer: &'buffer mut [u8],
@@ -51,6 +56,7 @@ pub fn encode_knot_frame<'buffer>(
     Ok(&buffer[..frame_len])
 }
 
+/// Validates and decodes one complete Knot protocol frame.
 pub fn decode_knot_frame(frame: &[u8]) -> Result<KnotEnvelope, KnotFrameError> {
     if frame.len() < KNOT_FRAME_HEADER_LEN {
         return Err(KnotFrameError::BufferTooSmall);

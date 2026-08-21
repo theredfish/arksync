@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{KnotControlMessage, KnotSensorMessage};
 
+/// Versioned message envelope exchanged between a Hub and a Knot.
 pub type KnotEnvelope = EventEnvelope<KnotMessage, KnotMessageSource>;
 
+/// Root payload for the bilateral Hub/Knot protocol.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnotMessage {
     Control(KnotControlMessage),
@@ -26,6 +28,10 @@ impl KnotMessage {
     }
 }
 
+/// Claimed origin of a protocol message.
+///
+/// A remote transport authenticates its peer independently. The source remains
+/// useful for routing, auditing, and in-process links.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KnotMessageSource {
     Hub { hub_id: [u8; 16] },

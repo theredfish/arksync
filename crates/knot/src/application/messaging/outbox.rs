@@ -10,6 +10,7 @@ pub const DEFAULT_OUTBOX_CAPACITY: usize = 256;
 pub const DEFAULT_INITIAL_RETRY_DELAY_MS: u64 = 1_000;
 pub const DEFAULT_MAX_RETRY_DELAY_MS: u64 = 30_000;
 
+/// Capacity and exponential retry delays for the volatile Knot outbox.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RetryPolicy {
     pub initial_delay_ms: u64,
@@ -27,6 +28,7 @@ impl Default for RetryPolicy {
     }
 }
 
+/// Failure to enqueue a message that requires acknowledgement.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KnotOutboxError {
     Full,

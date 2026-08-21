@@ -10,6 +10,8 @@
 pub trait MessageLink<Message> {
     type Error;
 
+    /// Sends one complete protocol message to the peer.
     async fn send(&mut self, message: Message) -> Result<(), Self::Error>;
+    /// Receives the next message, or `None` when the link is permanently closed.
     async fn receive(&mut self) -> Result<Option<Message>, Self::Error>;
 }

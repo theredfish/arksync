@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::KnotConfig;
 
+/// Control-plane messages used for handshake, configuration, and delivery acknowledgement.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnotControlMessage {
     Hello(KnotHello),
@@ -24,6 +25,7 @@ impl KnotControlMessage {
     }
 }
 
+/// Hardware interfaces supported by a Knot runtime.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnotCapabilities {
     pub gpio: bool,
@@ -32,6 +34,7 @@ pub struct KnotCapabilities {
     pub atlas_scientific_ezo: bool,
 }
 
+/// Presence announcement sent by a Knot when its protocol runtime starts.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnotHello {
     pub hardware_uid: String,
@@ -39,6 +42,7 @@ pub struct KnotHello {
     pub last_applied_config_version: Option<u64>,
 }
 
+/// Positive acknowledgement correlated to the processed message's [`EventId`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnotAck {
     Processed {
@@ -58,12 +62,14 @@ impl KnotAck {
     }
 }
 
+/// Negative acknowledgement correlated to the rejected message's [`EventId`].
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnotNack {
     pub event_id: EventId,
     pub reason: KnotNackReason,
 }
 
+/// Stable reason that determines whether a rejected message can be retried unchanged.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KnotNackReason {
     InvalidPayload,
@@ -78,12 +84,14 @@ impl KnotNackReason {
     }
 }
 
+/// Confirmation that a Knot accepted and loaded a Hub configuration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnotConfigApplied {
     pub event_id: EventId,
     pub config_version: u64,
 }
 
+/// Confirmation that a Knot could not load a Hub configuration.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnotConfigRejected {
     pub event_id: EventId,
