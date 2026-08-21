@@ -3,13 +3,13 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 pub mod commands;
-pub mod messaging;
 #[cfg(feature = "knot-nostd-runtime")]
-pub mod protocol;
+pub mod legacy_actuator_protocol;
+pub mod messaging;
 pub mod runtimes;
 
 pub use commands::*;
-pub use messaging::*;
 #[cfg(feature = "knot-nostd-runtime")]
-pub use protocol::*;
+pub use legacy_actuator_protocol::*;
+pub use messaging::*;
 pub use runtimes::*;

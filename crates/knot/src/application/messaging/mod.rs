@@ -3,7 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 mod knot_protocol_runtime;
+mod message_link;
 mod outbox;
 
 pub use knot_protocol_runtime::*;
+pub use message_link::*;
 pub use outbox::*;

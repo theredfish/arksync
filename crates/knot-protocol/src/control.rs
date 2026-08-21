@@ -11,6 +11,7 @@ use crate::KnotConfig;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnotControlMessage {
     Hello(KnotHello),
+    Configure(KnotConfig),
     Ack(KnotAck),
     Nack(KnotNack),
     ConfigApplied(KnotConfigApplied),
@@ -79,11 +80,13 @@ impl KnotNackReason {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnotConfigApplied {
+    pub event_id: EventId,
     pub config_version: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KnotConfigRejected {
+    pub event_id: EventId,
     pub config_version: u64,
     pub reason: String,
 }

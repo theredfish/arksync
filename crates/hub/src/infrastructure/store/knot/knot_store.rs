@@ -228,6 +228,29 @@ pub async fn update_station_knot_config_status(
     Ok(())
 }
 
+pub async fn increment_station_knot_config_version(
+    executor: impl PgExecutor<'_>,
+    knot_id: arksync_utils::uuid::Uuid,
+) -> Result<i64, KnotStoreError> {
+    let version = sqlx::query_scalar(
+        r#"
+        update station_knots
+        set
+            config_version = config_version + 1,
+            config_status = 'pending',
+            config_error = null
+        where id = $1
+            and deleted_at is null
+        returning config_version
+        "#,
+    )
+    .bind(knot_id)
+    .fetch_optional(executor)
+    .await?;
+
+    version.ok_or(KnotStoreError::NotFound)
+}
+
 pub async fn find_or_insert_station_knot_by_hardware_uid(
     txn: &mut PgTransaction<'_>,
     knot: &KnotRecord,

@@ -11,30 +11,77 @@ use eyre::{Result, WrapErr};
 use sqlx::PgPool;
 
 use crate::application::register_knot_hello;
+use crate::application::{HubSensorEventEnvelope, SensorRegistry};
 use crate::config::CONFIG;
 use crate::infrastructure::store::{
     insert_knot_message_receipt, knot as knot_store, KnotMessageStoreError,
 };
+
+use super::knot_sensor_protocol::handle_knot_sensor_protocol;
+
+pub struct KnotProtocolEventResult {
+    pub response: Option<KnotEnvelope>,
+    pub sensor_events: Vec<HubSensorEventEnvelope>,
+}
 
 pub async fn handle_knot_protocol_event(
     pool: &PgPool,
     event: &KnotEnvelope,
     response_event_id: EventId,
     responded_at: Timestamp,
-) -> Result<Option<KnotEnvelope>> {
+    received_at: Timestamp,
+    sensor_registry: &mut SensorRegistry,
+) -> Result<KnotProtocolEventResult> {
     let KnotMessageSource::Knot { hardware_uid } = &event.source else {
-        return Ok(Some(response(
-            response_event_id,
-            responded_at,
-            KnotControlMessage::Nack(KnotNack {
-                event_id: event.id,
-                reason: KnotNackReason::InvalidPayload,
-            }),
-        )));
+        return Ok(KnotProtocolEventResult {
+            response: Some(response(
+                response_event_id,
+                responded_at,
+                KnotControlMessage::Nack(KnotNack {
+                    event_id: event.id,
+                    reason: KnotNackReason::InvalidPayload,
+                }),
+            )),
+            sensor_events: Vec::new(),
+        });
     };
 
+    let KnotMessage::Sensor(message) = &event.payload else {
+        return handle_control_message(pool, event, response_event_id, responded_at).await;
+    };
+
+    let sensor_events = handle_knot_sensor_protocol(
+        pool,
+        event.id,
+        hardware_uid,
+        message,
+        event.occurred_at,
+        received_at,
+        sensor_registry,
+    )
+    .await?;
+
+    Ok(KnotProtocolEventResult {
+        response: Some(response(
+            response_event_id,
+            responded_at,
+            KnotControlMessage::Ack(KnotAck::Processed { event_id: event.id }),
+        )),
+        sensor_events,
+    })
+}
+
+async fn handle_control_message(
+    pool: &PgPool,
+    event: &KnotEnvelope,
+    response_event_id: EventId,
+    responded_at: Timestamp,
+) -> Result<KnotProtocolEventResult> {
+    let KnotMessageSource::Knot { hardware_uid } = &event.source else {
+        return Err(eyre::eyre!("control message source is not a Knot"));
+    };
     let KnotMessage::Control(message) = &event.payload else {
-        return Ok(None);
+        return Err(eyre::eyre!("protocol payload is not a control message"));
     };
 
     let response_message = match message {
@@ -83,14 +130,22 @@ pub async fn handle_knot_protocol_event(
             record_config_rejected(pool, event.id, hardware_uid, rejected).await?;
             KnotControlMessage::Ack(KnotAck::Processed { event_id: event.id })
         }
-        KnotControlMessage::Ack(_) | KnotControlMessage::Nack(_) => return Ok(None),
+        KnotControlMessage::Configure(_) => KnotControlMessage::Nack(KnotNack {
+            event_id: event.id,
+            reason: KnotNackReason::UnsupportedMessage,
+        }),
+        KnotControlMessage::Ack(_) | KnotControlMessage::Nack(_) => {
+            return Ok(KnotProtocolEventResult {
+                response: None,
+                sensor_events: Vec::new(),
+            });
+        }
     };
 
-    Ok(Some(response(
-        response_event_id,
-        responded_at,
-        response_message,
-    )))
+    Ok(KnotProtocolEventResult {
+        response: Some(response(response_event_id, responded_at, response_message)),
+        sensor_events: Vec::new(),
+    })
 }
 
 async fn record_config_applied(

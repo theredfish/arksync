@@ -3,10 +3,12 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
-use arksync_hub::{handle_knot_protocol_event, list_knots, setup_local_station};
+use arksync_hub::{handle_knot_protocol_event, list_knots, setup_local_station, SensorRegistry};
 use arksync_knot_protocol::{
     KnotAck, KnotCapabilities, KnotConfigApplied, KnotControlMessage, KnotEnvelope, KnotHello,
-    KnotMessage, KnotMessageSource,
+    KnotMeasurementUnit, KnotMessage, KnotMessageSource, KnotSensorConnection,
+    KnotSensorDescriptor, KnotSensorKind, KnotSensorMeasurement, KnotSensorMeasurementBatch,
+    KnotSensorMessage, KnotSerialPort,
 };
 
 fn timestamp(unix_millis: i64) -> Timestamp {
@@ -41,6 +43,35 @@ fn hello(event_id: EventId, hardware_uid: &str) -> KnotEnvelope {
     )
 }
 
+fn measurement(event_id: EventId, hardware_uid: &str) -> KnotEnvelope {
+    EventEnvelope::new_with_id(
+        event_id,
+        KnotMessageSource::Knot {
+            hardware_uid: hardware_uid.to_string(),
+        },
+        timestamp(1_780_000_000_000),
+        KnotMessage::Sensor(KnotSensorMessage::Measurements(
+            KnotSensorMeasurementBatch {
+                measurements: vec![KnotSensorMeasurement {
+                    device_uid: "rkfTHk12L9ZCY39z".to_string(),
+                    sensor: KnotSensorDescriptor {
+                        hardware_uid: "DK0HFBFB".to_string(),
+                        kind: KnotSensorKind::Temperature,
+                        connection: KnotSensorConnection::Uart(KnotSerialPort {
+                            port_name: "/dev/ttyUSB0".to_string(),
+                            serial_number: "DK0HFBFB".to_string(),
+                            baud_rate: 9_600,
+                        }),
+                        firmware: Some(2.15),
+                    },
+                    value: 28.8,
+                    unit: KnotMeasurementUnit::Celsius,
+                }],
+            },
+        )),
+    )
+}
+
 #[arksync_testing::test]
 async fn duplicate_hello_registers_one_knot_and_returns_correlated_ack(
     pool: arksync_testing::PgPool,
@@ -50,6 +81,7 @@ async fn duplicate_hello_registers_one_knot_and_returns_correlated_ack(
     let mut txn = pool.begin().await?;
     setup_local_station(&mut txn).await?;
     txn.commit().await?;
+    let mut sensor_registry = SensorRegistry::load(&pool).await?;
     let event = hello(hello_id, hardware_uid);
 
     let first = handle_knot_protocol_event(
@@ -57,16 +89,22 @@ async fn duplicate_hello_registers_one_knot_and_returns_correlated_ack(
         &event,
         EventId::from_bytes([8; 16]),
         timestamp(1_780_000_000_100),
+        timestamp(1_780_000_000_100),
+        &mut sensor_registry,
     )
     .await?
+    .response
     .expect("Hello must produce a response");
     let duplicate = handle_knot_protocol_event(
         &pool,
         &event,
         EventId::from_bytes([9; 16]),
         timestamp(1_780_000_000_200),
+        timestamp(1_780_000_000_200),
+        &mut sensor_registry,
     )
     .await?
+    .response
     .expect("duplicate Hello must reproduce an ACK");
 
     let knots = list_knots(&pool).await?;
@@ -110,19 +148,25 @@ async fn config_applied_updates_knot_state_once(pool: arksync_testing::PgPool) -
     let mut txn = pool.begin().await?;
     setup_local_station(&mut txn).await?;
     txn.commit().await?;
+    let mut sensor_registry = SensorRegistry::load(&pool).await?;
     let hello_event = hello(EventId::from_bytes([1; 16]), hardware_uid);
     handle_knot_protocol_event(
         &pool,
         &hello_event,
         EventId::from_bytes([2; 16]),
         timestamp(1_780_000_000_100),
+        timestamp(1_780_000_000_100),
+        &mut sensor_registry,
     )
     .await?;
     let applied_id = EventId::from_bytes([3; 16]);
     let applied_event = knot_event(
         applied_id,
         hardware_uid,
-        KnotControlMessage::ConfigApplied(KnotConfigApplied { config_version: 1 }),
+        KnotControlMessage::ConfigApplied(KnotConfigApplied {
+            event_id: EventId::from_bytes([2; 16]),
+            config_version: 1,
+        }),
     );
 
     let response = handle_knot_protocol_event(
@@ -130,14 +174,19 @@ async fn config_applied_updates_knot_state_once(pool: arksync_testing::PgPool) -
         &applied_event,
         EventId::from_bytes([4; 16]),
         timestamp(1_780_000_000_200),
+        timestamp(1_780_000_000_200),
+        &mut sensor_registry,
     )
     .await?
+    .response
     .expect("ConfigApplied must be acknowledged");
     handle_knot_protocol_event(
         &pool,
         &applied_event,
         EventId::from_bytes([5; 16]),
         timestamp(1_780_000_000_300),
+        timestamp(1_780_000_000_300),
+        &mut sensor_registry,
     )
     .await?;
     let knot = list_knots(&pool)
@@ -152,6 +201,59 @@ async fn config_applied_updates_knot_state_once(pool: arksync_testing::PgPool) -
         response.payload,
         KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id }))
             if event_id == applied_id
+    ));
+
+    Ok(())
+}
+
+#[arksync_testing::test]
+async fn duplicate_measurement_batch_has_one_durable_effect(
+    pool: arksync_testing::PgPool,
+) -> eyre::Result<()> {
+    let mut txn = pool.begin().await?;
+    setup_local_station(&mut txn).await?;
+    txn.commit().await?;
+    let mut sensor_registry = SensorRegistry::load(&pool).await?;
+    let measurement_id = EventId::from_bytes([6; 16]);
+    let event = measurement(measurement_id, "arksync-local-knot");
+
+    let first = handle_knot_protocol_event(
+        &pool,
+        &event,
+        EventId::from_bytes([7; 16]),
+        timestamp(1_780_000_000_100),
+        timestamp(1_780_000_000_100),
+        &mut sensor_registry,
+    )
+    .await?;
+    let duplicate = handle_knot_protocol_event(
+        &pool,
+        &event,
+        EventId::from_bytes([8; 16]),
+        timestamp(1_780_000_000_200),
+        timestamp(1_780_000_000_200),
+        &mut sensor_registry,
+    )
+    .await?;
+    let measurement_count: i64 =
+        sqlx::query_scalar("select count(*) from sensor_measurements where event_id = $1")
+            .bind(measurement_id.uuid_v4())
+            .fetch_one(&pool)
+            .await?;
+    let sensor_count: i64 =
+        sqlx::query_scalar("select count(*) from sensors where device_uid = 'rkfTHk12L9ZCY39z'")
+            .fetch_one(&pool)
+            .await?;
+
+    assert_eq!(first.sensor_events.len(), 1);
+    assert!(duplicate.sensor_events.is_empty());
+    assert_eq!(measurement_count, 1);
+    assert_eq!(sensor_count, 1);
+    assert!(matches!(
+        duplicate.response.map(|response| response.payload),
+        Some(KnotMessage::Control(KnotControlMessage::Ack(
+            KnotAck::Processed { event_id }
+        ))) if event_id == measurement_id
     ));
 
     Ok(())

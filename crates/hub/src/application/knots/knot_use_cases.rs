@@ -2,11 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::application::knot_protocol_config_for_hardware_uid;
-use crate::application::{actuator_config_ack_for_knot_hardware_uid, HubKnotError};
+use crate::application::{knot_protocol_config_for_hardware_uid, HubKnotError};
 use crate::config::CONFIG;
 use crate::infrastructure::store::{knot as knot_store, KnotRecord};
-use arksync_knot::application::{KnotAck, KnotHello};
 use arksync_knot_protocol::{KnotConfig as ProtocolKnotConfig, KnotHello as ProtocolKnotHello};
 use arksync_utils::uuid::new_v4;
 use sqlx::{PgExecutor, PgTransaction};
@@ -15,29 +13,12 @@ pub async fn list_knots(executor: impl PgExecutor<'_>) -> Result<Vec<KnotRecord>
     Ok(knot_store::list_station_knots(executor).await?)
 }
 
-pub async fn ack_knot_hello(
-    txn: &mut PgTransaction<'_>,
-    hello: &KnotHello,
-) -> Result<KnotAck, HubKnotError> {
-    ensure_station_knot_for_hello(txn, hello).await?;
-    let config = actuator_config_ack_for_knot_hardware_uid(txn, &hello.hardware_uid).await?;
-
-    Ok(KnotAck { config })
-}
-
 pub async fn register_knot_hello(
     txn: &mut PgTransaction<'_>,
     hello: &ProtocolKnotHello,
 ) -> Result<ProtocolKnotConfig, HubKnotError> {
     ensure_station_knot_for_hardware_uid(txn, &hello.hardware_uid).await?;
     Ok(knot_protocol_config_for_hardware_uid(txn, &hello.hardware_uid).await?)
-}
-
-async fn ensure_station_knot_for_hello(
-    txn: &mut PgTransaction<'_>,
-    hello: &KnotHello,
-) -> Result<KnotRecord, HubKnotError> {
-    ensure_station_knot_for_hardware_uid(txn, &hello.hardware_uid).await
 }
 
 async fn ensure_station_knot_for_hardware_uid(

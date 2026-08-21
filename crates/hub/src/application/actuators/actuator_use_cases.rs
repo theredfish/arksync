@@ -18,7 +18,7 @@ use arksync_actuator::application::protocol::{
     ActuatorRuleAssertion, ActuatorRuleConfig, ActuatorRuleEffect,
     GpioActuatorConnection as ProtocolGpioActuatorConnection, RuntimeStatus,
 };
-use arksync_knot::application::{KnotConfig, KnotSensorBinding};
+use arksync_knot::application::{LegacyKnotActuatorConfig, LegacyKnotSensorBinding};
 use arksync_knot::domain::KnotId;
 use arksync_knot_protocol::{
     KnotActuatorBackend, KnotActuatorConfig, KnotActuatorConnection, KnotActuatorDescriptor,
@@ -69,7 +69,7 @@ pub async fn insert_relay_actuator(
 pub async fn actuator_config_ack_for_knot_hardware_uid(
     txn: &mut PgTransaction<'_>,
     hardware_uid: &str,
-) -> Result<KnotConfig, HubActuatorError> {
+) -> Result<LegacyKnotActuatorConfig, HubActuatorError> {
     let knot = knot_store::station_knot_by_hardware_uid(&mut **txn, hardware_uid).await?;
     let actuator_records =
         actuator_store::list_actuators_by_station_knot_id(&mut **txn, knot.id).await?;
@@ -82,7 +82,7 @@ pub async fn actuator_config_ack_for_knot_hardware_uid(
         .await?
         .into_iter()
         .filter(|sensor| sensor.station_knot_id == knot.id)
-        .map(|sensor| KnotSensorBinding {
+        .map(|sensor| LegacyKnotSensorBinding {
             sensor_id: sensor.id.to_string(),
             device_uid: sensor.device_uid,
         })
@@ -100,7 +100,7 @@ pub async fn actuator_config_ack_for_knot_hardware_uid(
         })
         .collect();
 
-    Ok(KnotConfig {
+    Ok(LegacyKnotActuatorConfig {
         hardware_uid: knot.hardware_uid,
         knot_id: KnotId::from(knot.id),
         sensor_bindings,

@@ -70,6 +70,22 @@ impl KnotProtocolRuntime {
         Ok(())
     }
 
+    pub fn publish(
+        &mut self,
+        message: KnotMessage,
+        event_id: EventId,
+        occurred_at: Timestamp,
+        now_ms: u64,
+    ) -> Result<(), KnotProtocolRuntimeError> {
+        if !message.requires_ack() {
+            return Err(KnotProtocolRuntimeError::UnexpectedMessage);
+        }
+
+        let envelope = self.envelope(event_id, occurred_at, message);
+        self.outbox.enqueue(envelope, now_ms)?;
+        Ok(())
+    }
+
     pub fn receive(
         &mut self,
         envelope: &KnotEnvelope,
@@ -91,8 +107,23 @@ impl KnotProtocolRuntime {
             }
             KnotControlMessage::Ack(KnotAck::Hello { event_id, config }) => {
                 if self.outbox.acknowledge(*event_id) {
-                    self.apply_config(config.clone(), response_event_id, occurred_at, now_ms)?;
+                    self.apply_config(
+                        config.clone(),
+                        envelope.id,
+                        response_event_id,
+                        occurred_at,
+                        now_ms,
+                    )?;
                 }
+            }
+            KnotControlMessage::Configure(config) => {
+                self.apply_config(
+                    config.clone(),
+                    envelope.id,
+                    response_event_id,
+                    occurred_at,
+                    now_ms,
+                )?;
             }
             KnotControlMessage::Nack(nack) => {
                 self.outbox.reject(nack, now_ms);
@@ -122,6 +153,7 @@ impl KnotProtocolRuntime {
     fn apply_config(
         &mut self,
         config: KnotConfig,
+        config_event_id: EventId,
         event_id: EventId,
         occurred_at: Timestamp,
         now_ms: u64,
@@ -132,13 +164,17 @@ impl KnotProtocolRuntime {
             .is_some_and(|current| current.version > config.version)
         {
             KnotControlMessage::ConfigRejected(KnotConfigRejected {
+                event_id: config_event_id,
                 config_version: config.version,
                 reason: "received stale Knot config version".into(),
             })
         } else {
             let config_version = config.version;
             self.config = Some(config);
-            KnotControlMessage::ConfigApplied(KnotConfigApplied { config_version })
+            KnotControlMessage::ConfigApplied(KnotConfigApplied {
+                event_id: config_event_id,
+                config_version,
+            })
         };
 
         let envelope = self.envelope(event_id, occurred_at, KnotMessage::Control(message));

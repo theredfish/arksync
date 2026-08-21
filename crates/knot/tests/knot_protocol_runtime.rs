@@ -183,3 +183,33 @@ fn full_outbox_is_explicit_and_observable() {
     );
     assert_eq!(runtime.outbox_overflow_count(), 1);
 }
+
+#[test]
+fn configure_message_replaces_config_and_correlates_confirmation() {
+    let configure_id = EventId::from_bytes([4; 16]);
+    let confirmation_id = EventId::from_bytes([5; 16]);
+    let mut runtime = runtime(RetryPolicy::default());
+    let configure = EventEnvelope::new_with_id(
+        configure_id,
+        KnotMessageSource::Hub { hub_id: [1; 16] },
+        timestamp(1_780_000_000_000),
+        KnotMessage::Control(KnotControlMessage::Configure(config(2))),
+    );
+
+    runtime
+        .receive(
+            &configure,
+            confirmation_id,
+            timestamp(1_780_000_000_100),
+            10_000,
+        )
+        .unwrap();
+    let confirmation = runtime.due_messages(10_000);
+
+    assert_eq!(runtime.config().map(|config| config.version), Some(2));
+    assert!(matches!(
+        confirmation[0].payload,
+        KnotMessage::Control(KnotControlMessage::ConfigApplied(applied))
+            if applied.event_id == configure_id && applied.config_version == 2
+    ));
+}
