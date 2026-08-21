@@ -39,6 +39,12 @@ impl TokioKnotSensorService {
     }
 }
 
+impl Default for TokioKnotSensorService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 struct TokioSensorEventHandler(mpsc::Sender<EventEnvelope<SensorEvent>>);
 
 impl EventHandler<SensorEvent> for TokioSensorEventHandler {
