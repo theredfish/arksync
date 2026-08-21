@@ -67,6 +67,30 @@ fn hello_is_sent_immediately_and_retried_with_the_same_event_id() {
 }
 
 #[test]
+fn retry_delay_grows_exponentially_and_stops_at_the_configured_maximum() {
+    let mut runtime = runtime(RetryPolicy {
+        initial_delay_ms: 1_000,
+        max_delay_ms: 3_000,
+        capacity: 1,
+    });
+    runtime
+        .start(
+            EventId::from_bytes([1; 16]),
+            timestamp(1_780_000_000_000),
+            0,
+        )
+        .unwrap();
+
+    assert_eq!(runtime.due_messages(0).len(), 1);
+    assert!(runtime.due_messages(999).is_empty());
+    assert_eq!(runtime.due_messages(1_000).len(), 1);
+    assert!(runtime.due_messages(2_999).is_empty());
+    assert_eq!(runtime.due_messages(3_000).len(), 1);
+    assert!(runtime.due_messages(5_999).is_empty());
+    assert_eq!(runtime.due_messages(6_000).len(), 1);
+}
+
+#[test]
 fn hello_ack_applies_config_and_queues_confirmation() {
     let hello_id = EventId::from_bytes([1; 16]);
     let confirmation_id = EventId::from_bytes([3; 16]);
@@ -211,5 +235,63 @@ fn configure_message_replaces_config_and_correlates_confirmation() {
         confirmation[0].payload,
         KnotMessage::Control(KnotControlMessage::ConfigApplied(applied))
             if applied.event_id == configure_id && applied.config_version == 2
+    ));
+}
+
+#[test]
+fn stale_config_is_rejected_without_replacing_the_current_config() {
+    let current_config_event_id = EventId::from_bytes([4; 16]);
+    let current_confirmation_id = EventId::from_bytes([5; 16]);
+    let stale_config_event_id = EventId::from_bytes([6; 16]);
+    let stale_confirmation_id = EventId::from_bytes([7; 16]);
+    let mut runtime = runtime(RetryPolicy::default());
+
+    runtime
+        .receive(
+            &EventEnvelope::new_with_id(
+                current_config_event_id,
+                KnotMessageSource::Hub { hub_id: [1; 16] },
+                timestamp(1_780_000_000_000),
+                KnotMessage::Control(KnotControlMessage::Configure(config(2))),
+            ),
+            current_confirmation_id,
+            timestamp(1_780_000_000_100),
+            0,
+        )
+        .unwrap();
+    runtime.due_messages(0);
+    runtime
+        .receive(
+            &hub_envelope(KnotControlMessage::Ack(KnotAck::Processed {
+                event_id: current_confirmation_id,
+            })),
+            EventId::from_bytes([8; 16]),
+            timestamp(1_780_000_000_200),
+            100,
+        )
+        .unwrap();
+
+    runtime
+        .receive(
+            &EventEnvelope::new_with_id(
+                stale_config_event_id,
+                KnotMessageSource::Hub { hub_id: [1; 16] },
+                timestamp(1_780_000_000_300),
+                KnotMessage::Control(KnotControlMessage::Configure(config(1))),
+            ),
+            stale_confirmation_id,
+            timestamp(1_780_000_000_400),
+            200,
+        )
+        .unwrap();
+    let rejection = runtime.due_messages(200);
+
+    assert_eq!(runtime.config().map(|config| config.version), Some(2));
+    assert!(matches!(
+        &rejection[0].payload,
+        KnotMessage::Control(KnotControlMessage::ConfigRejected(rejected))
+            if rejected.event_id == stale_config_event_id
+                && rejected.config_version == 1
+                && rejected.reason == "received stale Knot config version"
     ));
 }

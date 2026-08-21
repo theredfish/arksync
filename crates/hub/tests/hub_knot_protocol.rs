@@ -5,10 +5,10 @@
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_hub::{handle_knot_protocol_event, list_knots, setup_local_station, SensorRegistry};
 use arksync_knot_protocol::{
-    KnotAck, KnotCapabilities, KnotConfigApplied, KnotControlMessage, KnotEnvelope, KnotHello,
-    KnotMeasurementUnit, KnotMessage, KnotMessageSource, KnotSensorConnection,
-    KnotSensorDescriptor, KnotSensorKind, KnotSensorMeasurement, KnotSensorMeasurementBatch,
-    KnotSensorMessage, KnotSerialPort,
+    KnotAck, KnotCapabilities, KnotConfigApplied, KnotConfigRejected, KnotControlMessage,
+    KnotEnvelope, KnotHello, KnotMeasurementUnit, KnotMessage, KnotMessageSource,
+    KnotSensorConnection, KnotSensorDescriptor, KnotSensorKind, KnotSensorMeasurement,
+    KnotSensorMeasurementBatch, KnotSensorMessage, KnotSerialPort,
 };
 
 fn timestamp(unix_millis: i64) -> Timestamp {
@@ -201,6 +201,63 @@ async fn config_applied_updates_knot_state_once(pool: arksync_testing::PgPool) -
         response.payload,
         KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id }))
             if event_id == applied_id
+    ));
+
+    Ok(())
+}
+
+#[arksync_testing::test]
+async fn config_rejected_records_the_reason_and_is_acknowledged(
+    pool: arksync_testing::PgPool,
+) -> eyre::Result<()> {
+    let hardware_uid = "test-knot-rpi-3";
+    let mut txn = pool.begin().await?;
+    setup_local_station(&mut txn).await?;
+    txn.commit().await?;
+    let mut sensor_registry = SensorRegistry::load(&pool).await?;
+    handle_knot_protocol_event(
+        &pool,
+        &hello(EventId::from_bytes([10; 16]), hardware_uid),
+        EventId::from_bytes([11; 16]),
+        timestamp(1_780_000_000_100),
+        timestamp(1_780_000_000_100),
+        &mut sensor_registry,
+    )
+    .await?;
+    let rejection_id = EventId::from_bytes([12; 16]);
+    let rejection = knot_event(
+        rejection_id,
+        hardware_uid,
+        KnotControlMessage::ConfigRejected(KnotConfigRejected {
+            event_id: EventId::from_bytes([11; 16]),
+            config_version: 1,
+            reason: "GPIO 17 is unavailable".to_string(),
+        }),
+    );
+
+    let response = handle_knot_protocol_event(
+        &pool,
+        &rejection,
+        EventId::from_bytes([13; 16]),
+        timestamp(1_780_000_000_200),
+        timestamp(1_780_000_000_200),
+        &mut sensor_registry,
+    )
+    .await?
+    .response
+    .expect("ConfigRejected must be acknowledged");
+    let knot = list_knots(&pool)
+        .await?
+        .into_iter()
+        .find(|knot| knot.hardware_uid == hardware_uid)
+        .expect("Knot must exist");
+
+    assert_eq!(knot.config_status, "rejected");
+    assert_eq!(knot.config_error.as_deref(), Some("GPIO 17 is unavailable"));
+    assert!(matches!(
+        response.payload,
+        KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id }))
+            if event_id == rejection_id
     ));
 
     Ok(())
