@@ -31,5 +31,8 @@ log = { workspace = true, optional = true }
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 tokio = { workspace = true, optional = true }
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt"] }
+
 [lints]
 workspace = true

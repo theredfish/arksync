@@ -11,11 +11,11 @@ use crate::KnotConfig;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnotControlMessage {
     Hello(KnotHello),
-    Configure(KnotConfig),
     Ack(KnotAck),
     Nack(KnotNack),
     ConfigApplied(KnotConfigApplied),
     ConfigRejected(KnotConfigRejected),
+    Configure(KnotConfig),
 }
 
 impl KnotControlMessage {
