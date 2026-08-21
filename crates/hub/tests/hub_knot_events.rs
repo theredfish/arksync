@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::{EventBus, EventBusError, EventEnvelope, EventId, Timestamp};
+use arksync_bus::{EventEnvelope, EventHandlerError, EventId, EventRouter, Timestamp};
 use arksync_hub::{handle_knot_event, list_knots, setup_local_station};
 use arksync_knot::application::{KnotCapabilities, KnotHello, KnotMessage, KnotMessageEnvelope};
 
@@ -36,21 +36,19 @@ async fn knot_hello_event_registers_knot(pool: arksync_testing::PgPool) -> eyre:
 
     let (knot_event_tx, mut knot_event_rx) = tokio::sync::mpsc::channel(1);
     let (knot_message_tx, mut knot_message_rx) = tokio::sync::mpsc::channel(1);
-    let mut bus = EventBus::new();
-    bus.subscribe(move |event: KnotMessageEnvelope| {
+    let mut router = EventRouter::new();
+    router.subscribe(move |event: &KnotMessageEnvelope| {
         knot_event_tx
-            .try_send(event)
-            .map_err(|_| EventBusError::HandlerRejected)
+            .try_send(event.clone())
+            .map_err(|_| EventHandlerError::Rejected)
     });
 
-    let delivered = bus
-        .producer()
-        .publish(knot_hello_event(hardware_uid))
-        .map_err(|err| eyre::eyre!("EventBus rejected Knot hello: {err:?}"))?;
+    let event = knot_hello_event(hardware_uid);
+    let report = router.publish(&event);
     let event = knot_event_rx
         .recv()
         .await
-        .expect("Knot hello event should be routed by the EventBus");
+        .expect("Knot hello event should be routed by the EventRouter");
 
     handle_knot_event(&pool, event, &knot_message_tx).await?;
 
@@ -67,7 +65,7 @@ async fn knot_hello_event_registers_knot(pool: arksync_testing::PgPool) -> eyre:
         .find(|knot| knot.hardware_uid == hardware_uid)
         .expect("remote Knot should be registered from Hello");
 
-    assert_eq!(delivered, 1);
+    assert_eq!(report.delivered, 1);
     assert_eq!(ack.config.hardware_uid, hardware_uid);
     assert_eq!(remote_knot.role, "remote_knot");
     assert_eq!(remote_knot.status, "awake");

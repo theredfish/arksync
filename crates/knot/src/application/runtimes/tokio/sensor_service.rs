@@ -3,7 +3,9 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::domain::KnotEventSource;
-use arksync_bus::{EventBus, EventBusError, EventEnvelope, EventHandler, EventId, Timestamp};
+use arksync_bus::{
+    EventEnvelope, EventHandler, EventHandlerError, EventId, EventRouter, Timestamp,
+};
 use arksync_sensor::infrastructure::events::SensorEvent;
 use arksync_sensor::services::SensorService;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -39,15 +41,15 @@ impl TokioKnotSensorService {
     pub async fn run(self) {
         arksync_sensor::device_uid::rng::init_from_os_rng();
         let (sensor_event_tx, mut sensor_event_rx) = mpsc::channel(100);
-        let mut sensor_bus = EventBus::new();
-        sensor_bus.subscribe(TokioSensorEventHandler(sensor_event_tx));
-        let sensor_service = SensorService::new().with_event_producer(sensor_bus.producer());
+        let mut sensor_router = EventRouter::new();
+        sensor_router.subscribe(TokioSensorEventHandler(sensor_event_tx));
+        let sensor_service = SensorService::new().with_event_publisher(sensor_router.publisher());
         let event_tx = self.event_tx;
         let source = self.source;
         let bridge = tokio::spawn(async move {
             let mut event_counter = 0_u128;
-            let mut envelope_bus = EventBus::new();
-            envelope_bus.subscribe(TokioEnvelopeHandler(event_tx));
+            let mut envelope_router = EventRouter::new();
+            envelope_router.subscribe(TokioEnvelopeHandler(event_tx));
 
             while let Some(sensor_envelope) = sensor_event_rx.recv().await {
                 event_counter = event_counter.wrapping_add(1);
@@ -60,7 +62,7 @@ impl TokioKnotSensorService {
                     sensor_envelope.payload,
                 );
 
-                if envelope_bus.producer().publish(envelope).is_err() {
+                if envelope_router.publish(&envelope).rejected > 0 {
                     log::debug!("Local Knot sensor event receiver dropped");
                     break;
                 }
@@ -88,19 +90,19 @@ fn timestamp_now() -> Timestamp {
 struct TokioEnvelopeHandler(mpsc::Sender<KnotSensorEventEnvelope>);
 
 impl EventHandler<SensorEvent, KnotEventSource> for TokioEnvelopeHandler {
-    fn handle(&mut self, event: KnotSensorEventEnvelope) -> Result<(), EventBusError> {
+    fn handle(&mut self, event: &KnotSensorEventEnvelope) -> Result<(), EventHandlerError> {
         self.0
-            .try_send(event)
-            .map_err(|_| EventBusError::HandlerRejected)
+            .try_send(event.clone())
+            .map_err(|_| EventHandlerError::Rejected)
     }
 }
 
 struct TokioSensorEventHandler(mpsc::Sender<EventEnvelope<SensorEvent>>);
 
 impl EventHandler<SensorEvent> for TokioSensorEventHandler {
-    fn handle(&mut self, event: EventEnvelope<SensorEvent>) -> Result<(), EventBusError> {
+    fn handle(&mut self, event: &EventEnvelope<SensorEvent>) -> Result<(), EventHandlerError> {
         self.0
-            .try_send(event)
-            .map_err(|_| EventBusError::HandlerRejected)
+            .try_send(event.clone())
+            .map_err(|_| EventHandlerError::Rejected)
     }
 }

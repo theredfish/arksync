@@ -4,7 +4,7 @@
 
 use crate::application::{handle_knot_event, handle_sensor_event, HubService, SensorRegistry};
 use crate::config::CONFIG;
-use arksync_bus::{EventBus, EventBusError, EventEnvelope, EventHandler, Timestamp};
+use arksync_bus::{EventEnvelope, EventHandler, EventHandlerError, EventRouter, Timestamp};
 use arksync_knot::application::{
     KnotMessage, KnotMessageEnvelope, KnotSensorEventEnvelope, TokioKnotRuntime,
     TokioKnotRuntimeConfig, TokioKnotRuntimeEvent,
@@ -46,12 +46,12 @@ impl HubRuntime {
             tokio::sync::mpsc::channel::<KnotSensorEventEnvelope>(100);
         let (knot_message_event_tx, mut knot_message_event_rx) =
             tokio::sync::mpsc::channel::<KnotMessageEnvelope>(100);
-        let mut hub_bus = EventBus::new();
-        hub_bus.subscribe_where(
+        let mut hub_router = EventRouter::new();
+        hub_router.subscribe_where(
             |event: &EventEnvelope<HubKnotEvent>| matches!(event.payload, HubKnotEvent::Sensor(_)),
             HubSensorEventHandler(sensor_event_tx),
         );
-        hub_bus.subscribe_where(
+        hub_router.subscribe_where(
             |event: &EventEnvelope<HubKnotEvent>| matches!(event.payload, HubKnotEvent::Knot(_)),
             HubKnotMessageHandler(knot_message_event_tx),
         );
@@ -76,9 +76,11 @@ impl HubRuntime {
         loop {
             tokio::select! {
                 Some(event) = knot_event_rx.recv() => {
-                    hub_bus
-                        .publish(hub_event_envelope_from_tokio_event(event))
-                        .map_err(|err| eyre!("hub runtime bus rejected Knot event: {err:?}"))?;
+                    let event = hub_event_envelope_from_tokio_event(event);
+                    let report = hub_router.publish(&event);
+                    if report.rejected > 0 {
+                        return Err(eyre!("hub runtime router rejected Knot event: {report:?}"));
+                    }
                 }
                 Some(event) = sensor_event_rx.recv() => {
                     let received_at = timestamp_now();
@@ -133,15 +135,15 @@ struct HubSensorEventHandler(tokio::sync::mpsc::Sender<KnotSensorEventEnvelope>)
 impl EventHandler<HubKnotEvent> for HubSensorEventHandler {
     fn handle(
         &mut self,
-        event: EventEnvelope<HubKnotEvent>,
-    ) -> core::result::Result<(), EventBusError> {
-        let HubKnotEvent::Sensor(event) = event.payload else {
+        event: &EventEnvelope<HubKnotEvent>,
+    ) -> core::result::Result<(), EventHandlerError> {
+        let HubKnotEvent::Sensor(event) = &event.payload else {
             return Ok(());
         };
 
         self.0
-            .try_send(event)
-            .map_err(|_| EventBusError::HandlerRejected)
+            .try_send(event.clone())
+            .map_err(|_| EventHandlerError::Rejected)
     }
 }
 
@@ -150,15 +152,15 @@ struct HubKnotMessageHandler(tokio::sync::mpsc::Sender<KnotMessageEnvelope>);
 impl EventHandler<HubKnotEvent> for HubKnotMessageHandler {
     fn handle(
         &mut self,
-        event: EventEnvelope<HubKnotEvent>,
-    ) -> core::result::Result<(), EventBusError> {
-        let HubKnotEvent::Knot(event) = event.payload else {
+        event: &EventEnvelope<HubKnotEvent>,
+    ) -> core::result::Result<(), EventHandlerError> {
+        let HubKnotEvent::Knot(event) = &event.payload else {
             return Ok(());
         };
 
         self.0
-            .try_send(event)
-            .map_err(|_| EventBusError::HandlerRejected)
+            .try_send(event.clone())
+            .map_err(|_| EventHandlerError::Rejected)
     }
 }
 

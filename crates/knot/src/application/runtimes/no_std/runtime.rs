@@ -11,7 +11,7 @@ use {
     alloc::string::String,
     arksync_actuator::application::protocol::{ActuatorConfig, ActuatorMessage, AddActuator},
     arksync_actuator::services::ActuatorService,
-    arksync_bus::{EventProducer, Timestamp},
+    arksync_bus::{EventPublisher, Timestamp},
 };
 
 /// Errors returned by the platform-agnostic Knot runtime command handler.
@@ -73,11 +73,11 @@ impl<'bus> KnotRuntime<'bus> {
     /// provides the producer so emitted actuator status can be transported by
     /// Tokio, Embassy, MQTT, or another bus adapter.
     #[cfg(feature = "knot-nostd-runtime")]
-    pub fn with_actuator_event_producer(
+    pub fn with_actuator_event_publisher(
         mut self,
-        event_producer: EventProducer<'bus, ActuatorMessage>,
+        event_publisher: EventPublisher<'bus, ActuatorMessage>,
     ) -> Self {
-        self.actuator_service = self.actuator_service.with_event_producer(event_producer);
+        self.actuator_service = self.actuator_service.with_event_publisher(event_publisher);
         self
     }
 
