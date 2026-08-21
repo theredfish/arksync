@@ -236,6 +236,7 @@ dependencies = [
  "arksync-config",
  "arksync-db",
  "arksync-knot",
+ "arksync-knot-protocol",
  "arksync-macros",
  "arksync-sensor",
  "arksync-testing",

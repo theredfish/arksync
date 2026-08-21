@@ -20,6 +20,12 @@ use arksync_actuator::application::protocol::{
 };
 use arksync_knot::application::{KnotConfig, KnotSensorBinding};
 use arksync_knot::domain::KnotId;
+use arksync_knot_protocol::{
+    KnotActuatorBackend, KnotActuatorConfig, KnotActuatorConnection, KnotActuatorDescriptor,
+    KnotActuatorKind, KnotActuatorProtocol, KnotActuatorRule, KnotActuatorRuleAssertion,
+    KnotActuatorRuleEffect, KnotConfig as ProtocolKnotConfig, KnotGpioActuatorConnection,
+    KnotSensorBinding as ProtocolKnotSensorBinding,
+};
 use arksync_utils::uuid::Uuid;
 use sqlx::{PgExecutor, PgTransaction};
 
@@ -99,6 +105,38 @@ pub async fn actuator_config_ack_for_knot_hardware_uid(
         knot_id: KnotId::from(knot.id),
         sensor_bindings,
         actuator_configs,
+    })
+}
+
+pub async fn knot_protocol_config_for_hardware_uid(
+    txn: &mut PgTransaction<'_>,
+    hardware_uid: &str,
+) -> Result<ProtocolKnotConfig, HubActuatorError> {
+    let knot = knot_store::station_knot_by_hardware_uid(&mut **txn, hardware_uid).await?;
+    let legacy_config = actuator_config_ack_for_knot_hardware_uid(txn, hardware_uid).await?;
+
+    let sensor_bindings = legacy_config
+        .sensor_bindings
+        .into_iter()
+        .map(|binding| {
+            let sensor_id = Uuid::parse_str(&binding.sensor_id)?;
+
+            Ok(ProtocolKnotSensorBinding {
+                sensor_id: *sensor_id.as_bytes(),
+                device_uid: binding.device_uid,
+            })
+        })
+        .collect::<Result<Vec<_>, arksync_utils::uuid::Error>>()?;
+
+    Ok(ProtocolKnotConfig {
+        version: knot.config_version as u64,
+        knot_id: *knot.id.as_bytes(),
+        sensor_bindings,
+        actuator_configs: legacy_config
+            .actuator_configs
+            .into_iter()
+            .map(knot_actuator_config_from_legacy)
+            .collect(),
     })
 }
 
@@ -278,5 +316,62 @@ fn actuator_connection_to_protocol(connection: &ActuatorConnection) -> ProtocolA
                 active_low: connection.active_low,
             })
         }
+    }
+}
+
+fn knot_actuator_config_from_legacy(config: ActuatorConfig) -> KnotActuatorConfig {
+    KnotActuatorConfig {
+        config_id: config.config_id,
+        version: config.version,
+        enabled: config.enabled,
+        device_uid: config.device_uid,
+        actuator: KnotActuatorDescriptor {
+            id: config.actuator.id,
+            kind: match config.actuator.kind {
+                ProtocolActuatorKind::Relay => KnotActuatorKind::Relay,
+            },
+            backend: match config.actuator.backend {
+                ProtocolActuatorBackend::LinuxGpiod => KnotActuatorBackend::LinuxGpiod,
+                ProtocolActuatorBackend::EspGpio => KnotActuatorBackend::EspGpio,
+            },
+            protocol: match config.actuator.protocol {
+                ProtocolActuatorProtocol::Gpio => KnotActuatorProtocol::Gpio,
+            },
+            connection: match config.actuator.connection {
+                ProtocolActuatorConnection::Gpio(connection) => {
+                    KnotActuatorConnection::Gpio(KnotGpioActuatorConnection {
+                        pin: connection.pin,
+                        pin_scheme: connection.pin_scheme,
+                        active_low: connection.active_low,
+                    })
+                }
+            },
+            channels: config.actuator.channels,
+            model: config.actuator.model,
+        },
+        rules: config
+            .rules
+            .into_iter()
+            .map(|rule| KnotActuatorRule {
+                rule_id: rule.rule_id,
+                version: rule.version,
+                enabled: rule.enabled,
+                sensor_id: rule.sensor_id,
+                assertion: match rule.assertion {
+                    ActuatorRuleAssertion::GreaterThanOrEqual { threshold } => {
+                        KnotActuatorRuleAssertion::GreaterThanOrEqual { threshold }
+                    }
+                },
+                effect: match rule.effect {
+                    ActuatorRuleEffect::SetActiveWhenMatched {
+                        active_when_matched,
+                        active_when_unmatched,
+                    } => KnotActuatorRuleEffect::SetActiveWhenMatched {
+                        active_when_matched,
+                        active_when_unmatched,
+                    },
+                },
+            })
+            .collect(),
     }
 }

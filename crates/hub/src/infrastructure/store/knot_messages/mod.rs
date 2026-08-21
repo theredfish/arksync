@@ -2,9 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-mod knot_event_handler;
-mod knot_hello;
-mod knot_protocol_event_handler;
+mod knot_message_definitions;
+mod knot_message_store;
 
-pub use knot_event_handler::*;
-pub use knot_protocol_event_handler::*;
+pub use knot_message_definitions::*;
+pub use knot_message_store::*;
