@@ -1,0 +1,16 @@
+[package]
+name = "arksync-knot-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+
+[dependencies]
+arksync-bus.workspace = true
+postcard = { version = "1", default-features = false }
+serde = { workspace = true, features = ["alloc"] }
+
+[lints]
+workspace = true

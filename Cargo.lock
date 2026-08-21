@@ -264,6 +264,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "arksync-knot-protocol"
+version = "0.1.0"
+dependencies = [
+ "arksync-bus",
+ "postcard",
+ "serde",
+]
+
+[[package]]
 name = "arksync-macros"
 version = "0.1.0"
 dependencies = [
