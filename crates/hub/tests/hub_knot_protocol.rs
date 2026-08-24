@@ -4,12 +4,13 @@
 
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_hub::{handle_knot_protocol_event, list_knots, setup_local_station, SensorRegistry};
-use arksync_knot_protocol::{
+use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotConfigApplied, KnotConfigRejected, KnotControlMessage,
-    KnotEnvelope, KnotHello, KnotMeasurementUnit, KnotMessage, KnotMessageSource,
-    KnotSensorConnection, KnotSensorDescriptor, KnotSensorKind, KnotSensorMeasurement,
-    KnotSensorMeasurementBatch, KnotSensorMessage, KnotSerialPort,
+    KnotEnvelope, KnotHello, KnotMeasurementUnit, KnotMessage, KnotSensorConnection,
+    KnotSensorDescriptor, KnotSensorKind, KnotSensorMeasurement, KnotSensorMeasurementBatch,
+    KnotSensorMessage, KnotSerialPort,
 };
+use arksync_protocol::ArkSyncActor;
 
 fn timestamp(unix_millis: i64) -> Timestamp {
     Timestamp::from_unix_millis(unix_millis)
@@ -18,7 +19,7 @@ fn timestamp(unix_millis: i64) -> Timestamp {
 fn knot_event(event_id: EventId, hardware_uid: &str, message: KnotControlMessage) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         event_id,
-        KnotMessageSource::Knot {
+        ArkSyncActor::Knot {
             hardware_uid: hardware_uid.to_string(),
         },
         timestamp(1_780_000_000_000),
@@ -46,7 +47,7 @@ fn hello(event_id: EventId, hardware_uid: &str) -> KnotEnvelope {
 fn measurement(event_id: EventId, hardware_uid: &str) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         event_id,
-        KnotMessageSource::Knot {
+        ArkSyncActor::Knot {
             hardware_uid: hardware_uid.to_string(),
         },
         timestamp(1_780_000_000_000),

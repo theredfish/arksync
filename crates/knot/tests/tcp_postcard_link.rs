@@ -8,10 +8,10 @@ use std::io;
 
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_knot::application::MessageLink;
-use arksync_knot_protocol::{
-    decode_knot_frame, encode_knot_frame, KnotAck, KnotCapabilities, KnotConfig,
-    KnotControlMessage, KnotEnvelope, KnotFrameError, KnotHello, KnotMessage, KnotMessageSource,
+use arksync_protocol::knot::{
+    KnotAck, KnotCapabilities, KnotConfig, KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
 };
+use arksync_protocol::{decode_frame, encode_frame, ArkSyncActor, ProtocolFrameError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -20,7 +20,7 @@ const MAX_FRAME_LEN: usize = 4_096;
 #[derive(Debug)]
 enum TcpPostcardLinkError {
     Io(io::Error),
-    Frame(KnotFrameError),
+    Frame(ProtocolFrameError),
     FrameTooLarge(usize),
 }
 
@@ -30,8 +30,8 @@ impl From<io::Error> for TcpPostcardLinkError {
     }
 }
 
-impl From<KnotFrameError> for TcpPostcardLinkError {
-    fn from(value: KnotFrameError) -> Self {
+impl From<ProtocolFrameError> for TcpPostcardLinkError {
+    fn from(value: ProtocolFrameError) -> Self {
         Self::Frame(value)
     }
 }
@@ -57,7 +57,7 @@ impl MessageLink<KnotEnvelope> for TcpPostcardLink {
 
     async fn send(&mut self, message: KnotEnvelope) -> Result<(), Self::Error> {
         let mut buffer = [0; MAX_FRAME_LEN];
-        let frame = encode_knot_frame(&message, &mut buffer)?;
+        let frame = encode_frame(&message, &mut buffer)?;
         let frame_len = u32::try_from(frame.len())
             .map_err(|_| TcpPostcardLinkError::FrameTooLarge(frame.len()))?;
 
@@ -75,7 +75,7 @@ impl MessageLink<KnotEnvelope> for TcpPostcardLink {
 
         let mut frame = vec![0; frame_len];
         self.stream.read_exact(&mut frame).await?;
-        Ok(Some(decode_knot_frame(&frame)?))
+        Ok(Some(decode_frame(&frame)?))
     }
 }
 
@@ -86,7 +86,7 @@ fn timestamp(unix_millis: i64) -> Timestamp {
 fn hello(event_id: EventId) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         event_id,
-        KnotMessageSource::Knot {
+        ArkSyncActor::Knot {
             hardware_uid: "knot-rpi-1".into(),
         },
         timestamp(1_780_000_000_000),
@@ -106,7 +106,7 @@ fn hello(event_id: EventId) -> KnotEnvelope {
 fn hello_ack(event_id: EventId) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         EventId::from_bytes([2; 16]),
-        KnotMessageSource::Hub { hub_id: [3; 16] },
+        ArkSyncActor::Hub { hub_id: [3; 16] },
         timestamp(1_780_000_000_100),
         KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Hello {
             event_id,

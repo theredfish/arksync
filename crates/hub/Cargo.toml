@@ -14,7 +14,7 @@ arksync-bus = { workspace = true, features = ["uuid-v4"] }
 arksync-config.workspace = true
 arksync-db.workspace = true
 arksync-knot = { workspace = true, features = ["knot-tokio-runtime", "uuid-v4"] }
-arksync-knot-protocol.workspace = true
+arksync-protocol.workspace = true
 arksync-macros.workspace = true
 arksync-sensor.workspace = true
 arksync-utils.workspace = true

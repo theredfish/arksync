@@ -8,10 +8,10 @@ use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_knot::application::{
     local_tokio_message_link, KnotProtocolRuntime, MessageLink, RetryPolicy,
 };
-use arksync_knot_protocol::{
+use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotConfig, KnotControlMessage, KnotEnvelope, KnotMessage,
-    KnotMessageSource,
 };
+use arksync_protocol::ArkSyncActor;
 
 fn timestamp(unix_millis: i64) -> Timestamp {
     Timestamp::from_unix_millis(unix_millis)
@@ -61,7 +61,7 @@ async fn local_link_exchanges_hello_config_and_confirmation() {
     hub_link
         .send(EventEnvelope::new_with_id(
             hello_ack_id,
-            KnotMessageSource::Hub { hub_id: [1; 16] },
+            ArkSyncActor::Hub { hub_id: [1; 16] },
             timestamp(1_780_000_000_100),
             KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Hello {
                 event_id: hello_id,

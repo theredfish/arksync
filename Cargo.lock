@@ -236,8 +236,8 @@ dependencies = [
  "arksync-config",
  "arksync-db",
  "arksync-knot",
- "arksync-knot-protocol",
  "arksync-macros",
+ "arksync-protocol",
  "arksync-sensor",
  "arksync-testing",
  "arksync-utils",
@@ -256,22 +256,13 @@ version = "0.1.0"
 dependencies = [
  "arksync-actuator",
  "arksync-bus",
- "arksync-knot-protocol",
  "arksync-macros",
+ "arksync-protocol",
  "arksync-sensor",
  "arksync-utils",
  "log",
  "serde",
  "tokio",
-]
-
-[[package]]
-name = "arksync-knot-protocol"
-version = "0.1.0"
-dependencies = [
- "arksync-bus",
- "postcard",
- "serde",
 ]
 
 [[package]]
@@ -284,6 +275,15 @@ dependencies = [
  "serde",
  "syn 2.0.117",
  "uuid",
+]
+
+[[package]]
+name = "arksync-protocol"
+version = "0.1.0"
+dependencies = [
+ "arksync-bus",
+ "postcard",
+ "serde",
 ]
 
 [[package]]

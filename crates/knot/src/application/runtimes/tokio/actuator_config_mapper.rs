@@ -7,7 +7,7 @@ use arksync_actuator::application::protocol::{
     ActuatorProtocol, ActuatorRuleAssertion, ActuatorRuleConfig, ActuatorRuleEffect,
     GpioActuatorConnection,
 };
-use arksync_knot_protocol::{
+use arksync_protocol::knot::{
     KnotActuatorBackend, KnotActuatorConfig, KnotActuatorConnection, KnotActuatorKind,
     KnotActuatorProtocol, KnotActuatorRuleAssertion, KnotActuatorRuleEffect,
     KnotConfig as ProtocolKnotConfig,

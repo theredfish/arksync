@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Runtime-independent wire contract shared by ArkSync Hubs and Knots.
+//! Runtime-independent wire contracts shared by ArkSync actors.
 //!
 //! The types in this crate are protocol DTOs. Runtime and domain crates map
 //! their internal models explicitly so internal refactors do not silently
@@ -12,14 +12,9 @@
 
 extern crate alloc;
 
-mod config;
-mod control;
+mod actor;
 mod frame;
-mod message;
-mod sensor;
+pub mod knot;
 
-pub use config::*;
-pub use control::*;
+pub use actor::*;
 pub use frame::*;
-pub use message::*;
-pub use sensor::*;

@@ -3,10 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
-use arksync_knot_protocol::{
+use arksync_protocol::knot::{
     KnotAck, KnotConfigApplied, KnotConfigRejected, KnotControlMessage, KnotEnvelope, KnotMessage,
-    KnotMessageSource, KnotNack, KnotNackReason,
+    KnotNack, KnotNackReason,
 };
+use arksync_protocol::ArkSyncActor;
 use eyre::{Result, WrapErr};
 use sqlx::PgPool;
 
@@ -32,7 +33,7 @@ pub async fn handle_knot_protocol_event(
     received_at: Timestamp,
     sensor_registry: &mut SensorRegistry,
 ) -> Result<KnotProtocolEventResult> {
-    let KnotMessageSource::Knot { hardware_uid } = &event.source else {
+    let ArkSyncActor::Knot { hardware_uid } = &event.source else {
         return Ok(KnotProtocolEventResult {
             response: Some(response(
                 response_event_id,
@@ -77,7 +78,7 @@ async fn handle_control_message(
     response_event_id: EventId,
     responded_at: Timestamp,
 ) -> Result<KnotProtocolEventResult> {
-    let KnotMessageSource::Knot { hardware_uid } = &event.source else {
+    let ArkSyncActor::Knot { hardware_uid } = &event.source else {
         return Err(eyre::eyre!("control message source is not a Knot"));
     };
     let KnotMessage::Control(message) = &event.payload else {
@@ -219,7 +220,7 @@ fn response(
 ) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         event_id,
-        KnotMessageSource::Hub {
+        ArkSyncActor::Hub {
             hub_id: *CONFIG.local_hub_id.as_bytes(),
         },
         occurred_at,

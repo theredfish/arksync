@@ -4,7 +4,7 @@
 
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_knot::domain::{KnotEventSource, KnotHubId, KnotId};
-use arksync_knot_protocol::{
+use arksync_protocol::knot::{
     KnotMeasurementUnit, KnotSensorConnection, KnotSensorDescriptor, KnotSensorKind,
     KnotSensorMessage,
 };
@@ -230,7 +230,7 @@ fn measured_sensor(sensor: &KnotSensorDescriptor) -> MeasuredSensor {
     }
 }
 
-fn serial_port(metadata: &arksync_knot_protocol::KnotSerialPort) -> SerialPortMetadata {
+fn serial_port(metadata: &arksync_protocol::knot::KnotSerialPort) -> SerialPortMetadata {
     SerialPortMetadata {
         port_name: metadata.port_name.clone(),
         serial_number: metadata.serial_number.clone(),

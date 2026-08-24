@@ -5,7 +5,7 @@
 use crate::application::{knot_protocol_config_for_hardware_uid, HubKnotError};
 use crate::config::CONFIG;
 use crate::infrastructure::store::{knot as knot_store, KnotRecord};
-use arksync_knot_protocol::{KnotConfig as ProtocolKnotConfig, KnotHello as ProtocolKnotHello};
+use arksync_protocol::knot::{KnotConfig as ProtocolKnotConfig, KnotHello as ProtocolKnotHello};
 use arksync_utils::uuid::new_v4;
 use sqlx::{PgExecutor, PgTransaction};
 

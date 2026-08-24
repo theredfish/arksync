@@ -6,7 +6,7 @@ use std::string::String;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use arksync_bus::{EventId, Timestamp};
-use arksync_knot_protocol::{KnotCapabilities, KnotEnvelope, KnotMessage as ProtocolKnotMessage};
+use arksync_protocol::knot::{KnotCapabilities, KnotEnvelope, KnotMessage as ProtocolKnotMessage};
 use arksync_sensor::infrastructure::events::SensorEvent;
 use tokio::sync::mpsc;
 

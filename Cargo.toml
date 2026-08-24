@@ -7,7 +7,7 @@ members = [
     "crates/bus",
     "crates/hub",
     "crates/knot",
-    "crates/knot-protocol",
+    "crates/protocol",
     "crates/macros",
     "crates/sensor",
     "crates/testing",
@@ -30,7 +30,7 @@ arksync-db = { path = "crates/db" }
 arksync-bus = { path = "crates/bus" }
 arksync-hub = { path = "crates/hub" }
 arksync-knot = { path = "crates/knot" }
-arksync-knot-protocol = { path = "crates/knot-protocol" }
+arksync-protocol = { path = "crates/protocol" }
 arksync-macros = { path = "crates/macros" }
 arksync-sensor = { path = "crates/sensor" }
 arksync-testing = { path = "crates/testing" }

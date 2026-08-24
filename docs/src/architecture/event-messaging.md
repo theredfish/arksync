@@ -1,6 +1,6 @@
 # Event Messaging
 
-ArkSync uses one bilateral protocol between a Hub and a Knot, regardless of whether the Knot runs in the Hub process or on remote embedded hardware. The protocol is independent from Tokio, Embassy, MQTT, LoRa, Zenoh, and PostgreSQL.
+ArkSync defines versioned communication contracts between its actors. The currently implemented contract connects a Hub and a Knot, regardless of whether the Knot runs in the Hub process or on remote embedded hardware. These contracts are independent from Tokio, Embassy, MQTT, LoRa, Zenoh, and PostgreSQL.
 
 The current delivery model is **at least once**. PostgreSQL remains the durable source of truth for station state. ArkSync stores message processing receipts for idempotence, but it does not use event sourcing.
 
@@ -9,7 +9,7 @@ The current delivery model is **at least once**. PostgreSQL remains the durable 
 Messaging is split across four boundaries:
 
 - `arksync-bus` owns generic event envelopes, identifiers, Postcard helpers, and synchronous in-process routing.
-- `arksync-knot-protocol` owns the versioned wire contract shared by Hubs and Knots.
+- `arksync-protocol` owns the versioned, transport-independent wire contracts exchanged between ArkSync actors. The current Hub/Knot contract is scoped under `arksync_protocol::knot` so future actor-specific contracts can evolve without flattening every message into one global enum.
 - `arksync-knot` owns the portable Knot protocol state machine, its bounded outbox, and runtime-specific link adapters.
 - `arksync-hub` owns message processing, transaction boundaries, durable receipts, and local or remote link orchestration.
 
@@ -17,10 +17,10 @@ Sensor and actuator crates keep their internal application messages. Explicit ma
 
 ## Envelope And Frame
 
-Every protocol message is carried by a `KnotEnvelope`, which contains:
+Every actor-specific contract uses the common `ArkSyncEnvelope`. The current `KnotEnvelope` specializes it with a `KnotMessage` payload and contains:
 
 - an `EventId` used for correlation and idempotence;
-- a source identifying the Hub or the Knot;
+- an `ArkSyncActor` source identifying the Hub or the Knot;
 - the time at which the event occurred;
 - a `KnotMessage` payload.
 

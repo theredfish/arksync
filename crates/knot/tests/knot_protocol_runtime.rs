@@ -6,10 +6,11 @@ use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_knot::application::{
     KnotOutboxError, KnotProtocolRuntime, KnotProtocolRuntimeError, RetryPolicy,
 };
-use arksync_knot_protocol::{
-    KnotAck, KnotCapabilities, KnotConfig, KnotControlMessage, KnotEnvelope, KnotMessage,
-    KnotMessageSource, KnotNack, KnotNackReason,
+use arksync_protocol::knot::{
+    KnotAck, KnotCapabilities, KnotConfig, KnotControlMessage, KnotEnvelope, KnotMessage, KnotNack,
+    KnotNackReason,
 };
+use arksync_protocol::ArkSyncActor;
 
 fn timestamp(unix_millis: i64) -> Timestamp {
     Timestamp::from_unix_millis(unix_millis)
@@ -40,7 +41,7 @@ fn config(version: u64) -> KnotConfig {
 fn hub_envelope(payload: KnotControlMessage) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         EventId::from_bytes([9; 16]),
-        KnotMessageSource::Hub { hub_id: [1; 16] },
+        ArkSyncActor::Hub { hub_id: [1; 16] },
         timestamp(1_780_000_000_100),
         KnotMessage::Control(payload),
     )
@@ -215,7 +216,7 @@ fn configure_message_replaces_config_and_correlates_confirmation() {
     let mut runtime = runtime(RetryPolicy::default());
     let configure = EventEnvelope::new_with_id(
         configure_id,
-        KnotMessageSource::Hub { hub_id: [1; 16] },
+        ArkSyncActor::Hub { hub_id: [1; 16] },
         timestamp(1_780_000_000_000),
         KnotMessage::Control(KnotControlMessage::Configure(config(2))),
     );
@@ -250,7 +251,7 @@ fn stale_config_is_rejected_without_replacing_the_current_config() {
         .receive(
             &EventEnvelope::new_with_id(
                 current_config_event_id,
-                KnotMessageSource::Hub { hub_id: [1; 16] },
+                ArkSyncActor::Hub { hub_id: [1; 16] },
                 timestamp(1_780_000_000_000),
                 KnotMessage::Control(KnotControlMessage::Configure(config(2))),
             ),
@@ -275,7 +276,7 @@ fn stale_config_is_rejected_without_replacing_the_current_config() {
         .receive(
             &EventEnvelope::new_with_id(
                 stale_config_event_id,
-                KnotMessageSource::Hub { hub_id: [1; 16] },
+                ArkSyncActor::Hub { hub_id: [1; 16] },
                 timestamp(1_780_000_000_300),
                 KnotMessage::Control(KnotControlMessage::Configure(config(1))),
             ),

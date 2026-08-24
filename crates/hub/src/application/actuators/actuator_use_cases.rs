@@ -20,7 +20,7 @@ use arksync_actuator::application::protocol::{
 };
 use arksync_knot::application::{LegacyKnotActuatorConfig, LegacyKnotSensorBinding};
 use arksync_knot::domain::KnotId;
-use arksync_knot_protocol::{
+use arksync_protocol::knot::{
     KnotActuatorBackend, KnotActuatorConfig, KnotActuatorConnection, KnotActuatorDescriptor,
     KnotActuatorKind, KnotActuatorProtocol, KnotActuatorRule, KnotActuatorRuleAssertion,
     KnotActuatorRuleEffect, KnotConfig as ProtocolKnotConfig, KnotGpioActuatorConnection,

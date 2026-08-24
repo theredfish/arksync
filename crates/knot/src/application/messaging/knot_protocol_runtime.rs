@@ -4,10 +4,11 @@
 
 use alloc::{string::String, vec::Vec};
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
-use arksync_knot_protocol::{
+use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotConfig, KnotConfigApplied, KnotConfigRejected,
-    KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage, KnotMessageSource,
+    KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
 };
+use arksync_protocol::ArkSyncActor;
 
 use crate::application::{KnotOutbox, KnotOutboxError, RetryPolicy};
 
@@ -93,7 +94,7 @@ impl KnotProtocolRuntime {
         occurred_at: Timestamp,
         now_ms: u64,
     ) -> Result<(), KnotProtocolRuntimeError> {
-        if !matches!(envelope.source, KnotMessageSource::Hub { .. }) {
+        if !matches!(envelope.source, ArkSyncActor::Hub { .. }) {
             return Err(KnotProtocolRuntimeError::UnexpectedSource);
         }
 
@@ -190,7 +191,7 @@ impl KnotProtocolRuntime {
     ) -> KnotEnvelope {
         EventEnvelope::new_with_id(
             event_id,
-            KnotMessageSource::Knot {
+            ArkSyncActor::Knot {
                 hardware_uid: self.hardware_uid.clone(),
             },
             occurred_at,

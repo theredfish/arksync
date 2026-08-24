@@ -6,7 +6,7 @@ use alloc::string::String;
 use arksync_bus::EventId;
 use serde::{Deserialize, Serialize};
 
-use crate::KnotConfig;
+use super::KnotConfig;
 
 /// Control-plane messages used for handshake, configuration, and delivery acknowledgement.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

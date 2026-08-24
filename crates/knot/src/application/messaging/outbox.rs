@@ -4,7 +4,7 @@
 
 use alloc::vec::Vec;
 use arksync_bus::EventId;
-use arksync_knot_protocol::{KnotEnvelope, KnotNack};
+use arksync_protocol::knot::{KnotEnvelope, KnotNack};
 
 pub const DEFAULT_OUTBOX_CAPACITY: usize = 256;
 pub const DEFAULT_INITIAL_RETRY_DELAY_MS: u64 = 1_000;

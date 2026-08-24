@@ -8,9 +8,8 @@ use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_knot::application::{
     local_tokio_message_link, MessageLink, RetryPolicy, TokioKnotRuntime, TokioKnotRuntimeConfig,
 };
-use arksync_knot_protocol::{
-    KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotMessage, KnotMessageSource,
-};
+use arksync_protocol::knot::{KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotMessage};
+use arksync_protocol::ArkSyncActor;
 use arksync_sensor::infrastructure::events::SensorEvent;
 use eyre::{eyre, Result, WrapErr};
 
@@ -175,7 +174,7 @@ async fn maybe_configure_local_demo_actuator(
 
     let configure = EventEnvelope::new_with_id(
         EventId::new(),
-        KnotMessageSource::Hub {
+        ArkSyncActor::Hub {
             hub_id: *CONFIG.local_hub_id.as_bytes(),
         },
         timestamp_now(),
