@@ -2,31 +2,21 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! no_std EventBus core.
-//!
-//! The bus owns the generic subscription/filter/handler mechanics. Bounded
-//! contexts own their event payloads and can attach any local, MQTT, or storage
-//! handler later.
+//! Synchronous, in-process event routing.
 
 use crate::EventEnvelope;
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EventBusError {
-    HandlerRejected,
+pub enum EventHandlerError {
+    Rejected,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Delivery {
-    Local,
-    Mqtt { topic: String },
-    Both { mqtt_topic: String },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Persistence {
-    Memory,
-    Storage,
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DispatchReport {
+    pub matched: usize,
+    pub delivered: usize,
+    pub rejected: usize,
 }
 
 /// Decides whether a subscription should receive an event.
@@ -34,9 +24,9 @@ pub trait EventFilter<Payload, Source = ()> {
     fn matches(&self, event: &EventEnvelope<Payload, Source>) -> bool;
 }
 
-impl<Payload, Source, Handler> EventFilter<Payload, Source> for Handler
+impl<Payload, Source, Filter> EventFilter<Payload, Source> for Filter
 where
-    Handler: Fn(&EventEnvelope<Payload, Source>) -> bool,
+    Filter: Fn(&EventEnvelope<Payload, Source>) -> bool,
 {
     fn matches(&self, event: &EventEnvelope<Payload, Source>) -> bool {
         self(event)
@@ -49,20 +39,16 @@ impl<Payload, Source> EventFilter<Payload, Source> for () {
     }
 }
 
-/// Handles an event selected by a subscription.
-///
-/// A handler is what a subscription runs after its filter matched. It can
-/// forward the event to a channel, write to storage, publish to MQTT, or run
-/// local logic.
+/// Handles one event selected by a local subscription.
 pub trait EventHandler<Payload, Source = ()> {
-    fn handle(&mut self, event: EventEnvelope<Payload, Source>) -> Result<(), EventBusError>;
+    fn handle(&mut self, event: &EventEnvelope<Payload, Source>) -> Result<(), EventHandlerError>;
 }
 
 impl<Payload, Source, Handler> EventHandler<Payload, Source> for Handler
 where
-    Handler: FnMut(EventEnvelope<Payload, Source>) -> Result<(), EventBusError>,
+    Handler: FnMut(&EventEnvelope<Payload, Source>) -> Result<(), EventHandlerError>,
 {
-    fn handle(&mut self, event: EventEnvelope<Payload, Source>) -> Result<(), EventBusError> {
+    fn handle(&mut self, event: &EventEnvelope<Payload, Source>) -> Result<(), EventHandlerError> {
         self(event)
     }
 }
@@ -70,12 +56,10 @@ where
 pub struct EventSubscription<Payload, Source = ()> {
     filter: Box<dyn EventFilter<Payload, Source> + Send>,
     handler: Box<dyn EventHandler<Payload, Source> + Send>,
-    delivery: Delivery,
-    persistence: Persistence,
 }
 
 impl<Payload, Source> EventSubscription<Payload, Source> {
-    pub fn local<Filter, Handler>(filter: Filter, handler: Handler) -> Self
+    pub fn new<Filter, Handler>(filter: Filter, handler: Handler) -> Self
     where
         Filter: EventFilter<Payload, Source> + Send + 'static,
         Handler: EventHandler<Payload, Source> + Send + 'static,
@@ -83,39 +67,30 @@ impl<Payload, Source> EventSubscription<Payload, Source> {
         Self {
             filter: Box::new(filter),
             handler: Box::new(handler),
-            delivery: Delivery::Local,
-            persistence: Persistence::Memory,
         }
-    }
-
-    pub fn delivery(&self) -> &Delivery {
-        &self.delivery
-    }
-
-    pub fn persistence(&self) -> Persistence {
-        self.persistence
     }
 
     fn matches(&self, event: &EventEnvelope<Payload, Source>) -> bool {
         self.filter.matches(event)
     }
 
-    fn handle(&mut self, event: EventEnvelope<Payload, Source>) -> Result<(), EventBusError> {
+    fn handle(&mut self, event: &EventEnvelope<Payload, Source>) -> Result<(), EventHandlerError> {
         self.handler.handle(event)
     }
 }
 
-pub struct EventBus<Payload, Source = ()> {
+/// Runtime-independent router for synchronous, in-process fan-out.
+pub struct EventRouter<Payload, Source = ()> {
     subscriptions: Vec<EventSubscription<Payload, Source>>,
 }
 
-impl<Payload, Source> Default for EventBus<Payload, Source> {
+impl<Payload, Source> Default for EventRouter<Payload, Source> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<Payload, Source> EventBus<Payload, Source> {
+impl<Payload, Source> EventRouter<Payload, Source> {
     pub fn new() -> Self {
         Self {
             subscriptions: Vec::new(),
@@ -138,51 +113,39 @@ impl<Payload, Source> EventBus<Payload, Source> {
         Filter: EventFilter<Payload, Source> + Send + 'static,
         Handler: EventHandler<Payload, Source> + Send + 'static,
     {
-        self.add_subscription(EventSubscription::local(filter, handler));
+        self.add_subscription(EventSubscription::new(filter, handler));
     }
 
-    pub fn producer(&mut self) -> EventProducer<'_, Payload, Source> {
-        EventProducer { bus: self }
+    pub fn publisher(&mut self) -> EventPublisher<'_, Payload, Source> {
+        EventPublisher { router: self }
     }
-}
 
-impl<Payload, Source> EventBus<Payload, Source>
-where
-    Payload: Clone,
-    Source: Clone,
-{
-    pub fn publish(
-        &mut self,
-        event: EventEnvelope<Payload, Source>,
-    ) -> Result<usize, EventBusError> {
-        let mut delivered = 0;
+    pub fn publish(&mut self, event: &EventEnvelope<Payload, Source>) -> DispatchReport {
+        let mut report = DispatchReport::default();
 
         for subscription in &mut self.subscriptions {
-            if !subscription.matches(&event) {
+            if !subscription.matches(event) {
                 continue;
             }
 
-            subscription.handle(event.clone())?;
-            delivered += 1;
+            report.matched += 1;
+            match subscription.handle(event) {
+                Ok(()) => report.delivered += 1,
+                Err(EventHandlerError::Rejected) => report.rejected += 1,
+            }
         }
 
-        Ok(delivered)
+        report
     }
 }
 
-pub struct EventProducer<'bus, Payload, Source = ()> {
-    bus: &'bus mut EventBus<Payload, Source>,
+/// Borrowed publishing handle for a local [`EventRouter`].
+pub struct EventPublisher<'router, Payload, Source = ()> {
+    router: &'router mut EventRouter<Payload, Source>,
 }
 
-impl<Payload, Source> EventProducer<'_, Payload, Source>
-where
-    Payload: Clone,
-    Source: Clone,
-{
-    pub fn publish(
-        &mut self,
-        event: EventEnvelope<Payload, Source>,
-    ) -> Result<usize, EventBusError> {
-        self.bus.publish(event)
+impl<Payload, Source> EventPublisher<'_, Payload, Source> {
+    pub fn publish(&mut self, event: EventEnvelope<Payload, Source>) -> DispatchReport {
+        self.router.publish(&event)
     }
 }

@@ -2,98 +2,124 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::application::{handle_knot_event, handle_sensor_event, HubService, SensorRegistry};
-use crate::config::CONFIG;
-use arksync_bus::{EventBus, EventBusError, EventEnvelope, EventHandler, Timestamp};
-use arksync_knot::application::{
-    KnotMessage, KnotMessageEnvelope, KnotSensorEventEnvelope, TokioKnotRuntime,
-    TokioKnotRuntimeConfig, TokioKnotRuntimeEvent,
-};
-use arksync_knot::domain::{KnotEventSource, KnotHubId, KnotId};
-use eyre::{eyre, Result, WrapErr};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Runtime for the local hub process.
+use arksync_bus::{EventEnvelope, EventId, Timestamp};
+use arksync_knot::application::{
+    local_tokio_message_link, MessageLink, RetryPolicy, TokioKnotRuntime, TokioKnotRuntimeConfig,
+};
+use arksync_protocol::knot::{KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotMessage};
+use arksync_protocol::ArkSyncActor;
+use arksync_sensor::infrastructure::events::SensorEvent;
+use eyre::{eyre, Result, WrapErr};
+
+use crate::application::{
+    ensure_local_demo_temperature_relay_rule, handle_actuator_runtime_event,
+    handle_knot_protocol_event, knot_protocol_config_for_hardware_uid, HubService, SensorRegistry,
+};
+use crate::config::CONFIG;
+use crate::infrastructure::store::knot as knot_store;
+
+/// Host runtime for the local Hub and its in-process Knot.
 ///
-/// The hub is the `std` application runner for the desktop/RPi MVP. It starts
-/// the local Knot runtime, receives Knot sensor and actuator events, and routes
-/// them to hub application handlers that project and persist the hub state.
-///
-/// The local hub is also a Knot from the system point of view: it has a local
-/// Knot identity and can run sensors or GPIO actuators directly. Remote Knots
-/// should eventually use the same event protocol through MQTT or another bus,
-/// while this runtime keeps the local path in-process with Tokio channels.
+/// The Hub endpoint and Knot endpoint communicate through the same versioned
+/// protocol used by future remote transports. This runtime owns Tokio, the
+/// database pool, wall-clock time, and local task lifetimes. The portable Knot
+/// state machine and protocol remain independent from those host concerns.
 pub struct HubRuntime;
 
 impl HubRuntime {
-    /// Starts the hub runtime and logs any fatal runtime error.
-    ///
-    /// This method is intentionally non-failing for the Tauri entrypoint: the
-    /// error is captured with debug formatting so logs keep the full cause chain
-    /// while the caller does not need to unwrap runtime internals.
+    /// Starts the Hub and logs any fatal orchestration error with its cause chain.
     pub async fn run() {
-        if let Err(err) = Self::try_run().await {
-            log::error!("Hub runtime failed: {err:?}");
+        if let Err(error) = Self::try_run().await {
+            log::error!("Hub runtime failed: {error:?}");
         }
     }
 
     async fn try_run() -> Result<()> {
-        let (knot_event_tx, mut knot_event_rx) =
-            tokio::sync::mpsc::channel::<TokioKnotRuntimeEvent>(100);
-        let (knot_message_tx_to_knot, knot_message_rx_from_hub) =
-            tokio::sync::mpsc::channel::<KnotMessage>(100);
-        let (sensor_event_tx, mut sensor_event_rx) =
-            tokio::sync::mpsc::channel::<KnotSensorEventEnvelope>(100);
-        let (knot_message_event_tx, mut knot_message_event_rx) =
-            tokio::sync::mpsc::channel::<KnotMessageEnvelope>(100);
-        let mut hub_bus = EventBus::new();
-        hub_bus.subscribe_where(
-            |event: &EventEnvelope<HubKnotEvent>| matches!(event.payload, HubKnotEvent::Sensor(_)),
-            HubSensorEventHandler(sensor_event_tx),
-        );
-        hub_bus.subscribe_where(
-            |event: &EventEnvelope<HubKnotEvent>| matches!(event.payload, HubKnotEvent::Knot(_)),
-            HubKnotMessageHandler(knot_message_event_tx),
-        );
-        let source = local_knot_source();
+        let (mut hub_link, knot_link) = local_tokio_message_link::<KnotEnvelope>(100);
+        let (legacy_actuator_event_tx, mut legacy_actuator_event_rx) =
+            tokio::sync::mpsc::channel(100);
         let knot_runtime = tokio::spawn(async move {
             TokioKnotRuntime::run(
                 TokioKnotRuntimeConfig {
-                    source,
                     hardware_uid: CONFIG.local_knot_hardware_uid.clone(),
+                    capabilities: local_knot_capabilities(),
+                    retry_policy: RetryPolicy::default(),
                 },
-                knot_event_tx,
-                knot_message_rx_from_hub,
+                knot_link,
+                legacy_actuator_event_tx,
             )
             .await;
         });
-        let mut hub = HubService::new();
+
         let pool = arksync_db::pool();
+        let mut hub = HubService::new();
         let mut sensor_registry = SensorRegistry::load(pool)
             .await
-            .wrap_err("failed to load hub sensor registry")?;
+            .wrap_err("failed to load Hub sensor registry")?;
+        let mut local_demo_configured = false;
 
         loop {
             tokio::select! {
-                Some(event) = knot_event_rx.recv() => {
-                    hub_bus
-                        .publish(hub_event_envelope_from_tokio_event(event))
-                        .map_err(|err| eyre!("hub runtime bus rejected Knot event: {err:?}"))?;
-                }
-                Some(event) = sensor_event_rx.recv() => {
+                message = hub_link.receive() => {
+                    let message = match message {
+                        Ok(Some(message)) => message,
+                        Ok(None) => {
+                            log::error!("Local Knot protocol link closed");
+                            break;
+                        }
+                        Err(error) => {
+                            log::error!("Local Knot protocol link failed: {error:?}");
+                            continue;
+                        }
+                    };
                     let received_at = timestamp_now();
-                    handle_sensor_event(
+                    match handle_knot_protocol_event(
                         pool,
-                        event,
+                        &message,
+                        EventId::new(),
+                        timestamp_now(),
                         received_at,
                         &mut sensor_registry,
-                        &mut hub,
-                        &knot_message_tx_to_knot,
                     )
-                    .await?;
+                    .await
+                    {
+                        Ok(result) => {
+                            if let Some(response) = result.response {
+                                if hub_link.send(response).await.is_err() {
+                                    log::error!("Local Knot protocol link closed before Hub response");
+                                    break;
+                                }
+                            }
+
+                            for event in result.sensor_events {
+                                maybe_configure_local_demo_actuator(
+                                    pool,
+                                    &event,
+                                    &sensor_registry,
+                                    &mut hub_link,
+                                    &mut local_demo_configured,
+                                )
+                                .await?;
+                                hub.handle_sensor_event(event, received_at)
+                                    .map_err(|error| eyre!("Hub rejected projected sensor event: {error:?}"))?;
+                            }
+                        }
+                        Err(error) => {
+                            log::error!("Hub failed to process Knot protocol event: {error:?}");
+                        }
+                    }
                 }
-                Some(event) = knot_message_event_rx.recv() => {
-                    handle_knot_event(pool, event, &knot_message_tx_to_knot).await?;
+                Some(event) = legacy_actuator_event_rx.recv() => {
+                    let arksync_knot::application::LegacyKnotActuatorMessage::Actuator(event) = event.payload else {
+                        log::debug!("Hub ignored non-actuator message on legacy actuator path");
+                        continue;
+                    };
+
+                    if let Err(error) = handle_actuator_runtime_event(pool, event).await {
+                        log::error!("Hub failed to process legacy actuator event: {error:?}");
+                    }
                 }
                 else => break,
             }
@@ -102,75 +128,73 @@ impl HubRuntime {
         knot_runtime
             .await
             .wrap_err("local Knot runtime task join failed")?;
-
         Ok(())
     }
 }
 
-#[derive(Clone)]
-enum HubKnotEvent {
-    /// Event emitted by the local Knot sensor path.
-    Sensor(KnotSensorEventEnvelope),
-    /// Protocol message emitted by the local Knot runtime.
-    Knot(KnotMessageEnvelope),
-}
-
-fn hub_event_envelope_from_tokio_event(
-    event: TokioKnotRuntimeEvent,
-) -> EventEnvelope<HubKnotEvent> {
-    match event {
-        TokioKnotRuntimeEvent::Sensor(event) => {
-            EventEnvelope::new_with_id(event.id, (), event.occurred_at, HubKnotEvent::Sensor(event))
-        }
-        TokioKnotRuntimeEvent::Knot(event) => {
-            EventEnvelope::new_with_id(event.id, (), event.occurred_at, HubKnotEvent::Knot(event))
-        }
+async fn maybe_configure_local_demo_actuator(
+    pool: &sqlx::PgPool,
+    event: &crate::application::HubSensorEventEnvelope,
+    sensor_registry: &SensorRegistry,
+    hub_link: &mut arksync_knot::application::TokioMessageLink<KnotEnvelope>,
+    configured: &mut bool,
+) -> Result<()> {
+    if *configured {
+        return Ok(());
     }
-}
-
-struct HubSensorEventHandler(tokio::sync::mpsc::Sender<KnotSensorEventEnvelope>);
-
-impl EventHandler<HubKnotEvent> for HubSensorEventHandler {
-    fn handle(
-        &mut self,
-        event: EventEnvelope<HubKnotEvent>,
-    ) -> core::result::Result<(), EventBusError> {
-        let HubKnotEvent::Sensor(event) = event.payload else {
-            return Ok(());
-        };
-
-        self.0
-            .try_send(event)
-            .map_err(|_| EventBusError::HandlerRejected)
+    let SensorEvent::SensorMeasurementRecorded(measurement) = &event.payload else {
+        return Ok(());
+    };
+    let arksync_knot::domain::KnotEventSource::Knot { knot_id, .. } = &event.source;
+    if knot_id.uuid_v4() != CONFIG.local_knot_id {
+        return Ok(());
     }
+    let Some(sensor_id) =
+        sensor_registry.sensor_id(knot_id.uuid_v4(), measurement.device_uid.as_ref())
+    else {
+        return Ok(());
+    };
+
+    let mut txn = pool
+        .begin()
+        .await
+        .wrap_err("failed to begin local demo actuator config transaction")?;
+    ensure_local_demo_temperature_relay_rule(&mut txn, *knot_id, sensor_id)
+        .await
+        .wrap_err("failed to ensure local demo relay rule")?;
+    knot_store::increment_station_knot_config_version(&mut *txn, knot_id.uuid_v4())
+        .await
+        .map_err(|error| eyre!("failed to increment Knot config version: {error:?}"))?;
+    let config = knot_protocol_config_for_hardware_uid(&mut txn, &CONFIG.local_knot_hardware_uid)
+        .await
+        .wrap_err("failed to load refreshed local Knot config")?;
+    txn.commit()
+        .await
+        .wrap_err("failed to commit local demo actuator config transaction")?;
+
+    let configure = EventEnvelope::new_with_id(
+        EventId::new(),
+        ArkSyncActor::Hub {
+            hub_id: *CONFIG.local_hub_id.as_bytes(),
+        },
+        timestamp_now(),
+        KnotMessage::Control(KnotControlMessage::Configure(config)),
+    );
+    hub_link
+        .send(configure)
+        .await
+        .map_err(|_| eyre!("local Knot protocol link closed before config refresh"))?;
+    *configured = true;
+
+    Ok(())
 }
 
-struct HubKnotMessageHandler(tokio::sync::mpsc::Sender<KnotMessageEnvelope>);
-
-impl EventHandler<HubKnotEvent> for HubKnotMessageHandler {
-    fn handle(
-        &mut self,
-        event: EventEnvelope<HubKnotEvent>,
-    ) -> core::result::Result<(), EventBusError> {
-        let HubKnotEvent::Knot(event) = event.payload else {
-            return Ok(());
-        };
-
-        self.0
-            .try_send(event)
-            .map_err(|_| EventBusError::HandlerRejected)
-    }
-}
-
-fn local_knot_source() -> KnotEventSource {
-    // TODO: Replace these MVP constants with a provisioned identity bundle.
-    // The hub install flow should expose an admin CLI/program such as
-    // `sk init hub` that authenticates the station admin, generates or loads
-    // the HubId + local KnotId, signs them with a certificate, and stores the
-    // resulting identity bundle for the runtime to load at boot.
-    KnotEventSource::Knot {
-        hub_id: KnotHubId::from(CONFIG.local_hub_id),
-        knot_id: KnotId::from(CONFIG.local_knot_id),
+fn local_knot_capabilities() -> KnotCapabilities {
+    KnotCapabilities {
+        gpio: true,
+        uart: true,
+        i2c: false,
+        atlas_scientific_ezo: true,
     }
 }
 

@@ -10,7 +10,7 @@ use crate::infrastructure::events::{
 use crate::sensor::Sensor;
 use crate::sensor::SensorConnection;
 use crate::services::sensor::{detect_unplugged_sensors, healthcheck};
-use arksync_bus::{EventEnvelope, EventProducer, Timestamp};
+use arksync_bus::{EventEnvelope, EventPublisher, Timestamp};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
@@ -51,7 +51,7 @@ pub struct SensorService<'bus> {
     cmd_channel: CommandChannel,
     measurement_tx: mpsc::Sender<SensorMeasurementRecorded>,
     measurement_rx: mpsc::Receiver<SensorMeasurementRecorded>,
-    event_producer: Option<EventProducer<'bus, SensorEvent>>,
+    event_publisher: Option<EventPublisher<'bus, SensorEvent>>,
     event_counter: u128,
 }
 
@@ -72,13 +72,16 @@ impl<'bus> SensorService<'bus> {
             cmd_channel: CommandChannel { tx, rx },
             measurement_tx,
             measurement_rx,
-            event_producer: None,
+            event_publisher: None,
             event_counter: 0,
         }
     }
 
-    pub fn with_event_producer(mut self, event_producer: EventProducer<'bus, SensorEvent>) -> Self {
-        self.event_producer = Some(event_producer);
+    pub fn with_event_publisher(
+        mut self,
+        event_publisher: EventPublisher<'bus, SensorEvent>,
+    ) -> Self {
+        self.event_publisher = Some(event_publisher);
         self
     }
 
@@ -190,7 +193,7 @@ impl<'bus> SensorService<'bus> {
     }
 
     fn emit_sensor_added_event(&mut self, sensor: &dyn Sensor) {
-        let Some(event_producer) = &mut self.event_producer else {
+        let Some(event_publisher) = &mut self.event_publisher else {
             return;
         };
 
@@ -204,7 +207,7 @@ impl<'bus> SensorService<'bus> {
             metadata.serial_number
         );
 
-        let _ = event_producer.publish(EventEnvelope::new_with_id(
+        let _ = event_publisher.publish(EventEnvelope::new_with_id(
             sensor_event_id(&metadata.serial_number),
             (),
             Timestamp::from_unix_millis(0),
@@ -217,7 +220,7 @@ impl<'bus> SensorService<'bus> {
         sensor: &dyn Sensor,
         device_uid: crate::device_uid::DeviceUid,
     ) {
-        let Some(event_producer) = &mut self.event_producer else {
+        let Some(event_publisher) = &mut self.event_publisher else {
             return;
         };
 
@@ -226,7 +229,7 @@ impl<'bus> SensorService<'bus> {
 
         log::debug!("Sensor service produced SensorProvisioned device_uid={device_uid}");
 
-        let _ = event_producer.publish(EventEnvelope::new_with_id(
+        let _ = event_publisher.publish(EventEnvelope::new_with_id(
             sensor_event_id(device_uid.as_ref()),
             (),
             timestamp_now(),
@@ -239,7 +242,7 @@ impl<'bus> SensorService<'bus> {
 
     fn emit_sensor_provisioning_conflict_event(&mut self, sensor: &dyn Sensor, reason: String) {
         self.event_counter = self.event_counter.wrapping_add(1);
-        let Some(event_producer) = &mut self.event_producer else {
+        let Some(event_publisher) = &mut self.event_publisher else {
             return;
         };
 
@@ -248,7 +251,7 @@ impl<'bus> SensorService<'bus> {
 
         log::debug!("Sensor service produced SensorProvisioningConflict reason={reason}");
 
-        let _ = event_producer.publish(EventEnvelope::new_with_id(
+        let _ = event_publisher.publish(EventEnvelope::new_with_id(
             event_id_from_counter(self.event_counter),
             (),
             timestamp_now(),
@@ -261,7 +264,7 @@ impl<'bus> SensorService<'bus> {
 
     fn emit_measurement_recorded_event(&mut self, measurement: SensorMeasurementRecorded) {
         self.event_counter = self.event_counter.wrapping_add(1);
-        let Some(event_producer) = &mut self.event_producer else {
+        let Some(event_publisher) = &mut self.event_publisher else {
             return;
         };
 
@@ -271,7 +274,7 @@ impl<'bus> SensorService<'bus> {
             measurement.measurement.value
         );
 
-        let _ = event_producer.publish(EventEnvelope::new_with_id(
+        let _ = event_publisher.publish(EventEnvelope::new_with_id(
             event_id_from_counter(self.event_counter),
             (),
             timestamp_now(),
@@ -363,13 +366,13 @@ mod tests {
     #[tokio::test]
     async fn emits_sensor_plugged_event_when_sensor_is_added() {
         let (event_tx, mut event_rx) = mpsc::channel(2);
-        let mut bus = arksync_bus::EventBus::new();
-        bus.subscribe(move |event: EventEnvelope<SensorEvent>| {
+        let mut router = arksync_bus::EventRouter::new();
+        router.subscribe(move |event: &EventEnvelope<SensorEvent>| {
             event_tx
-                .try_send(event)
-                .map_err(|_| arksync_bus::EventBusError::HandlerRejected)
+                .try_send(event.clone())
+                .map_err(|_| arksync_bus::EventHandlerError::Rejected)
         });
-        let mut service = SensorService::new().with_event_producer(bus.producer());
+        let mut service = SensorService::new().with_event_publisher(router.publisher());
         let sensor = Arc::new(MockSensor::new("rtd-serial-1")) as Arc<dyn Sensor>;
 
         service.handle_cmd(SensorServiceCmd::AddSensors {

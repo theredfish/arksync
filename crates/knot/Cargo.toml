@@ -7,7 +7,7 @@ license.workspace = true
 [features]
 default = []
 std = []
-knot-nostd-runtime = ["arksync-actuator", "arksync-bus"]
+knot-nostd-runtime = ["arksync-actuator"]
 knot-tokio-runtime = [
     "std",
     "knot-nostd-runtime",
@@ -16,18 +16,23 @@ knot-tokio-runtime = [
     "tokio/macros",
     "tokio/rt",
     "tokio/sync",
+    "tokio/time",
 ]
-uuid-v4 = ["arksync-utils/uuid-v4"]
+uuid-v4 = ["arksync-bus/uuid-v4", "arksync-utils/uuid-v4"]
 
 [dependencies]
 arksync-actuator = { workspace = true, optional = true }
-arksync-bus = { workspace = true, optional = true }
+arksync-bus.workspace = true
+arksync-protocol.workspace = true
 arksync-macros.workspace = true
 arksync-sensor = { workspace = true, optional = true }
 arksync-utils.workspace = true
 log = { workspace = true, optional = true }
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 tokio = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt"] }
 
 [lints]
 workspace = true

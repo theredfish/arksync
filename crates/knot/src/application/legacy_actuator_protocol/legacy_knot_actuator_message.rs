@@ -6,14 +6,12 @@ use arksync_actuator::application::protocol::ActuatorMessage;
 use arksync_bus::EventEnvelope;
 use serde::{Deserialize, Serialize};
 
-use super::{ack::KnotAck, hello::KnotHello};
+use crate::application::LegacyKnotActuatorConfig;
 
-pub type KnotMessageEnvelope = EventEnvelope<KnotMessage>;
+pub type LegacyKnotActuatorEnvelope = EventEnvelope<LegacyKnotActuatorMessage>;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum KnotMessage {
-    Hello(KnotHello),
-    Ack(KnotAck),
+pub enum LegacyKnotActuatorMessage {
+    ApplyConfig(LegacyKnotActuatorConfig),
     Actuator(ActuatorMessage),
 }

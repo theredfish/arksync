@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::{EventBus, EventEnvelope, EventId, Timestamp};
+use arksync_bus::{EventEnvelope, EventHandlerError, EventId, EventRouter, Timestamp};
 use arksync_hub::{
     HubSensorEventEnvelope, HubService, RegisterSensor, RemoveSensor, RenameSensor, SensorId,
     SensorRegistrationStatus,
@@ -109,18 +109,16 @@ fn register_rename_and_remove_sensor_update_overview_read_model() {
 }
 
 #[test]
-fn event_bus_handler_is_the_hub_ingestion_boundary() {
-    let mut bus = EventBus::new();
+fn event_router_handler_is_the_hub_ingestion_boundary() {
+    let mut router = EventRouter::new();
     let mut hub = HubService::new();
-    bus.subscribe(move |event: HubSensorEventEnvelope| {
-        hub.handle_sensor_event(event, timestamp(1_779_840_000_100))
-            .map_err(|_| arksync_bus::EventBusError::HandlerRejected)
+    router.subscribe(move |event: &HubSensorEventEnvelope| {
+        hub.handle_sensor_event(event.clone(), timestamp(1_779_840_000_100))
+            .map_err(|_| EventHandlerError::Rejected)
     });
 
-    let delivered = bus
-        .producer()
-        .publish(serial_sensor_plugged("rtd-serial-1", 1_779_840_000_000))
-        .unwrap();
+    let event = serial_sensor_plugged("rtd-serial-1", 1_779_840_000_000);
+    let report = router.publish(&event);
 
-    assert_eq!(delivered, 1);
+    assert_eq!(report.delivered, 1);
 }
