@@ -24,7 +24,7 @@ Every actor-specific contract uses the common `ArkSyncEnvelope`. The current `Kn
 - the time at which the event occurred;
 - a `KnotMessage` payload.
 
-The wire frame starts with the ArkSync magic bytes and a protocol version, followed by a Postcard-encoded envelope. Datagram transports can carry this frame directly. Stream transports add their own length delimiter outside the ArkSync frame.
+The wire frame starts with the ArkSync frame magic and a protocol version, followed by a Postcard-encoded envelope. Datagram transports can carry this frame directly. Stream transports add their own length delimiter outside the ArkSync frame.
 
 Protocol enum variants are append-only within a version because Postcard encodes their discriminants. An incompatible representation requires a new protocol version and updated golden-frame tests.
 

@@ -13,8 +13,10 @@
 extern crate alloc;
 
 mod actor;
+mod config;
 mod frame;
 pub mod knot;
 
 pub use actor::*;
+pub use config::*;
 pub use frame::*;

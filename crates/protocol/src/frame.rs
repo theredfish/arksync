@@ -4,20 +4,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::ArkSyncEnvelope;
-
-/// Prefix identifying an ArkSync frame before decoding its payload.
-pub const ARKSYNC_FRAME_MAGIC: [u8; 4] = *b"ARSK";
-/// Wire representation version encoded in every ArkSync frame.
-pub const ARKSYNC_PROTOCOL_VERSION: u8 = 1;
-/// Number of bytes preceding the Postcard payload.
-pub const ARKSYNC_FRAME_HEADER_LEN: usize = ARKSYNC_FRAME_MAGIC.len() + 1;
+use crate::{ArkSyncEnvelope, CONFIG};
 
 /// Failure while encoding or decoding an ArkSync protocol frame.
 #[derive(Debug, PartialEq)]
 pub enum ProtocolFrameError {
     BufferTooSmall,
-    InvalidMagic,
+    InvalidFrameMagic,
     UnsupportedVersion(u8),
     Postcard(postcard::Error),
 }
@@ -26,7 +19,7 @@ impl core::fmt::Display for ProtocolFrameError {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Self::BufferTooSmall => formatter.write_str("ArkSync frame buffer is too small"),
-            Self::InvalidMagic => formatter.write_str("invalid ArkSync frame magic"),
+            Self::InvalidFrameMagic => formatter.write_str("invalid ArkSync frame magic"),
             Self::UnsupportedVersion(version) => {
                 write!(formatter, "unsupported ArkSync protocol version {version}")
             }
@@ -42,21 +35,24 @@ impl From<postcard::Error> for ProtocolFrameError {
 }
 
 /// Encodes one complete ArkSync envelope into a caller-provided bounded buffer.
-pub fn encode_frame<'buffer, Message>(
+pub fn encode_frame<'b, Message>(
     envelope: &ArkSyncEnvelope<Message>,
-    buffer: &'buffer mut [u8],
-) -> Result<&'buffer [u8], ProtocolFrameError>
+    buffer: &'b mut [u8],
+) -> Result<&'b [u8], ProtocolFrameError>
 where
     Message: Serialize,
 {
-    if buffer.len() < ARKSYNC_FRAME_HEADER_LEN {
+    let config = CONFIG.load();
+    let header_len = config.frame_header_len();
+
+    if buffer.len() < header_len {
         return Err(ProtocolFrameError::BufferTooSmall);
     }
 
-    buffer[..ARKSYNC_FRAME_MAGIC.len()].copy_from_slice(&ARKSYNC_FRAME_MAGIC);
-    buffer[ARKSYNC_FRAME_MAGIC.len()] = ARKSYNC_PROTOCOL_VERSION;
-    let payload = postcard::to_slice(envelope, &mut buffer[ARKSYNC_FRAME_HEADER_LEN..])?;
-    let frame_len = ARKSYNC_FRAME_HEADER_LEN + payload.len();
+    buffer[..config.frame_magic.len()].copy_from_slice(&config.frame_magic);
+    buffer[config.frame_magic.len()] = config.protocol_version;
+    let payload = postcard::to_slice(envelope, &mut buffer[header_len..])?;
+    let frame_len = header_len + payload.len();
 
     Ok(&buffer[..frame_len])
 }
@@ -64,23 +60,26 @@ where
 /// Validates and decodes one complete ArkSync protocol frame.
 ///
 /// The transport or routing context selects the actor-specific `Message` type.
-pub fn decode_frame<'frame, Message>(
-    frame: &'frame [u8],
+pub fn decode_frame<'f, Message>(
+    frame: &'f [u8],
 ) -> Result<ArkSyncEnvelope<Message>, ProtocolFrameError>
 where
-    Message: Deserialize<'frame>,
+    Message: Deserialize<'f>,
 {
-    if frame.len() < ARKSYNC_FRAME_HEADER_LEN {
+    let config = CONFIG.load();
+    let header_len = config.frame_header_len();
+
+    if frame.len() < header_len {
         return Err(ProtocolFrameError::BufferTooSmall);
     }
-    if frame[..ARKSYNC_FRAME_MAGIC.len()] != ARKSYNC_FRAME_MAGIC {
-        return Err(ProtocolFrameError::InvalidMagic);
+    if frame[..config.frame_magic.len()] != config.frame_magic {
+        return Err(ProtocolFrameError::InvalidFrameMagic);
     }
 
-    let version = frame[ARKSYNC_FRAME_MAGIC.len()];
-    if version != ARKSYNC_PROTOCOL_VERSION {
+    let version = frame[config.frame_magic.len()];
+    if !config.supports_version(version) {
         return Err(ProtocolFrameError::UnsupportedVersion(version));
     }
 
-    postcard::from_bytes(&frame[ARKSYNC_FRAME_HEADER_LEN..]).map_err(Into::into)
+    postcard::from_bytes(&frame[header_len..]).map_err(Into::into)
 }

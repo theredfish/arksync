@@ -6,10 +6,7 @@ use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_protocol::knot::{
     KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
 };
-use arksync_protocol::{
-    decode_frame, encode_frame, ArkSyncActor, ProtocolFrameError, ARKSYNC_FRAME_HEADER_LEN,
-    ARKSYNC_FRAME_MAGIC, ARKSYNC_PROTOCOL_VERSION,
-};
+use arksync_protocol::{decode_frame, encode_frame, ArkSyncActor, ProtocolFrameError, CONFIG};
 
 fn hello_envelope() -> KnotEnvelope {
     EventEnvelope::new_with_id(
@@ -35,12 +32,13 @@ fn hello_envelope() -> KnotEnvelope {
 fn frame_round_trips_a_hello_message() {
     let envelope = hello_envelope();
     let mut buffer = [0; 256];
+    let config = CONFIG.load();
 
     let frame = encode_frame(&envelope, &mut buffer).unwrap();
     let decoded: KnotEnvelope = decode_frame(frame).unwrap();
 
-    assert_eq!(&frame[..ARKSYNC_FRAME_MAGIC.len()], ARKSYNC_FRAME_MAGIC);
-    assert_eq!(frame[ARKSYNC_FRAME_MAGIC.len()], ARKSYNC_PROTOCOL_VERSION);
+    assert_eq!(&frame[..config.frame_magic.len()], config.frame_magic);
+    assert_eq!(frame[config.frame_magic.len()], config.protocol_version);
     assert_eq!(decoded, envelope);
 }
 
@@ -54,9 +52,9 @@ fn hello_frame_has_a_stable_v1_representation() {
     assert_eq!(
         frame,
         &[
-            65, 82, 83, 75, 1, 1, 1, 1, 1, 1, 1, 65, 1, 129, 1, 1, 1, 1, 1, 1, 1, 1, 10, 107, 110,
-            111, 116, 45, 114, 112, 105, 45, 49, 128, 128, 217, 235, 204, 103, 0, 0, 10, 107, 110,
-            111, 116, 45, 114, 112, 105, 45, 49, 1, 1, 0, 1, 1, 7,
+            65, 82, 75, 1, 1, 1, 1, 1, 1, 1, 65, 1, 129, 1, 1, 1, 1, 1, 1, 1, 1, 10, 107, 110, 111,
+            116, 45, 114, 112, 105, 45, 49, 128, 128, 217, 235, 204, 103, 0, 0, 10, 107, 110, 111,
+            116, 45, 114, 112, 105, 45, 49, 1, 1, 0, 1, 1, 7,
         ]
     );
 }
@@ -65,20 +63,21 @@ fn hello_frame_has_a_stable_v1_representation() {
 fn frame_rejects_invalid_magic_and_version() {
     let envelope = hello_envelope();
     let mut buffer = [0; 256];
+    let config = CONFIG.load();
     let frame = encode_frame(&envelope, &mut buffer).unwrap();
     let mut invalid_magic = frame.to_vec();
     invalid_magic[0] = b'X';
     let mut invalid_version = frame.to_vec();
-    invalid_version[ARKSYNC_FRAME_MAGIC.len()] = ARKSYNC_PROTOCOL_VERSION + 1;
+    invalid_version[config.frame_magic.len()] = config.protocol_version + 1;
 
     assert_eq!(
         decode_frame::<KnotMessage>(&invalid_magic),
-        Err(ProtocolFrameError::InvalidMagic)
+        Err(ProtocolFrameError::InvalidFrameMagic)
     );
     assert_eq!(
         decode_frame::<KnotMessage>(&invalid_version),
         Err(ProtocolFrameError::UnsupportedVersion(
-            ARKSYNC_PROTOCOL_VERSION + 1
+            config.protocol_version + 1
         ))
     );
 }
@@ -86,13 +85,25 @@ fn frame_rejects_invalid_magic_and_version() {
 #[test]
 fn frame_rejects_a_short_buffer() {
     let envelope = hello_envelope();
-    let mut buffer = [0; ARKSYNC_FRAME_HEADER_LEN];
+    let config = CONFIG.load();
+    let header_len = config.frame_header_len();
+    let mut buffer = [0; 16];
 
-    let result = encode_frame(&envelope, &mut buffer);
+    let result = encode_frame(&envelope, &mut buffer[..header_len]);
 
     assert!(matches!(result, Err(ProtocolFrameError::Postcard(_))));
     assert_eq!(
-        decode_frame::<KnotMessage>(&buffer[..ARKSYNC_FRAME_HEADER_LEN - 1]),
+        decode_frame::<KnotMessage>(&buffer[..header_len - 1]),
         Err(ProtocolFrameError::BufferTooSmall)
     );
+}
+
+#[test]
+fn protocol_config_defines_the_frame_format() {
+    let config = CONFIG.load();
+
+    assert_eq!(config.frame_magic, *b"ARK");
+    assert_eq!(config.protocol_version, 1);
+    assert_eq!(config.supported_versions, &[1]);
+    assert!(config.supports_version(config.protocol_version));
 }
