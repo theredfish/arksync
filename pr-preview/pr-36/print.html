@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-17912a72.js";
+            window.path_to_searchindex_js = "searchindex-e873a239.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-736c1d48.js"></script>
@@ -239,26 +239,26 @@
 <p>Continue with <a href="#event-messaging">event messaging</a> for the protocol, delivery semantics, and runtime boundaries used between Hubs and Knots.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="event-messaging"><a class="header" href="#event-messaging">Event Messaging</a></h1>
-<p>ArkSync uses one bilateral protocol between a Hub and a Knot, regardless of whether the Knot runs in the Hub process or on remote embedded hardware. The protocol is independent from Tokio, Embassy, MQTT, LoRa, Zenoh, and PostgreSQL.</p>
+<p>ArkSync defines versioned communication contracts between its actors. The currently implemented contract connects a Hub and a Knot, regardless of whether the Knot runs in the Hub process or on remote embedded hardware. These contracts are independent from Tokio, Embassy, MQTT, LoRa, Zenoh, and PostgreSQL.</p>
 <p>The current delivery model is <strong>at least once</strong>. PostgreSQL remains the durable source of truth for station state. ArkSync stores message processing receipts for idempotence, but it does not use event sourcing.</p>
 <h2 id="responsibilities"><a class="header" href="#responsibilities">Responsibilities</a></h2>
 <p>Messaging is split across four boundaries:</p>
 <ul>
 <li><code>arksync-bus</code> owns generic event envelopes, identifiers, Postcard helpers, and synchronous in-process routing.</li>
-<li><code>arksync-knot-protocol</code> owns the versioned wire contract shared by Hubs and Knots.</li>
+<li><code>arksync-protocol</code> owns the versioned, transport-independent wire contracts exchanged between ArkSync actors. The current Hub/Knot contract is scoped under <code>arksync_protocol::knot</code> so future actor-specific contracts can evolve without flattening every message into one global enum.</li>
 <li><code>arksync-knot</code> owns the portable Knot protocol state machine, its bounded outbox, and runtime-specific link adapters.</li>
 <li><code>arksync-hub</code> owns message processing, transaction boundaries, durable receipts, and local or remote link orchestration.</li>
 </ul>
 <p>Sensor and actuator crates keep their internal application messages. Explicit mappers at the Knot and Hub boundaries prevent an internal refactor from silently changing the wire representation.</p>
 <h2 id="envelope-and-frame"><a class="header" href="#envelope-and-frame">Envelope And Frame</a></h2>
-<p>Every protocol message is carried by a <code>KnotEnvelope</code>, which contains:</p>
+<p>Every actor-specific contract uses the common <code>ArkSyncEnvelope</code>. The current <code>KnotEnvelope</code> specializes it with a <code>KnotMessage</code> payload and contains:</p>
 <ul>
 <li>an <code>EventId</code> used for correlation and idempotence;</li>
-<li>a source identifying the Hub or the Knot;</li>
+<li>an <code>ArkSyncActor</code> source identifying the Hub or the Knot;</li>
 <li>the time at which the event occurred;</li>
 <li>a <code>KnotMessage</code> payload.</li>
 </ul>
-<p>The wire frame starts with the ArkSync magic bytes and a protocol version, followed by a Postcard-encoded envelope. Datagram transports can carry this frame directly. Stream transports add their own length delimiter outside the ArkSync frame.</p>
+<p>The wire frame starts with the ArkSync frame magic and a protocol version, followed by a Postcard-encoded envelope. Datagram transports can carry this frame directly. Stream transports add their own length delimiter outside the ArkSync frame.</p>
 <p>Protocol enum variants are append-only within a version because Postcard encodes their discriminants. An incompatible representation requires a new protocol version and updated golden-frame tests.</p>
 <h2 id="handshake-and-configuration"><a class="header" href="#handshake-and-configuration">Handshake And Configuration</a></h2>
 <pre class="mermaid">sequenceDiagram
