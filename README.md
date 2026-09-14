@@ -137,6 +137,9 @@ Build the local Linux desktop app:
 cargo sk build app --target linux-x64
 ```
 
+Application release builds compile both the native Tauri binary and the Trunk/WASM frontend with
+their optimized release profiles.
+
 For a faster local check without packaging the AppImage:
 
 ```bash
@@ -162,6 +165,40 @@ reliable release path for now.
 
 ### Development
 
+Launch the desktop app with generated presentation data:
+
+```bash
+cargo sk dev --demo
+```
+
+The `--demo` option enables the `demo` Cargo feature for both the Tauri app and the Trunk UI. Without
+it, ArkSync starts the Hub and loads live station data:
+
+```bash
+cargo sk dev
+```
+
+The same mode is available for a development build:
+
+```bash
+cargo sk build app --target linux-x64 --profile dev --no-bundle --demo
+```
+
+It can also be used with an optimized release build while keeping the Web Inspector available:
+
+```bash
+cargo sk build app --target linux-x64 --profile release --no-bundle --demo
+```
+
+In that demo release, toggle the Web Inspector with `Ctrl+Shift+I` or open it from the webview
+context menu. Release builds made without `--demo` do not include DevTools support.
+
+For a browser-only UI preview, run `trunk serve --features demo`.
+
 - `cargo tauri signer generate -w ~/.tauri/arksync_dev.key`
 - `export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=arksync-dev`
 - `export TAURI_SIGNING_PRIVATE_KEY=${cat ~/.tauri/arksync_dev.key}`
+
+## Third-party licenses
+
+Third-party license notices are available in [`crates/ui/charts/dist/licenses`](crates/ui/charts/dist/licenses/).

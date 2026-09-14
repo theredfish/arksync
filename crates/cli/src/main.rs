@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 mod book;
 mod build;
 mod db;
+mod dev;
 
 #[derive(Debug, Parser)]
 #[command(name = "sk")]
@@ -24,6 +25,7 @@ enum Command {
     Build(build::BuildCommand),
     #[command(subcommand)]
     Db(db::DbCommand),
+    Dev(dev::DevOptions),
 }
 
 #[tokio::main]
@@ -34,5 +36,6 @@ async fn main() -> eyre::Result<()> {
         Command::Book(cmd) => cmd.exec(),
         Command::Build(cmd) => cmd.exec(),
         Command::Db(cmd) => cmd.exec().await,
+        Command::Dev(options) => options.exec(),
     }
 }

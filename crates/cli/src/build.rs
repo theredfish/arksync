@@ -47,6 +47,11 @@ pub struct AppBuildOptions {
     profile: BuildProfile,
     #[arg(long, help = "Skip Tauri bundle generation")]
     no_bundle: bool,
+    #[arg(
+        long,
+        help = "Build with generated demo data and release Web Inspector support"
+    )]
+    demo: bool,
     #[arg(long, help = "Print the cargo tauri command without running it")]
     dry_run: bool,
 }
@@ -202,24 +207,28 @@ fn build_app(options: &AppBuildOptions) -> Result<()> {
 
     if options.profile == BuildProfile::Dev {
         args.push("--debug".into());
+        args.push("--config".into());
+        args.push(r#"{"build":{"beforeBuildCommand":"trunk build"}}"#.into());
     }
 
     if options.no_bundle {
         args.push("--no-bundle".into());
     }
 
+    if options.demo {
+        args.push("--features".into());
+        args.push("demo".into());
+    }
+
     if options.dry_run {
-        let prefix = "NO_COLOR=false";
-        if let Some(linker) = plan.linker {
-            println!(
-                "{prefix} {}={} cargo {}",
-                plan.linker_env,
-                linker,
-                join_args(&args)
-            );
-        } else {
-            println!("{prefix} cargo {}", join_args(&args));
+        let mut environment = vec!["NO_COLOR=false".to_string()];
+        if options.demo {
+            environment.push("TRUNK_BUILD_FEATURES=demo".to_string());
         }
+        if let Some(linker) = plan.linker {
+            environment.push(format!("{}={linker}", plan.linker_env));
+        }
+        println!("{} cargo {}", environment.join(" "), join_args(&args));
         return Ok(());
     }
 
@@ -240,6 +249,13 @@ fn build_app(options: &AppBuildOptions) -> Result<()> {
     let mut command = Command::new("cargo");
     command.args(&args);
     command.env("NO_COLOR", "false");
+    if options.demo {
+        // The frontend is built by Trunk, outside Cargo's feature forwarding
+        // performed by `cargo tauri build` for the backend.
+        command.env("TRUNK_BUILD_FEATURES", "demo");
+    } else {
+        command.env_remove("TRUNK_BUILD_FEATURES");
+    }
 
     if let Some(linker) = plan.linker {
         command.env(plan.linker_env, linker);
@@ -284,7 +300,7 @@ fn ensure_linux_arm64_pkg_config_is_configured() -> Result<()> {
     );
 }
 
-fn ensure_command(command: &str) -> Result<()> {
+pub(crate) fn ensure_command(command: &str) -> Result<()> {
     let output = Command::new(command)
         .arg("--version")
         .output()
@@ -336,7 +352,7 @@ fn ensure_rust_target_installed(target: &str) -> Result<()> {
     Ok(())
 }
 
-fn join_args(args: &[OsString]) -> String {
+pub(crate) fn join_args(args: &[OsString]) -> String {
     args.iter()
         .map(|arg| arg.to_string_lossy())
         .collect::<Vec<_>>()
