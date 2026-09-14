@@ -2,10 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use crate::components::charts::{AirTemperatureGauge, WaterTemperatureChart};
+use crate::components::charts::{DashboardMetric, SensorGauge, SensorHistoryChart};
 use crate::components::grid::{GridItem, GridLayout};
 use crate::components::page_layout::PageLayout;
+use crate::components::sensors::SensorsPage;
 use crate::components::sidebar::Sidebar;
+use crate::data_sources::AppDataSources;
 use leptos::prelude::*;
 use leptos_router::{
     components::{Route, Router, Routes},
@@ -15,6 +17,7 @@ use leptos_router::{
 #[component]
 pub fn App() -> impl IntoView {
     let dark_theme = RwSignal::new(true);
+    provide_context(AppDataSources::new());
     let theme_class = move || {
         if dark_theme.get() {
             "theme-dark"
@@ -36,6 +39,7 @@ pub fn App() -> impl IntoView {
                             <Routes fallback=|| "Not found.">
                                 <Route path=path!("/") view=Home/>
                                 <Route path=path!("/dashboards") view=move || view! { <Dashboards dark_theme=dark_theme /> } />
+                                <Route path=path!("/sensors") view=SensorsPage />
                             </Routes>
                         </div>
                     </section>
@@ -47,18 +51,54 @@ pub fn App() -> impl IntoView {
 
 #[component]
 pub fn Dashboards(dark_theme: RwSignal<bool>) -> impl IntoView {
+    let data_sources = expect_context::<AppDataSources>();
+
     view! {
         <div class="h-full">
             <GridLayout columns=12 display_grid=false>
-                <GridItem id=1 col_start=0 col_span=4 row_start=0 row_span=2 label="Air temperature".to_string()>
-                    <AirTemperatureGauge dark_theme=dark_theme />
+                <GridItem id=1 col_start=0 col_span=4 row_start=0 row_span=3 label="Air temperature".to_string()>
+                    <SensorGauge
+                        dark_theme=dark_theme
+                        data=data_sources.air_temperature
+                        metric=DashboardMetric::AirTemperature
+                    />
                 </GridItem>
-                <GridItem id=2 col_start=2 col_span=5 row_start=4 row_span=4 label="Air Temp. History".to_string()>
-                    <WaterTemperatureChart dark_theme=dark_theme />
+                <GridItem id=2 col_start=4 col_span=4 row_start=0 row_span=3 label="Water temperature".to_string()>
+                    <SensorGauge
+                        dark_theme=dark_theme
+                        data=data_sources.water_temperature
+                        metric=DashboardMetric::WaterTemperature
+                    />
                 </GridItem>
-                // <GridItem id=3 col_start=0 col_span=3 row_start=0 row_span=4>
-                //     No data yet
-                // </GridItem>
+                <GridItem id=3 col_start=8 col_span=4 row_start=0 row_span=3 label="Water pH".to_string()>
+                    <SensorGauge
+                        dark_theme=dark_theme
+                        data=data_sources.water_ph
+                        metric=DashboardMetric::WaterPh
+                    />
+                </GridItem>
+
+                <GridItem id=4 col_start=0 col_span=4 row_start=3 row_span=3 label="Air temperature history".to_string()>
+                    <SensorHistoryChart
+                        dark_theme=dark_theme
+                        data=data_sources.air_temperature
+                        metric=DashboardMetric::AirTemperature
+                    />
+                </GridItem>
+                <GridItem id=5 col_start=4 col_span=4 row_start=3 row_span=3 label="Water temperature history".to_string()>
+                    <SensorHistoryChart
+                        dark_theme=dark_theme
+                        data=data_sources.water_temperature
+                        metric=DashboardMetric::WaterTemperature
+                    />
+                </GridItem>
+                <GridItem id=6 col_start=8 col_span=4 row_start=3 row_span=3 label="Water pH history".to_string()>
+                    <SensorHistoryChart
+                        dark_theme=dark_theme
+                        data=data_sources.water_ph
+                        metric=DashboardMetric::WaterPh
+                    />
+                </GridItem>
             </GridLayout>
         </div>
     }

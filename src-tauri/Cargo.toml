@@ -15,6 +15,10 @@ license.workspace = true
 name = "arksync_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+demo = ["tauri/devtools"]
+
 [build-dependencies]
 tauri-build.workspace = true
 
@@ -23,12 +27,14 @@ arksync-actuator = { workspace = true, features = ["linux-gpio"] }
 arksync-bus.workspace = true
 arksync-db.workspace = true
 arksync-hub.workspace = true
+arksync-sensor.workspace = true
 chrono.workspace = true
 eyre.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri.workspace = true
+tauri-plugin-wayland-nvidia-quirk.workspace = true
 tauri-plugin-log.workspace = true
 tauri-plugin-opener.workspace = true
 tokio = { workspace = true, features = ["fs", "time"] }

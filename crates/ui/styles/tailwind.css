@@ -31,6 +31,16 @@
         --arksync-preview-border: #6b6575;
         --arksync-selection-bg: #4d4658;
         --arksync-selection-text: #f4f1f7;
+        --arksync-panel-elevated: #323038;
+        --arksync-panel-subtle: #28272d;
+        --arksync-input-bg: #26252b;
+        --arksync-success: #87d7cb;
+        --arksync-success-bg: rgb(40 85 79 / 0.42);
+        --arksync-warning: #e7ba77;
+        --arksync-warning-bg: rgb(140 87 52 / 0.34);
+        --arksync-danger: #eda09c;
+        --arksync-danger-bg: rgb(127 75 75 / 0.28);
+        --arksync-drawer-shadow: rgb(0 0 0 / 0.46);
     }
 
     .theme-light {
@@ -60,6 +70,16 @@
         --arksync-preview-border: #7f8c84;
         --arksync-selection-bg: #d8e0d9;
         --arksync-selection-text: #101917;
+        --arksync-panel-elevated: #ffffff;
+        --arksync-panel-subtle: #f3f6f4;
+        --arksync-input-bg: #ffffff;
+        --arksync-success: #1f5f4b;
+        --arksync-success-bg: #e2f1eb;
+        --arksync-warning: #8c5734;
+        --arksync-warning-bg: #f8ecdf;
+        --arksync-danger: #9d5454;
+        --arksync-danger-bg: #f8e8e6;
+        --arksync-drawer-shadow: rgb(23 33 29 / 0.2);
     }
 
     .theme-sidebar {
@@ -103,19 +123,52 @@
         border: 1px solid var(--arksync-panel-border);
         background: var(--arksync-panel-bg);
         color: var(--arksync-text);
+        contain: layout paint style;
+        transform: translateZ(0);
+        backface-visibility: hidden;
     }
 
-    .arksync-no-data {
-        animation: arksync-no-data-pulse 2.4s ease-in-out infinite;
+    .arksync-input {
+        width: 100%;
+        border: 1px solid var(--arksync-panel-border);
+        border-radius: 0.375rem;
+        background-color: var(--arksync-input-bg);
+        padding: 0.625rem 0.75rem;
+        color: var(--arksync-text-strong);
+        font-size: 0.75rem;
+        line-height: 1.25rem;
+        outline: none;
+        transition: border-color 150ms ease, box-shadow 150ms ease;
     }
-}
 
-@keyframes arksync-no-data-pulse {
-    0%, 100% {
-        opacity: 0.38;
+    .arksync-input:focus {
+        border-color: var(--arksync-action-accent);
+        box-shadow: 0 0 0 2px var(--arksync-success-bg);
     }
 
-    50% {
-        opacity: 0.9;
+    select.arksync-input {
+        appearance: none;
+        -webkit-appearance: none;
+        background-color: var(--arksync-input-bg) !important;
+        background-image:
+            linear-gradient(45deg, transparent 50%, var(--arksync-text-muted) 50%),
+            linear-gradient(135deg, var(--arksync-text-muted) 50%, transparent 50%);
+        background-position:
+            calc(100% - 0.95rem) 50%,
+            calc(100% - 0.7rem) 50%;
+        background-repeat: no-repeat;
+        background-size: 0.3rem 0.3rem, 0.3rem 0.3rem;
+        color: var(--arksync-text-strong) !important;
+        padding-right: 2.25rem;
+    }
+
+    select.arksync-input option,
+    select.arksync-input optgroup {
+        background-color: var(--arksync-input-bg);
+        color: var(--arksync-text-strong);
+    }
+
+    .theme-dark select.arksync-input {
+        color-scheme: dark;
     }
 }

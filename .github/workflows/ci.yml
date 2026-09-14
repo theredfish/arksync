@@ -40,6 +40,30 @@ jobs:
       - name: Rustfmt Check
         uses: actions-rust-lang/rustfmt@v1
 
+  dashboard-charts:
+    name: ECharts integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: crates/ui/charts/package-lock.json
+
+      - name: Install chart tooling
+        working-directory: crates/ui/charts
+        run: npm ci --ignore-scripts
+
+      - name: Test chart lifecycle and time ranges
+        working-directory: crates/ui/charts
+        run: npm test
+
+      - name: Verify committed offline bundle
+        working-directory: crates/ui/charts
+        run: npm run check
+
   linting:
     name: cargo fixit
     runs-on: ubuntu-latest
