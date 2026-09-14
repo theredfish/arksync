@@ -7,9 +7,10 @@ use leptos::{html::Div, prelude::NodeRef};
 use leptos_use::use_event_listener;
 use std::default::Default;
 use std::sync::Arc;
+use wasm_bindgen::JsCast;
 
 use crate::components::grid::core::layout::Layout;
-use crate::components::grid::core::resize_preview::directional_snap_span;
+use crate::components::grid::core::resize_preview::snap_resize_span;
 use crate::components::grid::core::size::Size;
 
 fn clamp_size_to_grid(layout: &Layout, col_start: usize, size: Size) -> Size {
@@ -32,7 +33,6 @@ pub enum ResizeState {
         start_pos: (i32, i32),
         offset_x: i32,
         offset_y: i32,
-        last_client_pos: (i32, i32),
         last_item_size: Size,
     },
     Ended {
@@ -64,6 +64,7 @@ pub struct UseResizableGridItemOptions {
     pub on_resize_start: Arc<dyn Fn(Size) + Send + Sync>,
     pub on_resize_move: Arc<dyn Fn(Size) + Send + Sync>,
     pub on_resize_end: Arc<dyn Fn(Size) + Send + Sync>,
+    pub on_resize_cancel: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl Default for UseResizableGridItemOptions {
@@ -78,6 +79,7 @@ impl Default for UseResizableGridItemOptions {
             on_resize_start: Arc::new(|_| {}),
             on_resize_move: Arc::new(|_| {}),
             on_resize_end: Arc::new(|_| {}),
+            on_resize_cancel: Arc::new(|| {}),
         }
     }
 }
@@ -85,8 +87,6 @@ impl Default for UseResizableGridItemOptions {
 pub struct UseResizableGridItemReturn {
     /// Computed size in pixels of the grid item
     pub size: Signal<Size>,
-    /// CSS transition string for resize animations
-    pub transition: Signal<&'static str>,
 }
 
 pub fn use_resizable_grid_item(
@@ -108,6 +108,7 @@ pub fn use_resizable_grid_item(
         on_resize_start,
         on_resize_move,
         on_resize_end,
+        on_resize_cancel,
         ..
     } = options;
 
@@ -129,125 +130,130 @@ pub fn use_resizable_grid_item(
 
     let handle = handle.unwrap_or(target);
 
-    let current_col_start_for_resize = Arc::clone(&current_col_start);
+    let current_col_start_for_move = Arc::clone(&current_col_start);
+    let current_col_start_for_end = Arc::clone(&current_col_start);
     let current_col_start_for_size = Arc::clone(&current_col_start);
     let current_col_span_for_layout = Arc::clone(&current_col_span);
     let current_row_span_for_layout = Arc::clone(&current_row_span);
-    let current_col_span_for_resize = Arc::clone(&current_col_span);
-    let current_row_span_for_resize = Arc::clone(&current_row_span);
 
     let _resize_starts = use_event_listener(handle, leptos::ev::pointerdown, move |evt| {
         evt.prevent_default();
+        if let Some(target) = evt.current_target() {
+            let target: web_sys::Element = target.unchecked_into();
+            let _ = target.set_pointer_capture(evt.pointer_id());
+        }
         let cursor_pos = (evt.client_x(), evt.client_y());
-        let last_item_size = resize_state.get().last_item_size();
+        // Start from the current grid geometry, including fractional CSS
+        // pixels, rather than a cached/rounded size from an earlier gesture.
+        let cell_size = layout.get_untracked().cell_size;
+        let last_item_size = Size {
+            width: current_col_span() as f64 * cell_size.width,
+            height: current_row_span() as f64 * cell_size.height,
+        };
         resize_state.set(ResizeState::Resizing {
             start_pos: cursor_pos,
             offset_x: 0,
             offset_y: 0,
-            last_client_pos: cursor_pos,
             last_item_size,
         });
 
         on_resize_start(last_item_size);
-        let on_resize_move = Arc::clone(&on_resize_move);
-        let on_resize_end = Arc::clone(&on_resize_end);
-        let current_col_start_for_move = Arc::clone(&current_col_start_for_resize);
-        let current_col_start_for_end = Arc::clone(&current_col_start_for_resize);
-        let current_col_span_for_end = Arc::clone(&current_col_span_for_resize);
-        let current_row_span_for_end = Arc::clone(&current_row_span_for_resize);
+    });
 
-        let _resize_in_progress =
-            use_event_listener(window(), leptos::ev::pointermove, move |evt| {
-                evt.prevent_default();
-                if let ResizeState::Resizing {
-                    start_pos,
-                    last_client_pos,
-                    last_item_size,
-                    ..
-                } = resize_state.get()
-                {
-                    let cursor_pos = (evt.client_x(), evt.client_y());
-                    let (offset_x, offset_y) =
-                        ((cursor_pos.0 - start_pos.0), (cursor_pos.1 - start_pos.1));
+    let _resize_in_progress = use_event_listener(handle, leptos::ev::pointermove, move |evt| {
+        if let ResizeState::Resizing {
+            start_pos,
+            last_item_size,
+            ..
+        } = resize_state.get()
+        {
+            evt.prevent_default();
+            let cursor_pos = (evt.client_x(), evt.client_y());
+            let (offset_x, offset_y) = ((cursor_pos.0 - start_pos.0), (cursor_pos.1 - start_pos.1));
 
-                    resize_state.set(ResizeState::Resizing {
-                        start_pos,
-                        offset_x,
-                        offset_y,
-                        last_client_pos: cursor_pos,
-                        last_item_size,
-                    });
-
-                    let current_size = Size {
-                        width: last_item_size.width + offset_x as f64,
-                        height: last_item_size.height + offset_y as f64,
-                    };
-                    let current_size = clamp_size_to_grid(
-                        &layout.get_untracked(),
-                        current_col_start_for_move(),
-                        current_size,
-                    );
-
-                    on_resize_move(current_size);
-                }
+            resize_state.set(ResizeState::Resizing {
+                start_pos,
+                offset_x,
+                offset_y,
+                last_item_size,
             });
 
-        let _resize_stops = use_event_listener(window(), leptos::ev::pointerup, move |_| {
-            if let ResizeState::Resizing {
+            let current_size = Size {
+                width: last_item_size.width + offset_x as f64,
+                height: last_item_size.height + offset_y as f64,
+            };
+            let current_size = clamp_size_to_grid(
+                &layout.get_untracked(),
+                current_col_start_for_move(),
+                current_size,
+            );
+
+            on_resize_move(current_size);
+        }
+    });
+
+    let _resize_stops = use_event_listener(handle, leptos::ev::pointerup, move |evt| {
+        if let Some(target) = evt.current_target() {
+            let target: web_sys::Element = target.unchecked_into();
+            let _ = target.release_pointer_capture(evt.pointer_id());
+        }
+
+        if let ResizeState::Resizing {
+            start_pos,
+            last_item_size,
+            ..
+        } = resize_state.get()
+        {
+            let layout = layout.get_untracked();
+            let cell_size = layout.cell_size;
+
+            let total_offset_x = evt.client_x() - start_pos.0;
+            let total_offset_y = evt.client_y() - start_pos.1;
+
+            // Use the release coordinates even if no pointermove was
+            // delivered for them, with the same snapping as the preview.
+            let raw_size = clamp_size_to_grid(
+                &layout,
+                current_col_start_for_end(),
+                Size {
+                    width: last_item_size.width + total_offset_x as f64,
+                    height: last_item_size.height + total_offset_y as f64,
+                },
+            );
+
+            let snapped_col_span = snap_resize_span(raw_size.width, cell_size.width);
+            let snapped_row_span = snap_resize_span(raw_size.height, cell_size.height);
+
+            let snapped_size = clamp_size_to_grid(
+                &layout,
+                current_col_start_for_end(),
+                Size {
+                    width: snapped_col_span as f64 * cell_size.width,
+                    height: snapped_row_span as f64 * cell_size.height,
+                },
+            );
+
+            resize_state.set(ResizeState::Ended {
                 start_pos,
-                last_client_pos,
-                last_item_size,
-                ..
-            } = resize_state.get()
-            {
-                let layout = layout.get_untracked();
-                let cell_size = layout.cell_size;
+                total_offset_x,
+                total_offset_y,
+                last_item_size: snapped_size,
+            });
 
-                let total_offset_x = last_client_pos.0 - start_pos.0;
-                let total_offset_y = last_client_pos.1 - start_pos.1;
+            on_resize_end(snapped_size);
+        }
+    });
 
-                // Calculate the raw new size first, then snap in the resize
-                // direction so the final size matches the preview shown during
-                // pointer movement.
-                let raw_size = clamp_size_to_grid(
-                    &layout,
-                    current_col_start_for_end(),
-                    Size {
-                        width: last_item_size.width + total_offset_x as f64,
-                        height: last_item_size.height + total_offset_y as f64,
-                    },
-                );
-
-                let snapped_col_span = directional_snap_span(
-                    raw_size.width,
-                    current_col_span_for_end(),
-                    cell_size.width,
-                );
-                let snapped_row_span = directional_snap_span(
-                    raw_size.height,
-                    current_row_span_for_end(),
-                    cell_size.height,
-                );
-
-                let snapped_size = clamp_size_to_grid(
-                    &layout,
-                    current_col_start_for_end(),
-                    Size {
-                        width: snapped_col_span as f64 * cell_size.width,
-                        height: snapped_row_span as f64 * cell_size.height,
-                    },
-                );
-
-                resize_state.set(ResizeState::Ended {
-                    start_pos,
-                    total_offset_x,
-                    total_offset_y,
-                    last_item_size: snapped_size,
-                });
-
-                on_resize_end(snapped_size);
+    let _resize_cancels = use_event_listener(handle, leptos::ev::pointercancel, move |evt| {
+        if let ResizeState::Resizing { last_item_size, .. } = resize_state.get_untracked() {
+            if let Some(target) = evt.current_target() {
+                let target: web_sys::Element = target.unchecked_into();
+                let _ = target.release_pointer_capture(evt.pointer_id());
             }
-        });
+
+            resize_state.set(ResizeState::Idle { last_item_size });
+            on_resize_cancel();
+        }
     });
 
     // Handle grid layout resize events
@@ -256,8 +262,8 @@ pub fn use_resizable_grid_item(
         move |cell_size, _, _| {
             if !matches!(resize_state.get_untracked(), ResizeState::Resizing { .. }) {
                 let expected_size = Size {
-                    width: (current_col_span_for_layout() as f64 * cell_size.width).round(),
-                    height: (current_row_span_for_layout() as f64 * cell_size.height).round(),
+                    width: current_col_span_for_layout() as f64 * cell_size.width,
+                    height: current_row_span_for_layout() as f64 * cell_size.height,
                 };
                 let expected_size =
                     clamp_size_to_grid(&layout.get_untracked(), current_col_start(), expected_size);
@@ -273,33 +279,24 @@ pub fn use_resizable_grid_item(
     );
 
     let size = Signal::derive({
-        move || {
-            let cell_size = &layout.get_untracked().cell_size;
-
-            match resize_state.get() {
-                ResizeState::Idle { last_item_size } => last_item_size,
-                ResizeState::Resizing {
-                    offset_x,
-                    offset_y,
-                    last_item_size,
-                    ..
-                } => clamp_size_to_grid(
-                    &layout.get_untracked(),
-                    current_col_start_for_size(),
-                    Size {
-                        width: last_item_size.width + offset_x as f64,
-                        height: last_item_size.height + offset_y as f64,
-                    },
-                ),
-                ResizeState::Ended { last_item_size, .. } => last_item_size,
-            }
+        move || match resize_state.get() {
+            ResizeState::Idle { last_item_size } => last_item_size,
+            ResizeState::Resizing {
+                offset_x,
+                offset_y,
+                last_item_size,
+                ..
+            } => clamp_size_to_grid(
+                &layout.get_untracked(),
+                current_col_start_for_size(),
+                Size {
+                    width: last_item_size.width + offset_x as f64,
+                    height: last_item_size.height + offset_y as f64,
+                },
+            ),
+            ResizeState::Ended { last_item_size, .. } => last_item_size,
         }
     });
 
-    let transition = Signal::derive(move || match resize_state.get() {
-        ResizeState::Resizing { .. } => "width 0ms ease-in, height 0ms ease-in",
-        _ => "width 250ms ease-in, height 250ms ease-in",
-    });
-
-    UseResizableGridItemReturn { size, transition }
+    UseResizableGridItemReturn { size }
 }

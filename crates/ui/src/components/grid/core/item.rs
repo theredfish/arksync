@@ -6,7 +6,7 @@ use leptos_use::core::Position;
 
 use crate::components::grid::core::{size::Size, span::Span};
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct GridPosition {
     pub col_start: usize,
     pub row_start: usize,

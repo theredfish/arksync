@@ -13,12 +13,14 @@ use leptos_use::core::Position;
 /// The preview is UI-only. It mirrors the snapped size that will be submitted
 /// to `Layout::resize_item_with_collision` when the resize ends, but it does
 /// not update the collision grid while the pointer is still moving.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ResizePreview {
     /// Item currently being resized.
     pub item_id: u32,
     /// Fixed top-left position used as the resize anchor.
     pub grid_pos: GridPosition,
+    /// Span used as the fixed compositor surface while the preview animates.
+    pub initial_span: Span,
     /// Snapped target span under the active resize gesture.
     pub span: Span,
 }
@@ -29,6 +31,7 @@ impl ResizePreview {
         Self {
             item_id,
             grid_pos,
+            initial_span: span,
             span,
         }
     }
@@ -36,19 +39,21 @@ impl ResizePreview {
     /// Creates a preview from the current resize pixel size.
     ///
     /// This keeps the preview math outside the component callbacks. The span is
-    /// snapped in the resize direction, then clamped to the remaining columns.
+    /// snapped to the nearest cell, then clamped to the remaining columns.
     pub fn from_resize(item: &GridItemData, size: Size, layout: &Layout) -> Self {
         let max_col_span = layout
             .columns
             .saturating_sub(item.grid_pos.col_start)
             .max(1);
-        let col_span =
-            directional_snap_span(size.width, item.span.col_span, layout.cell_size.width)
-                .min(max_col_span);
-        let row_span =
-            directional_snap_span(size.height, item.span.row_span, layout.cell_size.height);
+        let col_span = snap_resize_span(size.width, layout.cell_size.width).min(max_col_span);
+        let row_span = snap_resize_span(size.height, layout.cell_size.height);
 
-        Self::new(item.id, item.grid_pos, Span { row_span, col_span })
+        Self {
+            item_id: item.id,
+            grid_pos: item.grid_pos,
+            initial_span: item.span,
+            span: Span { row_span, col_span },
+        }
     }
 
     /// Converts the anchored grid span to a pixel rectangle.
@@ -66,24 +71,13 @@ impl ResizePreview {
     }
 }
 
-/// Snaps a resize dimension in the direction of the pointer movement.
+/// Snaps a resize dimension to the grid boundary closest to the pointer.
 ///
-/// Growing targets the next grid cell and shrinking targets the previous one,
-/// which makes previews and final sizes follow the resize direction instead of
-/// waiting for a half-cell `round()` threshold.
-pub fn directional_snap_span(raw_px: f64, current_span: usize, cell_px: f64) -> usize {
-    let raw_span = raw_px / cell_px;
-    let current_span = current_span.max(1) as f64;
-
-    let snapped_span = if raw_span > current_span {
-        raw_span.ceil()
-    } else if raw_span < current_span {
-        raw_span.floor()
-    } else {
-        current_span
-    };
-
-    (snapped_span as usize).max(1)
+/// A small movement (or a fractional CSS pixel) must not add or remove an
+/// entire cell. Preview and release share this half-cell threshold so the
+/// target stays within half a cell of the requested size, except at bounds.
+pub fn snap_resize_span(raw_px: f64, cell_px: f64) -> usize {
+    ((raw_px / cell_px).round() as usize).max(1)
 }
 
 #[cfg(test)]
@@ -115,11 +109,65 @@ mod tests {
     }
 
     #[test]
-    fn directional_snap_span_announces_growth_and_shrink_in_pointer_direction() {
-        assert_eq!(directional_snap_span(201.0, 2, 100.0), 3);
-        assert_eq!(directional_snap_span(199.0, 2, 100.0), 1);
-        assert_eq!(directional_snap_span(200.0, 2, 100.0), 2);
-        assert_eq!(directional_snap_span(1.0, 2, 100.0), 1);
+    fn small_pointer_movements_do_not_jump_a_cell() {
+        for raw_px in [199.0, 200.0, 201.0] {
+            assert_eq!(snap_resize_span(raw_px, 100.0), 2);
+        }
+        assert_eq!(snap_resize_span(1.0, 100.0), 1);
+    }
+
+    #[test]
+    fn resize_snaps_at_half_cell_boundaries_in_both_directions() {
+        for (raw_px, expected_span) in [
+            (249.0, 2),
+            (250.0, 3),
+            (351.0, 4),
+            (349.0, 3),
+            (200.0, 2),
+            (150.0, 2),
+            (149.0, 1),
+        ] {
+            assert_eq!(snap_resize_span(raw_px, 100.0), expected_span);
+        }
+    }
+
+    #[test]
+    fn fractional_cells_keep_the_untouched_axis_at_its_original_span() {
+        let layout = LayoutBuilder::default()
+            .columns(12)
+            .cell_size(111.7, 111.7)
+            .build();
+        let item = GridItemData {
+            span: Span {
+                col_span: 4,
+                row_span: 3,
+            },
+            ..item()
+        };
+
+        for offset in [-1.0, 0.0, 1.0] {
+            let preview = ResizePreview::from_resize(
+                &item,
+                Size {
+                    width: 4.0 * layout.cell_size.width + offset,
+                    height: 3.0 * layout.cell_size.height,
+                },
+                &layout,
+            );
+            assert_eq!(preview.span, item.span);
+            assert_eq!(preview.initial_span, item.span);
+        }
+
+        let preview = ResizePreview::from_resize(
+            &item,
+            Size {
+                width: 4.0 * layout.cell_size.width + 60.0,
+                height: 3.0 * layout.cell_size.height,
+            },
+            &layout,
+        );
+        assert_eq!(preview.span.col_span, 5);
+        assert_eq!(preview.span.row_span, 3);
     }
 
     #[test]
@@ -128,7 +176,7 @@ mod tests {
             &item(),
             Size {
                 width: 999.0,
-                height: 151.0,
+                height: 176.0,
             },
             &layout(),
         );

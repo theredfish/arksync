@@ -13,7 +13,7 @@ use leptos_use::core::Position;
 /// The preview is UI-only: it does not reserve cells in the collision grid and
 /// does not mutate item positions. The actual placement is still resolved by
 /// `Layout` when the drag ends.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DropPreview {
     /// Item currently driving the preview.
     pub item_id: u32,

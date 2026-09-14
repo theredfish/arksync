@@ -112,12 +112,14 @@ pub fn use_draggable_grid_item(
 
     let current_col_span_for_move = Arc::clone(&current_col_span);
     let current_col_span_for_end = Arc::clone(&current_col_span);
+    let dragging_element = handle.unwrap_or(element_ref);
 
     // Setup draggable with leptos-use
     let _ = use_draggable_with_options(
         element_ref,
         UseDraggableOptions::default()
             .handle(handle)
+            .dragging_element(dragging_element)
             .initial_value({
                 let pos = match drag_state.get_untracked() {
                     DragState::Dragging(p) | DragState::DragEnded(p) => p,
@@ -125,6 +127,10 @@ pub fn use_draggable_grid_item(
                 Position { x: pos.x, y: pos.y }
             })
             .on_start(move |drag_event| {
+                if let Some(target) = drag_event.event.current_target() {
+                    let target: web_sys::Element = target.unchecked_into();
+                    let _ = target.set_pointer_capture(drag_event.event.pointer_id());
+                }
                 drag_pointer_start.set(Some((
                     drag_event.event.client_x(),
                     drag_event.event.client_y(),
