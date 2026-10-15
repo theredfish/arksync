@@ -10,12 +10,12 @@ use crate::application::protocol::{
     ConfigApplied, ConfigRejected, RemoveActuator, RuntimeStatus,
 };
 use crate::rule_engine::{RuleEngine, SensorValue};
-use arksync_bus::{EventEnvelope, EventId, EventProducer, Timestamp};
+use arksync_bus::{EventEnvelope, EventId, EventPublisher, Timestamp};
 
 pub struct ActuatorService<'bus> {
     configs: Vec<ActuatorConfig>,
     rule_engine: RuleEngine,
-    event_producer: Option<EventProducer<'bus, ActuatorMessage>>,
+    event_publisher: Option<EventPublisher<'bus, ActuatorMessage>>,
     event_counter: u128,
 }
 
@@ -30,16 +30,16 @@ impl<'bus> ActuatorService<'bus> {
         Self {
             configs: Vec::new(),
             rule_engine: RuleEngine::new(),
-            event_producer: None,
+            event_publisher: None,
             event_counter: 0,
         }
     }
 
-    pub fn with_event_producer(
+    pub fn with_event_publisher(
         mut self,
-        event_producer: EventProducer<'bus, ActuatorMessage>,
+        event_publisher: EventPublisher<'bus, ActuatorMessage>,
     ) -> Self {
-        self.event_producer = Some(event_producer);
+        self.event_publisher = Some(event_publisher);
         self
     }
 
@@ -228,10 +228,10 @@ impl<'bus> ActuatorService<'bus> {
 
     fn emit(&mut self, occurred_at: Timestamp, event: ActuatorMessage) {
         self.event_counter = self.event_counter.wrapping_add(1);
-        let Some(event_producer) = &mut self.event_producer else {
+        let Some(event_publisher) = &mut self.event_publisher else {
             return;
         };
-        let _ = event_producer.publish(EventEnvelope::new_with_id(
+        let _ = event_publisher.publish(EventEnvelope::new_with_id(
             EventId::from_bytes(self.event_counter.to_be_bytes()),
             (),
             occurred_at,

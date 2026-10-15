@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use arksync_bus::{
-    EventBus, EventBusError, EventEnvelope, EventHandler, EventId, PostcardDecode, PostcardEncode,
-    Timestamp,
+    EventEnvelope, EventHandler, EventHandlerError, EventId, EventRouter, PostcardDecode,
+    PostcardEncode, Timestamp,
 };
 use arksync_sensor::infrastructure::events::{SensorEvent, SerialSensorPlugged};
 use arksync_sensor::serial_port::{SerialPortMetadata, DEFAULT_BAUD_RATE};
@@ -27,20 +27,20 @@ static KNOT_EVENTS: SensorEventChannel = Channel::new();
 struct ChannelHandler(Sender<'static, CriticalSectionRawMutex, SensorEventEnvelope, 1>);
 
 impl EventHandler<SensorEvent, TestSource> for ChannelHandler {
-    fn handle(&mut self, event: SensorEventEnvelope) -> Result<(), EventBusError> {
+    fn handle(&mut self, event: &SensorEventEnvelope) -> Result<(), EventHandlerError> {
         self.0
-            .try_send(event)
-            .map_err(|_| EventBusError::HandlerRejected)
+            .try_send(event.clone())
+            .map_err(|_| EventHandlerError::Rejected)
     }
 }
 
 struct TokioHandler(tokio::sync::mpsc::Sender<SensorEventEnvelope>);
 
 impl EventHandler<SensorEvent, TestSource> for TokioHandler {
-    fn handle(&mut self, event: SensorEventEnvelope) -> Result<(), EventBusError> {
+    fn handle(&mut self, event: &SensorEventEnvelope) -> Result<(), EventHandlerError> {
         self.0
-            .try_send(event)
-            .map_err(|_| EventBusError::HandlerRejected)
+            .try_send(event.clone())
+            .map_err(|_| EventHandlerError::Rejected)
     }
 }
 
@@ -62,9 +62,9 @@ fn sensor_event() -> SensorEventEnvelope {
 }
 
 #[test]
-fn sends_sensor_event_through_embassy_local_event_bus() {
-    let mut bus = EventBus::new();
-    bus.subscribe_where(
+fn sends_sensor_event_through_embassy_local_event_router() {
+    let mut router = EventRouter::new();
+    router.subscribe_where(
         |event: &SensorEventEnvelope| {
             matches!(
                 event.payload,
@@ -75,18 +75,18 @@ fn sends_sensor_event_through_embassy_local_event_bus() {
     );
     let event = sensor_event();
 
-    let delivered = bus.producer().publish(event.clone()).unwrap();
+    let report = router.publish(&event);
     let received = SENSOR_EVENTS.receiver().try_receive().unwrap();
 
-    assert_eq!(delivered, 1);
+    assert_eq!(report.delivered, 1);
     assert_eq!(received, event);
 }
 
 #[tokio::test]
-async fn sends_sensor_event_through_tokio_local_event_bus() {
+async fn sends_sensor_event_through_tokio_local_event_router() {
     let (hub_tx, mut hub_rx) = tokio::sync::mpsc::channel(1);
-    let mut bus = EventBus::new();
-    bus.subscribe_where(
+    let mut router = EventRouter::new();
+    router.subscribe_where(
         |event: &SensorEventEnvelope| {
             matches!(
                 event.payload,
@@ -97,10 +97,10 @@ async fn sends_sensor_event_through_tokio_local_event_bus() {
     );
     let event = sensor_event();
 
-    let delivered = bus.producer().publish(event.clone()).unwrap();
+    let report = router.publish(&event);
     let received = hub_rx.recv().await.unwrap();
 
-    assert_eq!(delivered, 1);
+    assert_eq!(report.delivered, 1);
     assert_eq!(received, event);
 }
 
@@ -123,11 +123,11 @@ async fn bridges_embassy_knot_channel_to_tokio_hub_channel() {
         hub_tx
             .send(event)
             .await
-            .map_err(|_| EventBusError::HandlerRejected)
+            .map_err(|_| EventHandlerError::Rejected)
     });
 
-    let mut knot_bus = EventBus::new();
-    knot_bus.subscribe_where(
+    let mut knot_router = EventRouter::new();
+    knot_router.subscribe_where(
         |event: &SensorEventEnvelope| {
             matches!(
                 event.payload,
@@ -138,11 +138,11 @@ async fn bridges_embassy_knot_channel_to_tokio_hub_channel() {
     );
     let event = sensor_event();
 
-    let delivered = knot_bus.producer().publish(event.clone()).unwrap();
+    let report = knot_router.publish(&event);
     let received = hub_rx.recv().await.unwrap();
     let bridged = bridge.await.unwrap();
 
-    assert_eq!(delivered, 1);
+    assert_eq!(report.delivered, 1);
     assert_eq!(received, event);
     assert_eq!(bridged, Ok(()));
 }

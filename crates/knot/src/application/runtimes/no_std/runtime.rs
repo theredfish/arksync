@@ -7,11 +7,13 @@ use alloc::vec::Vec;
 use core::marker::PhantomData;
 #[cfg(feature = "knot-nostd-runtime")]
 use {
-    crate::application::{KnotConfig, KnotMessage, KnotSensorBinding},
+    crate::application::{
+        LegacyKnotActuatorConfig, LegacyKnotActuatorMessage, LegacyKnotSensorBinding,
+    },
     alloc::string::String,
     arksync_actuator::application::protocol::{ActuatorConfig, ActuatorMessage, AddActuator},
     arksync_actuator::services::ActuatorService,
-    arksync_bus::{EventProducer, Timestamp},
+    arksync_bus::{EventPublisher, Timestamp},
 };
 
 /// Errors returned by the platform-agnostic Knot runtime command handler.
@@ -42,7 +44,7 @@ pub struct KnotRuntime<'bus> {
     #[cfg(feature = "knot-nostd-runtime")]
     hardware_uid: Option<String>,
     #[cfg(feature = "knot-nostd-runtime")]
-    sensor_bindings: Vec<KnotSensorBinding>,
+    sensor_bindings: Vec<LegacyKnotSensorBinding>,
     #[cfg(feature = "knot-nostd-runtime")]
     actuator_service: ActuatorService<'bus>,
 }
@@ -73,11 +75,11 @@ impl<'bus> KnotRuntime<'bus> {
     /// provides the producer so emitted actuator status can be transported by
     /// Tokio, Embassy, MQTT, or another bus adapter.
     #[cfg(feature = "knot-nostd-runtime")]
-    pub fn with_actuator_event_producer(
+    pub fn with_actuator_event_publisher(
         mut self,
-        event_producer: EventProducer<'bus, ActuatorMessage>,
+        event_publisher: EventPublisher<'bus, ActuatorMessage>,
     ) -> Self {
-        self.actuator_service = self.actuator_service.with_event_producer(event_producer);
+        self.actuator_service = self.actuator_service.with_event_publisher(event_publisher);
         self
     }
 
@@ -106,7 +108,7 @@ impl<'bus> KnotRuntime<'bus> {
 
     /// Observes one local sensor value by device UID for actuator rule evaluation.
     ///
-    /// The runtime uses the hub-provided sensor bindings from `KnotConfig` to
+    /// The runtime uses the hub-provided sensor bindings from the applied config to
     /// translate the physical sensor device UID into the stable `sensor_id`
     /// referenced by rules.
     #[cfg(feature = "knot-nostd-runtime")]
@@ -147,18 +149,19 @@ impl<'bus> KnotRuntime<'bus> {
     /// `Actuator` applies a direct actuator command such as enable/disable, and
     /// `Hello` is ignored because it is produced by concrete runtimes.
     #[cfg(feature = "knot-nostd-runtime")]
-    pub fn handle_knot_message(
+    pub fn handle_legacy_actuator_message(
         &mut self,
-        event: KnotMessage,
+        event: LegacyKnotActuatorMessage,
         occurred_at: Timestamp,
     ) -> Result<(), KnotRuntimeError> {
         match event {
-            KnotMessage::Ack(ack) => self.apply_actuator_config(ack.config, occurred_at),
-            KnotMessage::Actuator(message) => {
+            LegacyKnotActuatorMessage::ApplyConfig(config) => {
+                self.apply_actuator_config(config, occurred_at)
+            }
+            LegacyKnotActuatorMessage::Actuator(message) => {
                 self.actuator_service.handle_message(message, occurred_at);
                 Ok(())
             }
-            KnotMessage::Hello(_) => Ok(()),
         }
     }
 
@@ -193,7 +196,7 @@ impl<'bus> KnotRuntime<'bus> {
     #[cfg(feature = "knot-nostd-runtime")]
     fn apply_actuator_config(
         &mut self,
-        config: KnotConfig,
+        config: LegacyKnotActuatorConfig,
         occurred_at: Timestamp,
     ) -> Result<(), KnotRuntimeError> {
         let Some(hardware_uid) = &self.hardware_uid else {

@@ -237,6 +237,7 @@ dependencies = [
  "arksync-db",
  "arksync-knot",
  "arksync-macros",
+ "arksync-protocol",
  "arksync-sensor",
  "arksync-testing",
  "arksync-utils",
@@ -247,6 +248,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -256,11 +258,13 @@ dependencies = [
  "arksync-actuator",
  "arksync-bus",
  "arksync-macros",
+ "arksync-protocol",
  "arksync-sensor",
  "arksync-utils",
  "log",
  "serde",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -273,6 +277,16 @@ dependencies = [
  "serde",
  "syn 2.0.117",
  "uuid",
+]
+
+[[package]]
+name = "arksync-protocol"
+version = "0.1.0"
+dependencies = [
+ "arksync-bus",
+ "arksync-config",
+ "postcard",
+ "serde",
 ]
 
 [[package]]

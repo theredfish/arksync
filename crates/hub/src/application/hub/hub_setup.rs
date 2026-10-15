@@ -27,6 +27,10 @@ pub async fn setup_local_station(txn: &mut PgTransaction<'_>) -> Result<(), sqlx
         hardware_uid: CONFIG.local_knot_hardware_uid.clone(),
         role: "local_hub".to_string(),
         status: "awake".to_string(),
+        config_version: 1,
+        applied_config_version: None,
+        config_status: "pending".to_string(),
+        config_error: None,
     };
 
     hub_store::upsert_system_user(&mut **txn, &user).await?;

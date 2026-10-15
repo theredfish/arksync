@@ -20,7 +20,7 @@ flowchart LR
         Postgres[("PostgreSQL")]
 
         LocalSensors --> LocalKnot
-        LocalKnot -->|"In-process event bus"| Hub
+        LocalKnot <-->|"Knot protocol<br/>Tokio message link"| Hub
         Hub <--> Postgres
         Dashboard <--> Hub
     end
@@ -49,3 +49,5 @@ PostgreSQL is the Hub's persistent source of truth. It stores station identities
 ## Dashboard
 
 The dashboard is the user-facing projection of Hub state. It obtains persisted measurements and configuration through Hub application workflows and can later consume realtime updates without becoming responsible for hardware communication or domain rules.
+
+Continue with [event messaging](event-messaging.md) for the protocol, delivery semantics, and runtime boundaries used between Hubs and Knots.

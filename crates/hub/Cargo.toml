@@ -10,10 +10,11 @@ uuid-v4 = ["arksync-utils/uuid-v4"]
 
 [dependencies]
 arksync-actuator.workspace = true
-arksync-bus.workspace = true
+arksync-bus = { workspace = true, features = ["uuid-v4"] }
 arksync-config.workspace = true
 arksync-db.workspace = true
-arksync-knot = { workspace = true, features = ["knot-tokio-runtime"] }
+arksync-knot = { workspace = true, features = ["knot-tokio-runtime", "uuid-v4"] }
+arksync-protocol.workspace = true
 arksync-macros.workspace = true
 arksync-sensor.workspace = true
 arksync-utils.workspace = true
@@ -24,6 +25,7 @@ serde_json.workspace = true
 log.workspace = true
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid", "json"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
+tokio-util.workspace = true
 
 [dev-dependencies]
 arksync-testing.workspace = true

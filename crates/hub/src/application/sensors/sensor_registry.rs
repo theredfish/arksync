@@ -60,4 +60,28 @@ impl SensorRegistry {
 
         Ok(registered_sensor.id)
     }
+
+    pub fn sensor_id(&self, station_knot_id: Uuid, device_uid: &str) -> Option<SensorId> {
+        self.sensors_by_device_uid
+            .get(&SensorIdentityKey {
+                station_knot_id,
+                device_uid: device_uid.to_string(),
+            })
+            .copied()
+    }
+
+    pub fn remember_sensor(
+        &mut self,
+        station_knot_id: Uuid,
+        device_uid: String,
+        sensor_id: SensorId,
+    ) {
+        self.sensors_by_device_uid.insert(
+            SensorIdentityKey {
+                station_knot_id,
+                device_uid,
+            },
+            sensor_id,
+        );
+    }
 }

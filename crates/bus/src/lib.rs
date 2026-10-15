@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Shared EventBus infrastructure between ArkSync bounded contexts.
+//! Shared event routing infrastructure between ArkSync bounded contexts.
 //!
 //! Bounded contexts own their event payload definitions. This crate owns the
 //! generic envelope, subscription, handler, and codec mechanics used to move
@@ -59,11 +59,11 @@ mod tests {
     }
 
     #[test]
-    fn event_bus_delivers_matching_events() {
-        let mut bus = EventBus::new();
-        bus.subscribe_where(
+    fn event_router_delivers_matching_events() {
+        let mut router = EventRouter::new();
+        router.subscribe_where(
             |event: &EventEnvelope<TestEvent>| matches!(event.payload, TestEvent::Observed { .. }),
-            |_event: EventEnvelope<TestEvent>| Ok(()),
+            |_event: &EventEnvelope<TestEvent>| Ok(()),
         );
         let event = EventEnvelope::new_with_id(
             EventId::from_bytes([1; 16]),
@@ -74,17 +74,19 @@ mod tests {
             },
         );
 
-        let delivered = bus.publish(event).unwrap();
+        let report = router.publish(&event);
 
-        assert_eq!(delivered, 1);
+        assert_eq!(report.matched, 1);
+        assert_eq!(report.delivered, 1);
+        assert_eq!(report.rejected, 0);
     }
 
     #[test]
-    fn event_bus_skips_filtered_events() {
-        let mut bus = EventBus::new();
-        bus.subscribe_where(
+    fn event_router_skips_filtered_events() {
+        let mut router = EventRouter::new();
+        router.subscribe_where(
             |event: &EventEnvelope<TestEvent>| matches!(event.payload, TestEvent::Observed { .. }),
-            |_event: EventEnvelope<TestEvent>| Ok(()),
+            |_event: &EventEnvelope<TestEvent>| Ok(()),
         );
         let event = EventEnvelope::new_with_id(
             EventId::from_bytes([1; 16]),
@@ -93,15 +95,15 @@ mod tests {
             TestEvent::Ignored,
         );
 
-        let delivered = bus.publish(event).unwrap();
+        let report = router.publish(&event);
 
-        assert_eq!(delivered, 0);
+        assert_eq!(report, DispatchReport::default());
     }
 
     #[test]
-    fn event_bus_delivers_all_events_with_unit_filter() {
-        let mut bus = EventBus::new();
-        bus.subscribe(|_event: EventEnvelope<TestEvent>| Ok(()));
+    fn event_router_delivers_all_events_with_unit_filter() {
+        let mut router = EventRouter::new();
+        router.subscribe(|_event: &EventEnvelope<TestEvent>| Ok(()));
         let event = EventEnvelope::new_with_id(
             EventId::from_bytes([1; 16]),
             (),
@@ -109,9 +111,28 @@ mod tests {
             TestEvent::Ignored,
         );
 
-        let delivered = bus.publish(event).unwrap();
+        let report = router.publish(&event);
 
-        assert_eq!(delivered, 1);
+        assert_eq!(report.delivered, 1);
+    }
+
+    #[test]
+    fn event_router_continues_after_a_handler_rejects_an_event() {
+        let mut router = EventRouter::new();
+        router.subscribe(|_event: &EventEnvelope<TestEvent>| Err(EventHandlerError::Rejected));
+        router.subscribe(|_event: &EventEnvelope<TestEvent>| Ok(()));
+        let event = EventEnvelope::new_with_id(
+            EventId::from_bytes([1; 16]),
+            (),
+            timestamp(1_779_840_000_000),
+            TestEvent::Ignored,
+        );
+
+        let report = router.publish(&event);
+
+        assert_eq!(report.matched, 2);
+        assert_eq!(report.delivered, 1);
+        assert_eq!(report.rejected, 1);
     }
 
     #[test]

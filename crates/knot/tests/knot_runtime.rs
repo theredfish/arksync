@@ -12,7 +12,9 @@ use {
         ActuatorProtocol, GpioActuatorConnection,
     },
     arksync_bus::Timestamp,
-    arksync_knot::application::{KnotAck, KnotConfig, KnotMessage},
+    arksync_knot::application::{
+        LegacyKnotActuatorConfig, LegacyKnotActuatorMessage, LegacyKnotSensorBinding,
+    },
     arksync_knot::domain::KnotId,
 };
 
@@ -89,14 +91,12 @@ fn knot_runtime_applies_actuator_config_ack() {
     let mut runtime = KnotRuntime::new().with_hardware_uid("knot-rpi-1".to_string());
 
     runtime
-        .handle_knot_message(
-            KnotMessage::Ack(KnotAck {
-                config: KnotConfig {
-                    hardware_uid: "knot-rpi-1".to_string(),
-                    knot_id: KnotId::from_bytes([2; 16]),
-                    sensor_bindings: vec![],
-                    actuator_configs: vec![config.clone()],
-                },
+        .handle_legacy_actuator_message(
+            LegacyKnotActuatorMessage::ApplyConfig(LegacyKnotActuatorConfig {
+                hardware_uid: "knot-rpi-1".to_string(),
+                knot_id: KnotId::from_bytes([2; 16]),
+                sensor_bindings: vec![],
+                actuator_configs: vec![config.clone()],
             }),
             timestamp(),
         )
@@ -109,14 +109,12 @@ fn knot_runtime_applies_actuator_config_ack() {
 #[test]
 fn knot_runtime_rejects_actuator_config_for_another_hardware_uid() {
     let mut runtime = KnotRuntime::new().with_hardware_uid("knot-rpi-1".to_string());
-    let result = runtime.handle_knot_message(
-        KnotMessage::Ack(KnotAck {
-            config: KnotConfig {
-                hardware_uid: "another-knot".to_string(),
-                knot_id: KnotId::from_bytes([2; 16]),
-                sensor_bindings: vec![],
-                actuator_configs: vec![actuator_config("relay-config-1")],
-            },
+    let result = runtime.handle_legacy_actuator_message(
+        LegacyKnotActuatorMessage::ApplyConfig(LegacyKnotActuatorConfig {
+            hardware_uid: "another-knot".to_string(),
+            knot_id: KnotId::from_bytes([2; 16]),
+            sensor_bindings: Vec::<LegacyKnotSensorBinding>::new(),
+            actuator_configs: vec![actuator_config("relay-config-1")],
         }),
         timestamp(),
     );
