@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e873a239.js";
+            window.path_to_searchindex_js = "searchindex-1f84b57a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-736c1d48.js"></script>
@@ -282,9 +282,24 @@
 
 <p>A new Knot announces its stable hardware UID in <code>Hello</code>. The Hub registers unknown hardware by default and returns the current configuration in <code>Ack::Hello</code>. The configuration contains the logical Knot ID, sensor bindings, actuator configuration, and a monotonically increasing version.</p>
 <p>The Hub can later send <code>Configure</code> without restarting the handshake. The Knot answers with <code>ConfigApplied</code> or <code>ConfigRejected</code>; both responses correlate the configuration message through its <code>EventId</code>.</p>
+<p>Before sending configuration through <code>Ack::Hello</code> or <code>Configure</code>, the Hub records the issued <code>EventId</code>, Knot identity, version, and content in <code>knot_config_deliveries</code>. A confirmation must match that delivery and cannot contradict its previously accepted outcome. Late confirmations cannot decrease the applied version or replace the status of a newer desired version. Rejection preserves the last applied version, and startup preserves configuration state. The Knot rejects zero or older versions, identity changes, and different content with the same version.</p>
+<h2 id="local-sessions-and-presence"><a class="header" href="#local-sessions-and-presence">Local Sessions And Presence</a></h2>
+<p><code>TokioKnotSession</code> and <code>HubSession</code> run this exchange over the local bounded link without starting any sensor or actuator driver. Each <code>HubSession</code> manages communication with one Knot. Callers attach <code>EventRouter</code> subscribers before starting either session, publish through a session handle, and observe the latest connection state through <code>status()</code>. The production runtimes use these same sessions.</p>
+<p>After the Hello acknowledgement, the Knot sends <code>Heartbeat</code> probes, answered by a correlated <code>Ack::Heartbeat</code>. The default interval is five seconds, with a fifteen-second expiry, configurable through <code>KeepAliveConfig</code>. Each session tracks elapsed monotonic time; message timestamps remain wall-clock acquisition times. Heartbeats do not insert durable processing receipts or create sensors or measurements.</p>
+<p>Connection state is volatile and distinct from the persisted Knot identity:</p>
+<ul>
+<li><code>Connecting</code>: waiting for the handshake;</li>
+<li><code>Connected</code>: the Hub has accepted the Knot, or the Knot has received a correlated acknowledgement;</li>
+<li><code>Unavailable</code>: no qualifying traffic within the expiry period;</li>
+<li><code>Closed</code>: the local endpoint closed or the session was explicitly stopped.</li>
+</ul>
+<p>The Knot binds to the Hub identified by its Hello acknowledgement. The Hub binds its endpoint to the announcing hardware UID. Expiry preserves the current configuration; subsequent valid traffic on the same open session restores presence. A closed endpoint requires a new session. Recreating both local endpoints and sending a new Hello retrieves the same persisted Knot ID and latest configuration. Automatic supervision and network reconnection are not implemented yet.</p>
+<p>Sending does not await a full transport while holding up ACK reception. The Knot advances retry time only after a successful send and retains pending reliable messages when the link is full. Heartbeat probes are bounded to one pending request and are replaced after expiry. The Hub bounds its response queue and pauses incoming processing when that queue fills; cancellation and presence expiry remain scheduled, including while a transactional handler awaits PostgreSQL. Handler execution has a five-second deadline. A timeout produces no ACK, allowing the sender to retry.</p>
+<p>Session handles provide local queue acceptance, not end-to-end delivery confirmation. The Knot handle’s nonblocking publish returns an unsent message on saturation. The current hardware adapter logs and discards a sensor message that cannot enter this queue; live-data prioritization and coalescing belong to the next sensor milestone. The Hub handle accepts <code>Configure</code> commands for its established peer, waits for queue capacity, and registers each delivery before enqueueing it. The legacy hardware services remain running if the communication session closes, with their last applied configuration; explicit runtime shutdown stops their parent tasks. The sensor service’s internal task shutdown is a separate lifecycle improvement.</p>
 <h2 id="sensor-messages"><a class="header" href="#sensor-messages">Sensor Messages</a></h2>
 <p>Sensor discovery, provisioning conflicts, provisioning, and measurements use <code>KnotSensorMessage</code>. Measurements are batched at the protocol level even though the current UART runtime emits one measurement per batch.</p>
 <p>The Hub records a processing receipt and all business effects in one database transaction. It sends <code>Ack::Processed</code> only after the transaction commits. Receiving the same <code>EventId</code> again produces another ACK without duplicating sensor registration or measurements.</p>
+<p>An invalid sensor identity produces a terminal <code>InvalidPayload</code> NACK. The whole batch rolls back, including its receipt and sensor registrations; the registry cache changes only after commit. Database failures remain retryable and produce no ACK.</p>
 <h2 id="retry-and-failure-semantics"><a class="header" href="#retry-and-failure-semantics">Retry And Failure Semantics</a></h2>
 <p>Messages that require confirmation remain in the Knot’s bounded in-memory outbox. The default policy is:</p>
 <ul>
@@ -294,8 +309,9 @@
 <li>no retry limit.</li>
 </ul>
 <p>A retry preserves the original envelope and <code>EventId</code>. A corrected or logically new message receives a new <code>EventId</code>. Transport failures and Hub infrastructure failures produce no ACK, so the normal retry schedule applies.</p>
+<p>The Hub also retains up to 100 pending <code>Configure</code> commands with the same retry delays, until a correlated <code>ConfigApplied</code> or <code>ConfigRejected</code> is committed. ACKs have transport priority so the Knot can drain its outbox. If that outbox is full, configuration remains unchanged until a later retry can enqueue its confirmation. Repeated commands reuse an already-pending identical confirmation.</p>
 <p>A retryable NACK reschedules the same message immediately. A terminal NACK removes it from the outbox. Outbox exhaustion is explicit and observable rather than silently dropping a message.</p>
-<p>The V1 outbox is volatile and does not survive an embedded-device reboot. Flash-backed persistence is a future extension.</p>
+<p>The V1 outbox is volatile and does not survive an embedded-device reboot. Closing a Tokio session also discards its pending outbox; recreating an endpoint currently restores identity and configuration, not pending delivery. Flash-backed persistence and outbox handoff across sessions are future extensions.</p>
 <h2 id="router-link-and-transport"><a class="header" href="#router-link-and-transport">Router, Link, And Transport</a></h2>
 <p>These concepts have separate roles:</p>
 <ul>
