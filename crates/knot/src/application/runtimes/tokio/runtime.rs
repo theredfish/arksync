@@ -3,18 +3,20 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use std::string::String;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use arksync_bus::{EventId, Timestamp};
+use arksync_bus::Timestamp;
 use arksync_protocol::knot::{KnotCapabilities, KnotEnvelope, KnotMessage as ProtocolKnotMessage};
 use arksync_sensor::infrastructure::events::SensorEvent;
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 
 use crate::application::runtimes::tokio::actuator_config_mapper::legacy_actuator_config;
 use crate::application::runtimes::tokio::sensor_message_mapper::knot_sensor_message;
 use crate::application::{
-    KnotProtocolRuntime, LegacyKnotActuatorEnvelope, LegacyKnotActuatorMessage, MessageLink,
-    RetryPolicy, TokioKnotActuatorInput, TokioKnotActuatorService, TokioKnotSensorService,
+    KeepAliveConfig, LegacyKnotActuatorEnvelope, LegacyKnotActuatorMessage, RetryPolicy,
+    TokioKnotActuatorInput, TokioKnotActuatorService, TokioKnotSensorService, TokioKnotSession,
     TokioMessageLink,
 };
 
@@ -26,6 +28,8 @@ pub struct TokioKnotRuntimeConfig {
     pub capabilities: KnotCapabilities,
     /// Retry and capacity policy for messages awaiting Hub acknowledgement.
     pub retry_policy: RetryPolicy,
+    /// Application heartbeat interval and communication timeout for this session.
+    pub keep_alive_config: KeepAliveConfig,
 }
 
 /// Tokio runner for the portable Knot protocol and local hardware services.
@@ -39,19 +43,42 @@ pub struct TokioKnotRuntime;
 impl TokioKnotRuntime {
     pub async fn run(
         config: TokioKnotRuntimeConfig,
-        mut protocol_link: TokioMessageLink<KnotEnvelope>,
+        protocol_link: TokioMessageLink<KnotEnvelope>,
         legacy_actuator_event_tx: mpsc::Sender<LegacyKnotActuatorEnvelope>,
     ) {
+        Self::run_until(
+            config,
+            protocol_link,
+            legacy_actuator_event_tx,
+            CancellationToken::new(),
+        )
+        .await;
+    }
+
+    /// Starts hardware independently from the session; only explicit shutdown stops it.
+    pub async fn run_until(
+        config: TokioKnotRuntimeConfig,
+        protocol_link: TokioMessageLink<KnotEnvelope>,
+        legacy_actuator_event_tx: mpsc::Sender<LegacyKnotActuatorEnvelope>,
+        shutdown: CancellationToken,
+    ) {
+        let _shutdown_on_drop = shutdown.clone().drop_guard();
         let hardware_uid = config.hardware_uid.clone();
         let actuator_hardware_uid = hardware_uid.clone();
+        let session = TokioKnotSession::new(config, protocol_link);
+        let session_handle = session.handle();
+        let mut status = session_handle.status();
+        let mut session_task = tokio::spawn(session.run(shutdown.clone()));
+        let mut session_running = true;
         let (sensor_event_tx, mut sensor_event_rx) = mpsc::channel(100);
         let (actuator_input_tx, actuator_input_rx) = mpsc::channel(100);
-        let sensor_task = tokio::spawn(async move {
+        let mut hardware_tasks = JoinSet::new();
+        hardware_tasks.spawn(async move {
             TokioKnotSensorService::with_event_sender(sensor_event_tx)
                 .run()
                 .await;
         });
-        let actuator_task = tokio::spawn(async move {
+        hardware_tasks.spawn(async move {
             TokioKnotActuatorService::with_channels(
                 actuator_input_rx,
                 legacy_actuator_event_tx,
@@ -61,93 +88,44 @@ impl TokioKnotRuntime {
             .await;
         });
 
-        let started_at = Instant::now();
-        let mut protocol_runtime = KnotProtocolRuntime::new(
-            hardware_uid.clone(),
-            config.capabilities,
-            config.retry_policy,
-        );
-        if let Err(error) = protocol_runtime.start(EventId::new(), timestamp_now(), 0) {
-            log::error!("Knot failed to queue Hello message: {error:?}");
-            sensor_task.abort();
-            actuator_task.abort();
-            return;
-        }
-
-        let mut retry_tick = tokio::time::interval(Duration::from_millis(100));
+        let mut last_config = None;
         loop {
-            flush_due_messages(
-                &mut protocol_runtime,
-                &mut protocol_link,
-                elapsed_millis(started_at),
-            )
-            .await;
-
             tokio::select! {
+                _ = shutdown.cancelled() => break,
                 Some(sensor_event) = sensor_event_rx.recv() => {
                     observe_actuator_sensor_value(&actuator_input_tx, &sensor_event.payload).await;
-                    let occurred_at = sensor_event.occurred_at;
                     let message = ProtocolKnotMessage::Sensor(knot_sensor_message(sensor_event.payload));
-                    if let Err(error) = protocol_runtime.publish(
-                        message,
-                        EventId::new(),
-                        occurred_at,
-                        elapsed_millis(started_at),
-                    ) {
-                        log::error!("Knot failed to queue sensor message: {error:?}");
+                    // Hardware execution must not wait for space in the protocol outbox.
+                    if let Err(error) = session_handle.try_publish_at(message, sensor_event.occurred_at) {
+                        log::warn!("Knot could not queue sensor message: {error}");
                     }
                 }
-                message = protocol_link.receive() => {
-                    let message = match message {
-                        Ok(Some(message)) => message,
-                        Ok(None) => break,
-                        Err(error) => {
-                            log::error!("Knot protocol link failed: {error:?}");
-                            continue;
-                        }
-                    };
-                    let previous_config = protocol_runtime.config().cloned();
-                    if let Err(error) = protocol_runtime.receive(
-                        &message,
-                        EventId::new(),
-                        timestamp_now(),
-                        elapsed_millis(started_at),
-                    ) {
-                        log::debug!("Knot rejected protocol message: {error:?}");
-                        continue;
-                    }
-
-                    let applied_config = protocol_runtime.config();
-                    if applied_config != previous_config.as_ref() {
-                        if let Some(config) = applied_config {
-                            let config = legacy_actuator_config(hardware_uid.clone(), config);
+                Ok(()) = status.changed(), if session_running => {
+                    let applied_config = status.borrow_and_update().config.clone();
+                    if let Some(config) = applied_config {
+                        if last_config.as_ref() != Some(&config) {
+                            let legacy = legacy_actuator_config(hardware_uid.clone(), &config);
                             let _ = actuator_input_tx
                                 .send(TokioKnotActuatorInput::Message(
-                                    LegacyKnotActuatorMessage::ApplyConfig(config),
+                                    LegacyKnotActuatorMessage::ApplyConfig(legacy),
                                 ))
                                 .await;
+                            last_config = Some(config);
                         }
                     }
                 }
-                _ = retry_tick.tick() => {}
+                result = &mut session_task, if session_running => {
+                    log::warn!("Knot protocol session stopped; hardware remains running: {result:?}");
+                    session_running = false;
+                }
                 else => break,
             }
         }
 
-        sensor_task.abort();
-        actuator_task.abort();
-    }
-}
-
-async fn flush_due_messages(
-    runtime: &mut KnotProtocolRuntime,
-    link: &mut TokioMessageLink<KnotEnvelope>,
-    now_ms: u64,
-) {
-    for message in runtime.due_messages(now_ms) {
-        if link.send(message).await.is_err() {
-            log::debug!("Knot protocol link receiver is unavailable");
-            break;
+        hardware_tasks.shutdown().await;
+        if session_running {
+            session_task.abort();
+            let _ = session_task.await;
         }
     }
 }
@@ -168,15 +146,11 @@ async fn observe_actuator_sensor_value(
         .await;
 }
 
-fn timestamp_now() -> Timestamp {
+pub(super) fn timestamp_now() -> Timestamp {
     let unix_millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as i64)
         .unwrap_or_default();
 
     Timestamp::from_unix_millis(unix_millis)
-}
-
-fn elapsed_millis(started_at: Instant) -> u64 {
-    started_at.elapsed().as_millis() as u64
 }

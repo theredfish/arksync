@@ -4,13 +4,13 @@
 
 use alloc::vec::Vec;
 use arksync_bus::EventId;
-use arksync_protocol::knot::{KnotEnvelope, KnotNack};
+use arksync_protocol::knot::{KnotEnvelope, KnotMessage, KnotNack};
 
 pub const DEFAULT_OUTBOX_CAPACITY: usize = 256;
 pub const DEFAULT_INITIAL_RETRY_DELAY_MS: u64 = 1_000;
 pub const DEFAULT_MAX_RETRY_DELAY_MS: u64 = 30_000;
 
-/// Capacity and exponential retry delays for the volatile Knot outbox.
+/// Capacity and exponential retry delays for a volatile Hub/Knot outbox.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RetryPolicy {
     pub initial_delay_ms: u64,
@@ -42,7 +42,7 @@ struct PendingMessage {
     next_attempt_at_ms: u64,
 }
 
-/// Bounded in-memory queue for messages awaiting Hub acknowledgement.
+/// Bounded in-memory queue for envelopes awaiting peer confirmation.
 pub struct KnotOutbox {
     pending: Vec<PendingMessage>,
     policy: RetryPolicy,
@@ -96,6 +96,57 @@ impl KnotOutbox {
                 Some(pending.envelope.clone())
             })
             .collect()
+    }
+
+    /// Peeks without advancing retry time. A full transport has not sent anything.
+    pub fn next_due_message(&self, now_ms: u64) -> Option<&KnotEnvelope> {
+        self.pending
+            .iter()
+            .find(|pending| pending.next_attempt_at_ms <= now_ms)
+            .map(|pending| &pending.envelope)
+    }
+
+    pub fn mark_sent(&mut self, event_id: EventId, now_ms: u64) {
+        if let Some(pending) = self.pending.iter_mut().find(|p| p.envelope.id == event_id) {
+            pending.attempts = pending.attempts.saturating_add(1);
+            pending.next_attempt_at_ms =
+                now_ms.saturating_add(retry_delay_ms(self.policy, pending.attempts));
+        }
+    }
+
+    /// Replaces a confirmed request with its follow-up without needing another slot.
+    pub fn replace(
+        &mut self,
+        request_id: EventId,
+        envelope: KnotEnvelope,
+        now_ms: u64,
+    ) -> Result<(), KnotOutboxError> {
+        if self.pending.iter().any(|p| p.envelope.id == envelope.id) {
+            return Err(KnotOutboxError::DuplicateEventId);
+        }
+        if let Some(pending) = self
+            .pending
+            .iter_mut()
+            .find(|p| p.envelope.id == request_id)
+        {
+            *pending = PendingMessage {
+                envelope,
+                attempts: 0,
+                next_attempt_at_ms: now_ms,
+            };
+            return Ok(());
+        }
+        self.enqueue(envelope, now_ms)
+    }
+
+    pub fn has_capacity(&self) -> bool {
+        self.pending.len() < self.policy.capacity
+    }
+
+    pub fn contains_payload(&self, payload: &KnotMessage) -> bool {
+        self.pending
+            .iter()
+            .any(|pending| pending.envelope.payload == *payload)
     }
 
     pub fn acknowledge(&mut self, event_id: EventId) -> bool {

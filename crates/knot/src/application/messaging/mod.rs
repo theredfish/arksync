@@ -5,7 +5,9 @@
 mod knot_protocol_runtime;
 mod message_link;
 mod outbox;
+mod presence;
 
 pub use knot_protocol_runtime::*;
 pub use message_link::*;
 pub use outbox::*;
+pub use presence::*;

@@ -58,7 +58,10 @@ pub(super) async fn handle_knot_sensor_protocol(
 
     let knot = knot_store::station_knot_by_hardware_uid(&mut *txn, hardware_uid)
         .await
-        .map_err(|error| eyre!("failed to load Knot for sensor message: {error:?}"))?;
+        .map_err(|error| match error {
+            knot_store::KnotStoreError::NotFound => eyre::Report::new(InvalidSensorPayload),
+            error => eyre!("failed to load Knot for sensor message: {error:?}"),
+        })?;
     let source = knot_source(&knot);
     let mut projected_events = Vec::new();
     let mut remembered_sensors = Vec::new();
@@ -245,8 +248,19 @@ fn measurement_unit(unit: KnotMeasurementUnit) -> MeasurementUnit {
     }
 }
 
+#[derive(Debug)]
+pub(super) struct InvalidSensorPayload;
+
+impl core::fmt::Display for InvalidSensorPayload {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str("invalid Knot sensor payload")
+    }
+}
+
+impl std::error::Error for InvalidSensorPayload {}
+
 fn device_uid(value: &str) -> Result<DeviceUid> {
-    DeviceUid::try_from(value).map_err(|error| eyre!("invalid sensor device UID: {error}"))
+    DeviceUid::try_from(value).map_err(|_| InvalidSensorPayload.into())
 }
 
 fn sensor_message_kind(message: &KnotSensorMessage) -> &'static str {

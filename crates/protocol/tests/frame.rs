@@ -4,7 +4,7 @@
 
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_protocol::knot::{
-    KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
+    KnotAck, KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
 };
 use arksync_protocol::{decode_frame, encode_frame, ArkSyncActor, ProtocolFrameError, CONFIG};
 
@@ -40,6 +40,26 @@ fn frame_round_trips_a_hello_message() {
     assert_eq!(&frame[..config.frame_magic.len()], config.frame_magic);
     assert_eq!(frame[config.frame_magic.len()], config.protocol_version);
     assert_eq!(decoded, envelope);
+}
+
+#[test]
+fn heartbeat_and_its_correlated_ack_round_trip() {
+    let mut envelope = hello_envelope();
+    envelope.payload = KnotMessage::Control(KnotControlMessage::Heartbeat);
+    let mut buffer = [0; 256];
+    let frame = encode_frame(&envelope, &mut buffer).unwrap();
+    assert_eq!(decode_frame::<KnotMessage>(frame).unwrap(), envelope);
+    assert!(envelope.payload.requires_ack());
+
+    let ack = KnotAck::Heartbeat {
+        event_id: envelope.id,
+    };
+    assert_eq!(ack.event_id(), envelope.id);
+    envelope.source = ArkSyncActor::Hub { hub_id: [2; 16] };
+    envelope.payload = KnotMessage::Control(KnotControlMessage::Ack(ack));
+    let frame = encode_frame(&envelope, &mut buffer).unwrap();
+    assert_eq!(decode_frame::<KnotMessage>(frame).unwrap(), envelope);
+    assert!(!envelope.payload.requires_ack());
 }
 
 #[test]

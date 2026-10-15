@@ -25,6 +25,7 @@ serde_json.workspace = true
 log.workspace = true
 sqlx = { workspace = true, features = ["postgres", "runtime-tokio", "macros", "uuid", "json"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
+tokio-util.workspace = true
 
 [dev-dependencies]
 arksync-testing.workspace = true

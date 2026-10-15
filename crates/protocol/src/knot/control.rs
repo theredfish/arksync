@@ -17,6 +17,8 @@ pub enum KnotControlMessage {
     ConfigApplied(KnotConfigApplied),
     ConfigRejected(KnotConfigRejected),
     Configure(KnotConfig),
+    /// Presence probe. Its acknowledgement is correlated but not persisted.
+    Heartbeat,
 }
 
 impl KnotControlMessage {
@@ -52,12 +54,17 @@ pub enum KnotAck {
         event_id: EventId,
         config: KnotConfig,
     },
+    Heartbeat {
+        event_id: EventId,
+    },
 }
 
 impl KnotAck {
     pub fn event_id(&self) -> EventId {
         match self {
-            Self::Processed { event_id } | Self::Hello { event_id, .. } => *event_id,
+            Self::Processed { event_id }
+            | Self::Hello { event_id, .. }
+            | Self::Heartbeat { event_id } => *event_id,
         }
     }
 }

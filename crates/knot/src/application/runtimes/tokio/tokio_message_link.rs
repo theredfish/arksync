@@ -15,6 +15,13 @@ pub struct TokioMessageLink<Message> {
     rx: mpsc::Receiver<Message>,
 }
 
+impl<Message> TokioMessageLink<Message> {
+    /// Attempts one send without blocking reception on the opposite direction.
+    pub fn try_send(&self, message: Message) -> Result<(), mpsc::error::TrySendError<Message>> {
+        self.tx.try_send(message)
+    }
+}
+
 pub fn local_tokio_message_link<Message>(
     capacity: usize,
 ) -> (TokioMessageLink<Message>, TokioMessageLink<Message>) {

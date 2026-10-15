@@ -4,18 +4,21 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use arksync_bus::{EventEnvelope, EventId, Timestamp};
+use arksync_bus::{EventEnvelope, EventHandlerError, EventId, Timestamp};
 use arksync_knot::application::{
-    local_tokio_message_link, MessageLink, RetryPolicy, TokioKnotRuntime, TokioKnotRuntimeConfig,
+    local_tokio_message_link, KeepAliveConfig, RetryPolicy, TokioKnotRuntime,
+    TokioKnotRuntimeConfig,
 };
 use arksync_protocol::knot::{KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotMessage};
 use arksync_protocol::ArkSyncActor;
 use arksync_sensor::infrastructure::events::SensorEvent;
 use eyre::{eyre, Result, WrapErr};
+use tokio_util::sync::CancellationToken;
 
 use crate::application::{
     ensure_local_demo_temperature_relay_rule, handle_actuator_runtime_event,
-    handle_knot_protocol_event, knot_protocol_config_for_hardware_uid, HubService, SensorRegistry,
+    knot_protocol_config_for_hardware_uid, HubSensorEventEnvelope, HubService, HubSession,
+    HubSessionHandle,
 };
 use crate::config::CONFIG;
 use crate::infrastructure::store::knot as knot_store;
@@ -37,79 +40,53 @@ impl HubRuntime {
     }
 
     async fn try_run() -> Result<()> {
-        let (mut hub_link, knot_link) = local_tokio_message_link::<KnotEnvelope>(100);
+        let pool = arksync_db::pool();
+        let shutdown = CancellationToken::new();
+        let _shutdown_on_drop = shutdown.clone().drop_guard();
+        let (hub_link, knot_link) = local_tokio_message_link::<KnotEnvelope>(100);
+        let mut session =
+            HubSession::new(pool.clone(), hub_link, KeepAliveConfig::default()).await?;
+        let session_handle = session.handle();
+        let (sensor_event_tx, mut sensor_event_rx) = tokio::sync::mpsc::channel(100);
+        session.subscribe_sensors(move |event: &HubSensorEventEnvelope| {
+            sensor_event_tx
+                .try_send(event.clone())
+                .map_err(|_| EventHandlerError::Rejected)
+        });
+        let mut session_task = tokio::spawn(session.run(shutdown.child_token()));
+        let mut session_running = true;
         let (legacy_actuator_event_tx, mut legacy_actuator_event_rx) =
             tokio::sync::mpsc::channel(100);
+        let knot_shutdown = shutdown.child_token();
         let knot_runtime = tokio::spawn(async move {
-            TokioKnotRuntime::run(
+            TokioKnotRuntime::run_until(
                 TokioKnotRuntimeConfig {
                     hardware_uid: CONFIG.local_knot_hardware_uid.clone(),
                     capabilities: local_knot_capabilities(),
                     retry_policy: RetryPolicy::default(),
+                    keep_alive_config: KeepAliveConfig::default(),
                 },
                 knot_link,
                 legacy_actuator_event_tx,
+                knot_shutdown,
             )
             .await;
         });
 
-        let pool = arksync_db::pool();
         let mut hub = HubService::new();
-        let mut sensor_registry = SensorRegistry::load(pool)
-            .await
-            .wrap_err("failed to load Hub sensor registry")?;
         let mut local_demo_configured = false;
 
         loop {
             tokio::select! {
-                message = hub_link.receive() => {
-                    let message = match message {
-                        Ok(Some(message)) => message,
-                        Ok(None) => {
-                            log::error!("Local Knot protocol link closed");
-                            break;
-                        }
-                        Err(error) => {
-                            log::error!("Local Knot protocol link failed: {error:?}");
-                            continue;
-                        }
-                    };
+                Some(event) = sensor_event_rx.recv() => {
                     let received_at = timestamp_now();
-                    match handle_knot_protocol_event(
-                        pool,
-                        &message,
-                        EventId::new(),
-                        timestamp_now(),
-                        received_at,
-                        &mut sensor_registry,
-                    )
-                    .await
-                    {
-                        Ok(result) => {
-                            if let Some(response) = result.response {
-                                if hub_link.send(response).await.is_err() {
-                                    log::error!("Local Knot protocol link closed before Hub response");
-                                    break;
-                                }
-                            }
-
-                            for event in result.sensor_events {
-                                maybe_configure_local_demo_actuator(
-                                    pool,
-                                    &event,
-                                    &sensor_registry,
-                                    &mut hub_link,
-                                    &mut local_demo_configured,
-                                )
-                                .await?;
-                                hub.handle_sensor_event(event, received_at)
-                                    .map_err(|error| eyre!("Hub rejected projected sensor event: {error:?}"))?;
-                            }
-                        }
-                        Err(error) => {
-                            log::error!("Hub failed to process Knot protocol event: {error:?}");
-                        }
-                    }
+                    maybe_configure_local_demo_actuator(pool, &event, &session_handle, &mut local_demo_configured).await?;
+                    hub.handle_sensor_event(event, received_at)
+                        .map_err(|error| eyre!("Hub rejected projected sensor event: {error:?}"))?;
+                }
+                result = &mut session_task, if session_running => {
+                    log::error!("Local Knot session stopped: {result:?}");
+                    session_running = false;
                 }
                 Some(event) = legacy_actuator_event_rx.recv() => {
                     let arksync_knot::application::LegacyKnotActuatorMessage::Actuator(event) = event.payload else {
@@ -125,6 +102,12 @@ impl HubRuntime {
             }
         }
 
+        shutdown.cancel();
+        if session_running {
+            session_task
+                .await
+                .wrap_err("local Hub session task join failed")?;
+        }
         knot_runtime
             .await
             .wrap_err("local Knot runtime task join failed")?;
@@ -135,8 +118,7 @@ impl HubRuntime {
 async fn maybe_configure_local_demo_actuator(
     pool: &sqlx::PgPool,
     event: &crate::application::HubSensorEventEnvelope,
-    sensor_registry: &SensorRegistry,
-    hub_link: &mut arksync_knot::application::TokioMessageLink<KnotEnvelope>,
+    session: &HubSessionHandle,
     configured: &mut bool,
 ) -> Result<()> {
     if *configured {
@@ -149,11 +131,14 @@ async fn maybe_configure_local_demo_actuator(
     if knot_id.uuid_v4() != CONFIG.local_knot_id {
         return Ok(());
     }
-    let Some(sensor_id) =
-        sensor_registry.sensor_id(knot_id.uuid_v4(), measurement.device_uid.as_ref())
-    else {
-        return Ok(());
-    };
+    let sensor = crate::infrastructure::store::sensors::sensor_by_station_knot_id_and_device_uid(
+        pool,
+        knot_id.uuid_v4(),
+        measurement.device_uid.as_ref(),
+    )
+    .await
+    .map_err(|error| eyre!("failed to find local demo sensor: {error:?}"))?;
+    let sensor_id = sensor.id.into();
 
     let mut txn = pool
         .begin()
@@ -180,10 +165,10 @@ async fn maybe_configure_local_demo_actuator(
         timestamp_now(),
         KnotMessage::Control(KnotControlMessage::Configure(config)),
     );
-    hub_link
+    session
         .send(configure)
         .await
-        .map_err(|_| eyre!("local Knot protocol link closed before config refresh"))?;
+        .wrap_err("failed to queue local Knot configuration refresh")?;
     *configured = true;
 
     Ok(())

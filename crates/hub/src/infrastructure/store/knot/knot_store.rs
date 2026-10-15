@@ -58,10 +58,6 @@ pub async fn upsert_station_knot(
             hardware_uid = excluded.hardware_uid,
             role = excluded.role,
             status = excluded.status,
-            config_version = excluded.config_version,
-            applied_config_version = excluded.applied_config_version,
-            config_status = excluded.config_status,
-            config_error = excluded.config_error,
             deleted_at = null
         "#,
     )
@@ -194,38 +190,6 @@ pub async fn station_knot_by_hardware_uid(
     .await?;
 
     Ok(knot)
-}
-
-pub async fn update_station_knot_config_status(
-    executor: impl PgExecutor<'_>,
-    hardware_uid: &str,
-    applied_config_version: Option<i64>,
-    config_status: &str,
-    config_error: Option<&str>,
-) -> Result<(), KnotStoreError> {
-    let result = sqlx::query(
-        r#"
-        update station_knots
-        set
-            applied_config_version = $2,
-            config_status = $3,
-            config_error = $4
-        where hardware_uid = $1
-            and deleted_at is null
-        "#,
-    )
-    .bind(hardware_uid)
-    .bind(applied_config_version)
-    .bind(config_status)
-    .bind(config_error)
-    .execute(executor)
-    .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(KnotStoreError::NotFound);
-    }
-
-    Ok(())
 }
 
 pub async fn increment_station_knot_config_version(

@@ -10,6 +10,7 @@ std = []
 knot-nostd-runtime = ["arksync-actuator"]
 knot-tokio-runtime = [
     "std",
+    "uuid-v4",
     "knot-nostd-runtime",
     "arksync-sensor",
     "log",
@@ -17,6 +18,7 @@ knot-tokio-runtime = [
     "tokio/rt",
     "tokio/sync",
     "tokio/time",
+    "tokio-util",
 ]
 uuid-v4 = ["arksync-bus/uuid-v4", "arksync-utils/uuid-v4"]
 
@@ -30,9 +32,10 @@ arksync-utils.workspace = true
 log = { workspace = true, optional = true }
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
 tokio = { workspace = true, optional = true }
+tokio-util = { workspace = true, optional = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["io-util", "macros", "net", "rt"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "test-util"] }
 
 [lints]
 workspace = true

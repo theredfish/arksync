@@ -4,12 +4,14 @@
 
 mod actuator_config_mapper;
 mod actuator_service;
+mod protocol_session;
 mod runtime;
 mod sensor_message_mapper;
 mod sensor_service;
 mod tokio_message_link;
 
 pub use actuator_service::*;
+pub use protocol_session::*;
 pub use runtime::*;
 pub use sensor_service::*;
 pub use tokio_message_link::*;
