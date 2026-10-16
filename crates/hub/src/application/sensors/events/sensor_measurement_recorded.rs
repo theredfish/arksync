@@ -82,7 +82,7 @@ async fn maybe_refresh_local_demo_actuator_config(
         return Ok(());
     }
 
-    let KnotEventSource::Knot { knot_id, .. } = source;
+    let KnotEventSource::Knot { knot_id, hub_id } = source;
 
     if knot_id.uuid_v4() != CONFIG.local_knot_id {
         return Ok(());
@@ -96,9 +96,13 @@ async fn maybe_refresh_local_demo_actuator_config(
         .await
         .wrap_err("failed to ensure local demo relay rule")?;
 
-    let ack = actuator_config_ack_for_knot_hardware_uid(&mut txn, &CONFIG.local_knot_hardware_uid)
-        .await
-        .wrap_err("failed to refresh local Knot actuator config after sensor measurement")?;
+    let ack = actuator_config_ack_for_knot_hardware_uid(
+        &mut txn,
+        hub_id.uuid_v4().into(),
+        &CONFIG.local_knot_hardware_uid,
+    )
+    .await
+    .wrap_err("failed to refresh local Knot actuator config after sensor measurement")?;
     txn.commit()
         .await
         .wrap_err("failed to commit local Knot actuator config transaction")?;

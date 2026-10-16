@@ -34,6 +34,6 @@ pub async fn setup_local_station(txn: &mut PgTransaction<'_>) -> Result<(), sqlx
     };
 
     hub_store::upsert_system_user(&mut **txn, &user).await?;
-    hub_store::upsert_station_hub(&mut **txn, &hub).await?;
-    knot_store::upsert_station_knot(&mut **txn, &knot).await
+    hub_store::upsert_hub(&mut **txn, &hub).await?;
+    knot_store::upsert_knot(&mut **txn, &knot).await
 }

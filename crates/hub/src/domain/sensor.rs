@@ -57,7 +57,7 @@ pub struct SensorOverview {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct PluggedSensor {
-    pub station_knot_id: KnotId,
+    pub knot_id: KnotId,
     pub device_uid: DeviceUid,
     pub kind: SensorKind,
     pub connection: SensorConnectionMetadata,
@@ -69,7 +69,7 @@ pub struct PluggedSensor {
 #[serde(rename_all = "snake_case")]
 pub struct Sensor {
     pub id: SensorId,
-    pub station_knot_id: KnotId,
+    pub knot_id: KnotId,
     pub device_uid: String,
     pub display_name: Option<String>,
     pub kind: SensorKind,

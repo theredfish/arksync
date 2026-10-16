@@ -28,7 +28,7 @@ pub(super) fn extract_plugged_sensor(
     let KnotEventSource::Knot { knot_id, .. } = source;
 
     PluggedSensor {
-        station_knot_id: *knot_id,
+        knot_id: *knot_id,
         device_uid,
         kind: sensor.kind,
         connection: sensor.connection.clone(),

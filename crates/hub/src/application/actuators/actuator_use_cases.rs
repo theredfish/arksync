@@ -5,7 +5,7 @@
 use crate::application::HubActuatorError;
 use crate::domain::{
     Actuator, ActuatorBackend, ActuatorConnection, ActuatorKind, ActuatorProtocol,
-    GpioActuatorConnection, RelayActuator, SensorId,
+    GpioActuatorConnection, HubId, RelayActuator, SensorId,
 };
 use crate::infrastructure::store::{
     actuators as actuator_store, knot as knot_store, sensors as sensor_store, ActuatorRecord,
@@ -47,7 +47,7 @@ pub async fn insert_relay_actuator(
     actuator: RelayActuator,
 ) -> Result<Actuator, HubActuatorError> {
     let record = NewActuatorRecord {
-        station_knot_id: actuator.station_knot_id.uuid_v4(),
+        knot_id: actuator.knot_id.uuid_v4(),
         device_uid: actuator.device_uid,
         display_name: actuator.display_name,
         kind: ActuatorKind::Relay.to_string(),
@@ -68,20 +68,20 @@ pub async fn insert_relay_actuator(
 
 pub async fn actuator_config_ack_for_knot_hardware_uid(
     txn: &mut PgTransaction<'_>,
+    hub_id: HubId,
     hardware_uid: &str,
 ) -> Result<LegacyKnotActuatorConfig, HubActuatorError> {
-    let knot = knot_store::station_knot_by_hardware_uid(&mut **txn, hardware_uid).await?;
-    let actuator_records =
-        actuator_store::list_actuators_by_station_knot_id(&mut **txn, knot.id).await?;
+    let knot = knot_store::knot_by_hardware_uid(&mut **txn, hub_id, hardware_uid).await?;
+    let actuator_records = actuator_store::list_actuators_by_knot_id(&mut **txn, knot.id).await?;
     let actuator_rules = actuator_store::list_actuator_rules_by_actuator_ids(
         &mut **txn,
         &actuator_ids(&actuator_records),
     )
     .await?;
-    let sensor_bindings = sensor_store::list_sensors(&mut **txn)
+    let sensor_bindings = sensor_store::list_sensors(&mut **txn, hub_id)
         .await?
         .into_iter()
-        .filter(|sensor| sensor.station_knot_id == knot.id)
+        .filter(|sensor| sensor.knot_id == knot.id)
         .map(|sensor| LegacyKnotSensorBinding {
             sensor_id: sensor.id.to_string(),
             device_uid: sensor.device_uid,
@@ -110,10 +110,12 @@ pub async fn actuator_config_ack_for_knot_hardware_uid(
 
 pub async fn knot_protocol_config_for_hardware_uid(
     txn: &mut PgTransaction<'_>,
+    hub_id: HubId,
     hardware_uid: &str,
 ) -> Result<ProtocolKnotConfig, HubActuatorError> {
-    let knot = knot_store::station_knot_by_hardware_uid(&mut **txn, hardware_uid).await?;
-    let legacy_config = actuator_config_ack_for_knot_hardware_uid(txn, hardware_uid).await?;
+    let knot = knot_store::knot_by_hardware_uid(&mut **txn, hub_id, hardware_uid).await?;
+    let legacy_config =
+        actuator_config_ack_for_knot_hardware_uid(txn, hub_id, hardware_uid).await?;
 
     let sensor_bindings = legacy_config
         .sensor_bindings
@@ -142,12 +144,12 @@ pub async fn knot_protocol_config_for_hardware_uid(
 
 pub async fn ensure_local_demo_temperature_relay_rule(
     txn: &mut PgTransaction<'_>,
-    station_knot_id: KnotId,
+    knot_id: KnotId,
     sensor_id: SensorId,
 ) -> Result<Actuator, HubActuatorError> {
-    let station_knot_id = station_knot_id.uuid_v4();
+    let knot_id = knot_id.uuid_v4();
     let sensor_id = sensor_id.uuid_v4();
-    let actuator = ensure_local_demo_relay_actuator(txn, station_knot_id).await?;
+    let actuator = ensure_local_demo_relay_actuator(txn, knot_id).await?;
 
     ensure_local_demo_relay_rule(txn, actuator.id.uuid_v4(), sensor_id).await?;
 
@@ -215,11 +217,11 @@ fn actuator_rule_config_from_record(rule: &ActuatorRuleRecord) -> ActuatorRuleCo
 
 async fn ensure_local_demo_relay_actuator(
     txn: &mut PgTransaction<'_>,
-    station_knot_id: Uuid,
+    knot_id: Uuid,
 ) -> Result<Actuator, HubActuatorError> {
-    match actuator_store::actuator_by_station_knot_id_and_device_uid(
+    match actuator_store::actuator_by_knot_id_and_device_uid(
         &mut **txn,
-        station_knot_id,
+        knot_id,
         LOCAL_DEMO_RELAY_DEVICE_UID,
     )
     .await
@@ -230,7 +232,7 @@ async fn ensure_local_demo_relay_actuator(
     }
 
     let actuator = RelayActuator {
-        station_knot_id: KnotId::from(station_knot_id),
+        knot_id: KnotId::from(knot_id),
         device_uid: LOCAL_DEMO_RELAY_DEVICE_UID.to_string(),
         display_name: Some(LOCAL_DEMO_RELAY_DISPLAY_NAME.to_string()),
         backend: ActuatorBackend::LinuxGpiod,

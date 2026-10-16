@@ -4,8 +4,8 @@
 
 use crate::application::HubSensorError;
 use crate::domain::{
-    ObservedSerialSensor, PluggedSensor, RegisteredSensor, Sensor, SensorId, SensorMeasurement,
-    SensorOverview, SensorRegistrationStatus,
+    HubId, ObservedSerialSensor, PluggedSensor, RegisteredSensor, Sensor, SensorId,
+    SensorMeasurement, SensorOverview, SensorRegistrationStatus,
 };
 use crate::infrastructure::store::{sensors as sensor_store, NewSensorRecord};
 use arksync_bus::Timestamp;
@@ -54,8 +54,11 @@ pub trait HubSensorCommandHandler {
     fn handle(&mut self, command: HubSensorCommand) -> Result<(), Self::Error>;
 }
 
-pub async fn list_sensors(executor: impl PgExecutor<'_>) -> Result<Vec<Sensor>, HubSensorError> {
-    let records = sensor_store::list_sensors(executor).await?;
+pub async fn list_sensors(
+    executor: impl PgExecutor<'_>,
+    hub_id: HubId,
+) -> Result<Vec<Sensor>, HubSensorError> {
+    let records = sensor_store::list_sensors(executor, hub_id).await?;
 
     Ok(records.into_iter().map(Sensor::from).collect())
 }
@@ -65,7 +68,7 @@ pub async fn insert_sensor(
     sensor: PluggedSensor,
 ) -> Result<Sensor, HubSensorError> {
     let record = NewSensorRecord {
-        station_knot_id: sensor.station_knot_id.uuid_v4(),
+        knot_id: sensor.knot_id.uuid_v4(),
         device_uid: sensor.device_uid.as_ref().to_string(),
         display_name: None,
         sensor_kind: sensor_store::sensor_kind_as_str(sensor.kind).to_string(),

@@ -21,6 +21,7 @@ use crate::application::{
     HubSessionHandle,
 };
 use crate::config::CONFIG;
+use crate::domain::HubId;
 use crate::infrastructure::store::knot as knot_store;
 
 /// Host runtime for the local Hub and its in-process Knot.
@@ -41,11 +42,12 @@ impl HubRuntime {
 
     async fn try_run() -> Result<()> {
         let pool = arksync_db::pool();
+        let hub_id = HubId::from(CONFIG.local_hub_id);
         let shutdown = CancellationToken::new();
         let _shutdown_on_drop = shutdown.clone().drop_guard();
         let (hub_link, knot_link) = local_tokio_message_link::<KnotEnvelope>(100);
         let mut session =
-            HubSession::new(pool.clone(), hub_link, KeepAliveConfig::default()).await?;
+            HubSession::new(pool.clone(), hub_id, hub_link, KeepAliveConfig::default()).await?;
         let session_handle = session.handle();
         let (sensor_event_tx, mut sensor_event_rx) = tokio::sync::mpsc::channel(100);
         session.subscribe_sensors(move |event: &HubSensorEventEnvelope| {
@@ -80,7 +82,7 @@ impl HubRuntime {
             tokio::select! {
                 Some(event) = sensor_event_rx.recv() => {
                     let received_at = timestamp_now();
-                    maybe_configure_local_demo_actuator(pool, &event, &session_handle, &mut local_demo_configured).await?;
+                    maybe_configure_local_demo_actuator(pool, hub_id, &event, &session_handle, &mut local_demo_configured).await?;
                     hub.handle_sensor_event(event, received_at)
                         .map_err(|error| eyre!("Hub rejected projected sensor event: {error:?}"))?;
                 }
@@ -117,6 +119,7 @@ impl HubRuntime {
 
 async fn maybe_configure_local_demo_actuator(
     pool: &sqlx::PgPool,
+    hub_id: HubId,
     event: &crate::application::HubSensorEventEnvelope,
     session: &HubSessionHandle,
     configured: &mut bool,
@@ -127,11 +130,14 @@ async fn maybe_configure_local_demo_actuator(
     let SensorEvent::SensorMeasurementRecorded(measurement) = &event.payload else {
         return Ok(());
     };
-    let arksync_knot::domain::KnotEventSource::Knot { knot_id, .. } = &event.source;
-    if knot_id.uuid_v4() != CONFIG.local_knot_id {
+    let arksync_knot::domain::KnotEventSource::Knot {
+        knot_id,
+        hub_id: source_hub_id,
+    } = &event.source;
+    if source_hub_id.uuid_v4() != hub_id.uuid_v4() || knot_id.uuid_v4() != CONFIG.local_knot_id {
         return Ok(());
     }
-    let sensor = crate::infrastructure::store::sensors::sensor_by_station_knot_id_and_device_uid(
+    let sensor = crate::infrastructure::store::sensors::sensor_by_knot_id_and_device_uid(
         pool,
         knot_id.uuid_v4(),
         measurement.device_uid.as_ref(),
@@ -147,12 +153,13 @@ async fn maybe_configure_local_demo_actuator(
     ensure_local_demo_temperature_relay_rule(&mut txn, *knot_id, sensor_id)
         .await
         .wrap_err("failed to ensure local demo relay rule")?;
-    knot_store::increment_station_knot_config_version(&mut *txn, knot_id.uuid_v4())
+    knot_store::increment_knot_config_version(&mut *txn, hub_id, knot_id.uuid_v4())
         .await
         .map_err(|error| eyre!("failed to increment Knot config version: {error:?}"))?;
-    let config = knot_protocol_config_for_hardware_uid(&mut txn, &CONFIG.local_knot_hardware_uid)
-        .await
-        .wrap_err("failed to load refreshed local Knot config")?;
+    let config =
+        knot_protocol_config_for_hardware_uid(&mut txn, hub_id, &CONFIG.local_knot_hardware_uid)
+            .await
+            .wrap_err("failed to load refreshed local Knot config")?;
     txn.commit()
         .await
         .wrap_err("failed to commit local demo actuator config transaction")?;
@@ -160,7 +167,7 @@ async fn maybe_configure_local_demo_actuator(
     let configure = EventEnvelope::new_with_id(
         EventId::new(),
         ArkSyncActor::Hub {
-            hub_id: *CONFIG.local_hub_id.as_bytes(),
+            hub_id: *hub_id.as_bytes(),
         },
         timestamp_now(),
         KnotMessage::Control(KnotControlMessage::Configure(config)),

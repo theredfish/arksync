@@ -12,7 +12,7 @@ use sqlx::FromRow;
 
 #[derive(Clone, Debug)]
 pub struct NewActuatorRecord {
-    pub station_knot_id: Uuid,
+    pub knot_id: Uuid,
     pub device_uid: String,
     pub display_name: Option<String>,
     pub kind: String,
@@ -30,7 +30,7 @@ pub struct NewActuatorRecord {
 #[derive(Clone, Debug, FromRow)]
 pub struct ActuatorRecord {
     pub id: Uuid,
-    pub station_knot_id: Uuid,
+    pub knot_id: Uuid,
     pub device_uid: String,
     pub display_name: Option<String>,
     pub kind: String,
@@ -84,7 +84,7 @@ impl From<ActuatorRecord> for Actuator {
 
         Self {
             id: record.id.into(),
-            station_knot_id: record.station_knot_id.into(),
+            knot_id: record.knot_id.into(),
             device_uid: record.device_uid,
             display_name: record.display_name,
             kind: ActuatorKind::from_str(&record.kind)

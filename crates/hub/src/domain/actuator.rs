@@ -52,7 +52,7 @@ pub struct GpioActuatorConnection {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RelayActuator {
-    pub station_knot_id: KnotId,
+    pub knot_id: KnotId,
     pub device_uid: String,
     pub display_name: Option<String>,
     pub backend: ActuatorBackend,
@@ -67,7 +67,7 @@ pub struct RelayActuator {
 #[serde(rename_all = "snake_case")]
 pub struct Actuator {
     pub id: ActuatorId,
-    pub station_knot_id: KnotId,
+    pub knot_id: KnotId,
     pub device_uid: String,
     pub display_name: Option<String>,
     pub kind: ActuatorKind,

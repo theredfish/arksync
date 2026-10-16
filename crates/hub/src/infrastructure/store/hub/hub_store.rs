@@ -38,13 +38,10 @@ pub async fn upsert_system_user(
     Ok(())
 }
 
-pub async fn upsert_station_hub(
-    executor: impl PgExecutor<'_>,
-    hub: &HubRecord,
-) -> Result<(), sqlx::Error> {
+pub async fn upsert_hub(executor: impl PgExecutor<'_>, hub: &HubRecord) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
-        insert into station_hubs (
+        insert into hubs (
             id,
             user_id,
             name,

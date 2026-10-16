@@ -5,13 +5,13 @@
 use std::collections::HashMap;
 
 use crate::application::{insert_sensor, list_sensors, HubSensorError};
-use crate::domain::{PluggedSensor, SensorId};
+use crate::domain::{HubId, PluggedSensor, SensorId};
 use arksync_utils::uuid::Uuid;
 use sqlx::PgExecutor;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct SensorIdentityKey {
-    station_knot_id: Uuid,
+    knot_id: Uuid,
     device_uid: String,
 }
 
@@ -21,14 +21,17 @@ pub struct SensorRegistry {
 }
 
 impl SensorRegistry {
-    pub async fn load(executor: impl PgExecutor<'_>) -> Result<Self, HubSensorError> {
-        let sensors = list_sensors(executor).await?;
+    pub async fn load(
+        executor: impl PgExecutor<'_>,
+        hub_id: HubId,
+    ) -> Result<Self, HubSensorError> {
+        let sensors = list_sensors(executor, hub_id).await?;
         let sensors_by_device_uid = sensors
             .into_iter()
             .map(|sensor| {
                 (
                     SensorIdentityKey {
-                        station_knot_id: sensor.station_knot_id.uuid_v4(),
+                        knot_id: sensor.knot_id.uuid_v4(),
                         device_uid: sensor.device_uid,
                     },
                     sensor.id,
@@ -47,7 +50,7 @@ impl SensorRegistry {
         sensor: PluggedSensor,
     ) -> Result<SensorId, HubSensorError> {
         let key = SensorIdentityKey {
-            station_knot_id: sensor.station_knot_id.uuid_v4(),
+            knot_id: sensor.knot_id.uuid_v4(),
             device_uid: sensor.device_uid.as_ref().to_string(),
         };
 
@@ -61,24 +64,19 @@ impl SensorRegistry {
         Ok(registered_sensor.id)
     }
 
-    pub fn sensor_id(&self, station_knot_id: Uuid, device_uid: &str) -> Option<SensorId> {
+    pub fn sensor_id(&self, knot_id: Uuid, device_uid: &str) -> Option<SensorId> {
         self.sensors_by_device_uid
             .get(&SensorIdentityKey {
-                station_knot_id,
+                knot_id,
                 device_uid: device_uid.to_string(),
             })
             .copied()
     }
 
-    pub fn remember_sensor(
-        &mut self,
-        station_knot_id: Uuid,
-        device_uid: String,
-        sensor_id: SensorId,
-    ) {
+    pub fn remember_sensor(&mut self, knot_id: Uuid, device_uid: String, sensor_id: SensorId) {
         self.sensors_by_device_uid.insert(
             SensorIdentityKey {
-                station_knot_id,
+                knot_id,
                 device_uid,
             },
             sensor_id,

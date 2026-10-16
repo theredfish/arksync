@@ -13,6 +13,10 @@ use arksync_protocol::knot::{
 };
 use arksync_protocol::ArkSyncActor;
 
+fn local_hub_id() -> arksync_hub::HubId {
+    arksync_hub::config::CONFIG.local_hub_id.into()
+}
+
 fn timestamp(unix_millis: i64) -> Timestamp {
     Timestamp::from_unix_millis(unix_millis)
 }
@@ -83,11 +87,12 @@ async fn duplicate_hello_registers_one_knot_and_returns_correlated_ack(
     let mut txn = pool.begin().await?;
     setup_local_station(&mut txn).await?;
     txn.commit().await?;
-    let mut sensor_registry = SensorRegistry::load(&pool).await?;
+    let mut sensor_registry = SensorRegistry::load(&pool, local_hub_id()).await?;
     let event = hello(hello_id, hardware_uid);
 
     let first = handle_knot_protocol_event(
         &pool,
+        local_hub_id(),
         &event,
         EventId::from_bytes([8; 16]),
         timestamp(1_780_000_000_100),
@@ -99,6 +104,7 @@ async fn duplicate_hello_registers_one_knot_and_returns_correlated_ack(
     .expect("Hello must produce a response");
     let duplicate = handle_knot_protocol_event(
         &pool,
+        local_hub_id(),
         &event,
         EventId::from_bytes([9; 16]),
         timestamp(1_780_000_000_200),
@@ -109,7 +115,7 @@ async fn duplicate_hello_registers_one_knot_and_returns_correlated_ack(
     .response
     .expect("duplicate Hello must reproduce an ACK");
 
-    let knots = list_knots(&pool).await?;
+    let knots = list_knots(&pool, local_hub_id()).await?;
     let matching_knots = knots
         .iter()
         .filter(|knot| knot.hardware_uid == hardware_uid)
@@ -150,10 +156,11 @@ async fn config_applied_updates_knot_state_once(pool: arksync_testing::PgPool) -
     let mut txn = pool.begin().await?;
     setup_local_station(&mut txn).await?;
     txn.commit().await?;
-    let mut sensor_registry = SensorRegistry::load(&pool).await?;
+    let mut sensor_registry = SensorRegistry::load(&pool, local_hub_id()).await?;
     let hello_event = hello(EventId::from_bytes([1; 16]), hardware_uid);
     handle_knot_protocol_event(
         &pool,
+        local_hub_id(),
         &hello_event,
         EventId::from_bytes([2; 16]),
         timestamp(1_780_000_000_100),
@@ -173,6 +180,7 @@ async fn config_applied_updates_knot_state_once(pool: arksync_testing::PgPool) -
 
     let response = handle_knot_protocol_event(
         &pool,
+        local_hub_id(),
         &applied_event,
         EventId::from_bytes([4; 16]),
         timestamp(1_780_000_000_200),
@@ -184,6 +192,7 @@ async fn config_applied_updates_knot_state_once(pool: arksync_testing::PgPool) -
     .expect("ConfigApplied must be acknowledged");
     handle_knot_protocol_event(
         &pool,
+        local_hub_id(),
         &applied_event,
         EventId::from_bytes([5; 16]),
         timestamp(1_780_000_000_300),
@@ -191,7 +200,7 @@ async fn config_applied_updates_knot_state_once(pool: arksync_testing::PgPool) -
         &mut sensor_registry,
     )
     .await?;
-    let knot = list_knots(&pool)
+    let knot = list_knots(&pool, local_hub_id())
         .await?
         .into_iter()
         .find(|knot| knot.hardware_uid == hardware_uid)
@@ -216,9 +225,10 @@ async fn config_rejected_records_the_reason_and_is_acknowledged(
     let mut txn = pool.begin().await?;
     setup_local_station(&mut txn).await?;
     txn.commit().await?;
-    let mut sensor_registry = SensorRegistry::load(&pool).await?;
+    let mut sensor_registry = SensorRegistry::load(&pool, local_hub_id()).await?;
     handle_knot_protocol_event(
         &pool,
+        local_hub_id(),
         &hello(EventId::from_bytes([10; 16]), hardware_uid),
         EventId::from_bytes([11; 16]),
         timestamp(1_780_000_000_100),
@@ -239,6 +249,7 @@ async fn config_rejected_records_the_reason_and_is_acknowledged(
 
     let response = handle_knot_protocol_event(
         &pool,
+        local_hub_id(),
         &rejection,
         EventId::from_bytes([13; 16]),
         timestamp(1_780_000_000_200),
@@ -248,7 +259,7 @@ async fn config_rejected_records_the_reason_and_is_acknowledged(
     .await?
     .response
     .expect("ConfigRejected must be acknowledged");
-    let knot = list_knots(&pool)
+    let knot = list_knots(&pool, local_hub_id())
         .await?
         .into_iter()
         .find(|knot| knot.hardware_uid == hardware_uid)
@@ -272,12 +283,13 @@ async fn duplicate_measurement_batch_has_one_durable_effect(
     let mut txn = pool.begin().await?;
     setup_local_station(&mut txn).await?;
     txn.commit().await?;
-    let mut sensor_registry = SensorRegistry::load(&pool).await?;
+    let mut sensor_registry = SensorRegistry::load(&pool, local_hub_id()).await?;
     let measurement_id = EventId::from_bytes([6; 16]);
     let event = measurement(measurement_id, "arksync-local-knot");
 
     let first = handle_knot_protocol_event(
         &pool,
+        local_hub_id(),
         &event,
         EventId::from_bytes([7; 16]),
         timestamp(1_780_000_000_100),
@@ -287,6 +299,7 @@ async fn duplicate_measurement_batch_has_one_durable_effect(
     .await?;
     let duplicate = handle_knot_protocol_event(
         &pool,
+        local_hub_id(),
         &event,
         EventId::from_bytes([8; 16]),
         timestamp(1_780_000_000_200),
@@ -325,6 +338,7 @@ async fn process(
 ) -> eyre::Result<KnotEnvelope> {
     Ok(handle_knot_protocol_event(
         pool,
+        local_hub_id(),
         event,
         EventId::new(),
         timestamp(0),
@@ -375,14 +389,14 @@ async fn configuration_results_are_correlated_and_never_regress_state(
     let mut txn = pool.begin().await?;
     setup_local_station(&mut txn).await?;
     txn.commit().await?;
-    let mut registry = SensorRegistry::load(&pool).await?;
+    let mut registry = SensorRegistry::load(&pool, local_hub_id()).await?;
     let uid = "versioned-knot";
     let v1 = process(&pool, &mut registry, &hello(EventId::new(), uid)).await?;
     let other_v1 = process(&pool, &mut registry, &hello(EventId::new(), uid)).await?;
-    let record = knot_store::station_knot_by_hardware_uid(&pool, uid)
+    let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
-    knot_store::increment_station_knot_config_version(&pool, record.id)
+    knot_store::increment_knot_config_version(&pool, local_hub_id(), record.id)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     let v2 = process(&pool, &mut registry, &hello(EventId::new(), uid)).await?;
@@ -390,7 +404,7 @@ async fn configuration_results_are_correlated_and_never_regress_state(
     // Version 1 can finish while 2 is pending, without claiming 2 is applied.
     let event = applied(uid, &v1, 1);
     assert_processed(&process(&pool, &mut registry, &event).await?, &event);
-    let record = knot_store::station_knot_by_hardware_uid(&pool, uid)
+    let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     assert_eq!(record.applied_config_version, Some(1));
@@ -424,7 +438,7 @@ async fn configuration_results_are_correlated_and_never_regress_state(
                 .await?;
         assert_eq!(receipts, 0);
     }
-    let record = knot_store::station_knot_by_hardware_uid(&pool, uid)
+    let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     assert_eq!(record.config_version, 2);
@@ -433,13 +447,13 @@ async fn configuration_results_are_correlated_and_never_regress_state(
     assert_eq!(record.config_error, None);
 
     // A rejected new version retains the last successfully applied version.
-    knot_store::increment_station_knot_config_version(&pool, record.id)
+    knot_store::increment_knot_config_version(&pool, local_hub_id(), record.id)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     let v3 = process(&pool, &mut registry, &hello(EventId::new(), uid)).await?;
     let event = rejected(uid, &v3, 3);
     assert_processed(&process(&pool, &mut registry, &event).await?, &event);
-    let record = knot_store::station_knot_by_hardware_uid(&pool, uid)
+    let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     assert_eq!(record.applied_config_version, Some(2));
@@ -455,13 +469,13 @@ async fn startup_preserves_configuration_version_and_application_state(
     let mut txn = pool.begin().await?;
     setup_local_station(&mut txn).await?;
     txn.commit().await?;
-    let local = list_knots(&pool)
+    let local = list_knots(&pool, local_hub_id())
         .await?
         .into_iter()
         .find(|k| k.role == "local_hub")
         .unwrap();
-    let mut registry = SensorRegistry::load(&pool).await?;
-    knot_store::increment_station_knot_config_version(&pool, local.id)
+    let mut registry = SensorRegistry::load(&pool, local_hub_id()).await?;
+    knot_store::increment_knot_config_version(&pool, local_hub_id(), local.id)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     let command = process(
@@ -478,7 +492,7 @@ async fn startup_preserves_configuration_version_and_application_state(
     .await?;
     for expected_status in ["applied", "rejected"] {
         if expected_status == "rejected" {
-            knot_store::increment_station_knot_config_version(&pool, local.id)
+            knot_store::increment_knot_config_version(&pool, local_hub_id(), local.id)
                 .await
                 .map_err(|e| eyre::eyre!("{e:?}"))?;
             let command = process(
@@ -494,13 +508,13 @@ async fn startup_preserves_configuration_version_and_application_state(
             )
             .await?;
         }
-        let before = knot_store::station_knot_by_hardware_uid(&pool, &local.hardware_uid)
+        let before = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), &local.hardware_uid)
             .await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         let mut txn = pool.begin().await?;
         setup_local_station(&mut txn).await?;
         txn.commit().await?;
-        let after = knot_store::station_knot_by_hardware_uid(&pool, &local.hardware_uid)
+        let after = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), &local.hardware_uid)
             .await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         assert_eq!(after.config_version, before.config_version);
@@ -518,7 +532,7 @@ async fn invalid_batch_gets_terminal_nack_and_rolls_back_every_effect(
     let mut txn = pool.begin().await?;
     setup_local_station(&mut txn).await?;
     txn.commit().await?;
-    let mut registry = SensorRegistry::load(&pool).await?;
+    let mut registry = SensorRegistry::load(&pool, local_hub_id()).await?;
     let mut event = measurement(EventId::new(), "arksync-local-knot");
     let KnotMessage::Sensor(KnotSensorMessage::Measurements(batch)) = &mut event.payload else {
         unreachable!()
@@ -555,6 +569,7 @@ async fn invalid_batch_gets_terminal_nack_and_rolls_back_every_effect(
     assert!(
         handle_knot_protocol_event(
             &unavailable,
+            local_hub_id(),
             &corrected,
             EventId::new(),
             timestamp(0),

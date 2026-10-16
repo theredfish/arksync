@@ -50,15 +50,25 @@ sequenceDiagram
     H-->>K: Ack::Processed(event_id)
 ```
 
-A new Knot announces its stable hardware UID in `Hello`. The Hub registers unknown hardware by default and returns the current configuration in `Ack::Hello`. The configuration contains the logical Knot ID, sensor bindings, actuator configuration, and a monotonically increasing version.
+A new Knot announces its stable hardware UID in `Hello`. The Hub registers unknown hardware under its own identity by default and returns the current configuration in `Ack::Hello`. The configuration contains the logical Knot ID, sensor bindings, actuator configuration, and a monotonically increasing version.
 
 The Hub can later send `Configure` without restarting the handshake. The Knot answers with `ConfigApplied` or `ConfigRejected`; both responses correlate the configuration message through its `EventId`.
 
 Before sending configuration through `Ack::Hello` or `Configure`, the Hub records the issued `EventId`, Knot identity, version, and content in `knot_config_deliveries`. A confirmation must match that delivery and cannot contradict its previously accepted outcome. Late confirmations cannot decrease the applied version or replace the status of a newer desired version. Rejection preserves the last applied version, and startup preserves configuration state. The Knot rejects zero or older versions, identity changes, and different content with the same version.
 
+## Hub Ownership
+
+A Hub owns many Knots; each Knot belongs to exactly one Hub. The runtime supplies a `HubId` to each session and handler. An incoming message cannot select the Hub used for database access or responses. Configuration, heartbeat, sensor processing, configuration results, and registry loading all check this ownership.
+
+Persistence uses `hubs`, `knots`, `knots.hub_id`, and `knot_id` on sensors, actuators, and configuration deliveries. The rename migration preserves existing rows and relationships and has an inverse rollback; older migrations retain their original names.
+
+Hardware UIDs remain globally unique, including soft-deleted Knots. A new Hello for existing hardware retrieves the same Knot only for its active owner; another Hub receives `ConfigurationConflict`, without configuration disclosure or reassignment. Concurrent registration follows the same rule. Explicit transfer and reactivation workflows are outside this milestone.
+
+Receipts are keyed by `(hub_id, source_hardware_uid, event_id)`, with a foreign key to the owner and hardware identity. Ownership is checked before deduplication, so a foreign message cannot reserve a receipt or be acknowledged as a previously processed message. Duplicate IDs from different Knots do not suppress each other's effects. The ownership migration backfills existing receipts; ambiguous hardware identities or orphan receipts must be resolved before migration rather than discarded. Rolling back to the old global EventId key fails if new scoped IDs collide.
+
 ## Local Sessions And Presence
 
-`TokioKnotSession` and `HubSession` run this exchange over the local bounded link without starting any sensor or actuator driver. Each `HubSession` manages communication with one Knot. Callers attach `EventRouter` subscribers before starting either session, publish through a session handle, and observe the latest connection state through `status()`. The production runtimes use these same sessions.
+`TokioKnotSession` and `HubSession` run this exchange over the local bounded link without starting any sensor or actuator driver. Each `HubSession` manages communication with one Knot; several sessions can share the same Hub identity. Callers attach `EventRouter` subscribers before starting either session, publish through a session handle, and observe the latest connection state through `status()`. The production runtimes use these same sessions.
 
 After the Hello acknowledgement, the Knot sends `Heartbeat` probes, answered by a correlated `Ack::Heartbeat`. The default interval is five seconds, with a fifteen-second expiry, configurable through `KeepAliveConfig`. Each session tracks elapsed monotonic time; message timestamps remain wall-clock acquisition times. Heartbeats do not insert durable processing receipts or create sensors or measurements.
 
@@ -79,7 +89,7 @@ Session handles provide local queue acceptance, not end-to-end delivery confirma
 
 Sensor discovery, provisioning conflicts, provisioning, and measurements use `KnotSensorMessage`. Measurements are batched at the protocol level even though the current UART runtime emits one measurement per batch.
 
-The Hub records a processing receipt and all business effects in one database transaction. It sends `Ack::Processed` only after the transaction commits. Receiving the same `EventId` again produces another ACK without duplicating sensor registration or measurements.
+The Hub records a processing receipt and all business effects in one database transaction. It sends `Ack::Processed` only after the transaction commits. Receiving the same `EventId` again from that Knot at its owning Hub produces another ACK without duplicating sensor registration or measurements.
 
 An invalid sensor identity produces a terminal `InvalidPayload` NACK. The whole batch rolls back, including its receipt and sensor registrations; the registry cache changes only after commit. Database failures remain retryable and produce no ACK.
 
