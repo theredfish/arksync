@@ -47,7 +47,7 @@ pub async fn list_actuators(
         r#"
         select
             id,
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind::text,
@@ -70,15 +70,15 @@ pub async fn list_actuators(
     Ok(actuators)
 }
 
-pub async fn list_actuators_by_station_knot_id(
+pub async fn list_actuators_by_knot_id(
     executor: impl PgExecutor<'_>,
-    station_knot_id: arksync_utils::uuid::Uuid,
+    knot_id: arksync_utils::uuid::Uuid,
 ) -> Result<Vec<ActuatorRecord>, ActuatorStoreError> {
     let actuators = sqlx::query_as(
         r#"
         select
             id,
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind::text,
@@ -92,27 +92,27 @@ pub async fn list_actuators_by_station_knot_id(
             channels,
             model
         from actuators
-        where station_knot_id = $1
+        where knot_id = $1
             and deleted_at is null
         "#,
     )
-    .bind(station_knot_id)
+    .bind(knot_id)
     .fetch_all(executor)
     .await?;
 
     Ok(actuators)
 }
 
-pub async fn actuator_by_station_knot_id_and_device_uid(
+pub async fn actuator_by_knot_id_and_device_uid(
     executor: impl PgExecutor<'_>,
-    station_knot_id: arksync_utils::uuid::Uuid,
+    knot_id: arksync_utils::uuid::Uuid,
     device_uid: &str,
 ) -> Result<ActuatorRecord, ActuatorStoreError> {
     let actuator = sqlx::query_as(
         r#"
         select
             id,
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind::text,
@@ -126,12 +126,12 @@ pub async fn actuator_by_station_knot_id_and_device_uid(
             channels,
             model
         from actuators
-        where station_knot_id = $1
+        where knot_id = $1
             and device_uid = $2
             and deleted_at is null
         "#,
     )
-    .bind(station_knot_id)
+    .bind(knot_id)
     .bind(device_uid)
     .fetch_optional(executor)
     .await?;
@@ -146,7 +146,7 @@ pub async fn insert_actuator(
     let inserted = sqlx::query_as(
         r#"
         insert into actuators (
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind,
@@ -177,7 +177,7 @@ pub async fn insert_actuator(
         )
         returning
             id,
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind::text,
@@ -192,7 +192,7 @@ pub async fn insert_actuator(
             model
         "#,
     )
-    .bind(actuator.station_knot_id)
+    .bind(actuator.knot_id)
     .bind(&actuator.device_uid)
     .bind(&actuator.display_name)
     .bind(&actuator.kind)

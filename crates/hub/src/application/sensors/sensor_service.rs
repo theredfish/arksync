@@ -68,7 +68,7 @@ pub async fn insert_sensor(
     sensor: PluggedSensor,
 ) -> Result<Sensor, HubSensorError> {
     let record = NewSensorRecord {
-        station_knot_id: sensor.station_knot_id.uuid_v4(),
+        knot_id: sensor.knot_id.uuid_v4(),
         device_uid: sensor.device_uid.as_ref().to_string(),
         display_name: None,
         sensor_kind: sensor_store::sensor_kind_as_str(sensor.kind).to_string(),

@@ -31,7 +31,7 @@ impl std::error::Error for SensorStoreError {}
 impl From<sqlx::Error> for SensorStoreError {
     fn from(err: sqlx::Error) -> Self {
         if let sqlx::Error::Database(database_error) = &err {
-            if database_error.constraint() == Some("sensors_station_knot_device_uid_unique") {
+            if database_error.constraint() == Some("sensors_knot_device_uid_unique") {
                 return SensorStoreError::AlreadyExists;
             }
         }
@@ -48,7 +48,7 @@ pub async fn list_sensors(
         r#"
         select
             id,
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind::text as sensor_kind,
@@ -59,7 +59,7 @@ pub async fn list_sensors(
             measurement_interval_ms
         from sensors
         where deleted_at is null
-          and station_knot_id in (select id from station_knots where station_hub_id = $1 and deleted_at is null)
+          and knot_id in (select id from knots where hub_id = $1 and deleted_at is null)
         order by created_at asc
         "#,
     )
@@ -78,7 +78,7 @@ pub async fn sensor_by_id(
         r#"
         select
             id,
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind::text as sensor_kind,
@@ -107,7 +107,7 @@ pub async fn sensor_by_device_uid(
         r#"
         select
             id,
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind::text as sensor_kind,
@@ -130,16 +130,16 @@ pub async fn sensor_by_device_uid(
     sensor.ok_or(SensorStoreError::NotFound)
 }
 
-pub async fn sensor_by_station_knot_id_and_device_uid(
+pub async fn sensor_by_knot_id_and_device_uid(
     executor: impl PgExecutor<'_>,
-    station_knot_id: Uuid,
+    knot_id: Uuid,
     device_uid: &str,
 ) -> Result<SensorRecord, SensorStoreError> {
     let sensor = sqlx::query_as(
         r#"
         select
             id,
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind::text as sensor_kind,
@@ -149,12 +149,12 @@ pub async fn sensor_by_station_knot_id_and_device_uid(
             firmware,
             measurement_interval_ms
         from sensors
-        where station_knot_id = $1
+        where knot_id = $1
             and device_uid = $2
             and deleted_at is null
         "#,
     )
-    .bind(station_knot_id)
+    .bind(knot_id)
     .bind(device_uid)
     .fetch_optional(executor)
     .await?;
@@ -169,7 +169,7 @@ pub async fn insert_sensor(
     let inserted = sqlx::query_as(
         r#"
         insert into sensors (
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind,
@@ -198,7 +198,7 @@ pub async fn insert_sensor(
         )
         returning
             id,
-            station_knot_id,
+            knot_id,
             device_uid,
             display_name,
             kind::text as sensor_kind,
@@ -209,7 +209,7 @@ pub async fn insert_sensor(
             measurement_interval_ms
         "#,
     )
-    .bind(sensor.station_knot_id)
+    .bind(sensor.knot_id)
     .bind(&sensor.device_uid)
     .bind(&sensor.display_name)
     .bind(&sensor.sensor_kind)

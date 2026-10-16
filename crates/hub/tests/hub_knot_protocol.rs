@@ -393,10 +393,10 @@ async fn configuration_results_are_correlated_and_never_regress_state(
     let uid = "versioned-knot";
     let v1 = process(&pool, &mut registry, &hello(EventId::new(), uid)).await?;
     let other_v1 = process(&pool, &mut registry, &hello(EventId::new(), uid)).await?;
-    let record = knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), uid)
+    let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
-    knot_store::increment_station_knot_config_version(&pool, local_hub_id(), record.id)
+    knot_store::increment_knot_config_version(&pool, local_hub_id(), record.id)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     let v2 = process(&pool, &mut registry, &hello(EventId::new(), uid)).await?;
@@ -404,7 +404,7 @@ async fn configuration_results_are_correlated_and_never_regress_state(
     // Version 1 can finish while 2 is pending, without claiming 2 is applied.
     let event = applied(uid, &v1, 1);
     assert_processed(&process(&pool, &mut registry, &event).await?, &event);
-    let record = knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), uid)
+    let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     assert_eq!(record.applied_config_version, Some(1));
@@ -438,7 +438,7 @@ async fn configuration_results_are_correlated_and_never_regress_state(
                 .await?;
         assert_eq!(receipts, 0);
     }
-    let record = knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), uid)
+    let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     assert_eq!(record.config_version, 2);
@@ -447,13 +447,13 @@ async fn configuration_results_are_correlated_and_never_regress_state(
     assert_eq!(record.config_error, None);
 
     // A rejected new version retains the last successfully applied version.
-    knot_store::increment_station_knot_config_version(&pool, local_hub_id(), record.id)
+    knot_store::increment_knot_config_version(&pool, local_hub_id(), record.id)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     let v3 = process(&pool, &mut registry, &hello(EventId::new(), uid)).await?;
     let event = rejected(uid, &v3, 3);
     assert_processed(&process(&pool, &mut registry, &event).await?, &event);
-    let record = knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), uid)
+    let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     assert_eq!(record.applied_config_version, Some(2));
@@ -475,7 +475,7 @@ async fn startup_preserves_configuration_version_and_application_state(
         .find(|k| k.role == "local_hub")
         .unwrap();
     let mut registry = SensorRegistry::load(&pool, local_hub_id()).await?;
-    knot_store::increment_station_knot_config_version(&pool, local_hub_id(), local.id)
+    knot_store::increment_knot_config_version(&pool, local_hub_id(), local.id)
         .await
         .map_err(|e| eyre::eyre!("{e:?}"))?;
     let command = process(
@@ -492,7 +492,7 @@ async fn startup_preserves_configuration_version_and_application_state(
     .await?;
     for expected_status in ["applied", "rejected"] {
         if expected_status == "rejected" {
-            knot_store::increment_station_knot_config_version(&pool, local_hub_id(), local.id)
+            knot_store::increment_knot_config_version(&pool, local_hub_id(), local.id)
                 .await
                 .map_err(|e| eyre::eyre!("{e:?}"))?;
             let command = process(
@@ -508,17 +508,15 @@ async fn startup_preserves_configuration_version_and_application_state(
             )
             .await?;
         }
-        let before =
-            knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), &local.hardware_uid)
-                .await
-                .map_err(|e| eyre::eyre!("{e:?}"))?;
+        let before = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), &local.hardware_uid)
+            .await
+            .map_err(|e| eyre::eyre!("{e:?}"))?;
         let mut txn = pool.begin().await?;
         setup_local_station(&mut txn).await?;
         txn.commit().await?;
-        let after =
-            knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), &local.hardware_uid)
-                .await
-                .map_err(|e| eyre::eyre!("{e:?}"))?;
+        let after = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), &local.hardware_uid)
+            .await
+            .map_err(|e| eyre::eyre!("{e:?}"))?;
         assert_eq!(after.config_version, before.config_version);
         assert_eq!(after.applied_config_version, Some(2));
         assert_eq!(after.config_status, expected_status);

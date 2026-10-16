@@ -29,7 +29,7 @@ async fn hubs(pool: &PgPool) -> eyre::Result<[HubId; 2]> {
     hub_store::upsert_system_user(pool, &user).await?;
     let hubs = [HubId::new(), HubId::new()];
     for (index, id) in hubs.iter().enumerate() {
-        hub_store::upsert_station_hub(
+        hub_store::upsert_hub(
             pool,
             &HubRecord {
                 id: id.uuid_v4(),
@@ -151,7 +151,7 @@ async fn hub_owns_many_knots_and_foreign_hello_cannot_transfer_them(
     let mut knot = a_knots.pop().unwrap();
     knot.hub_id = b.uuid_v4();
     knot.name = "attempted reassignment".into();
-    assert!(knot_store::upsert_station_knot(&pool, &knot).await.is_err());
+    assert!(knot_store::upsert_knot(&pool, &knot).await.is_err());
     let unchanged = list_knots(&pool, a)
         .await?
         .into_iter()
@@ -177,7 +177,7 @@ async fn foreign_messages_cannot_read_config_settle_deliveries_or_poison_receipt
     txn.rollback().await?;
     assert!(!knot_store::insert_knot_config_delivery(&pool, b, EventId::new(), desired).await?);
     assert!(matches!(
-        knot_store::increment_station_knot_config_version(
+        knot_store::increment_knot_config_version(
             &pool,
             b,
             arksync_utils::uuid::Uuid::from_bytes(desired.knot_id)
@@ -312,7 +312,7 @@ async fn concurrent_hello_preserves_one_identity_and_one_owner(
             assert_nack(result, KnotNackReason::ConfigurationConflict);
         }
     }
-    let count: i64 = sqlx::query_scalar("select count(*) from station_knots")
+    let count: i64 = sqlx::query_scalar("select count(*) from knots")
         .fetch_one(&pool)
         .await?;
     assert_eq!(count, 2);
@@ -325,7 +325,7 @@ async fn deleted_knots_keep_their_identity_and_are_not_reclaimed_by_hello(
 ) -> eyre::Result<()> {
     let [a, b] = hubs(&pool).await?;
     handle(&pool, a, &hello("deleted")).await?;
-    sqlx::query("update station_knots set deleted_at = now() where hardware_uid = 'deleted'")
+    sqlx::query("update knots set deleted_at = now() where hardware_uid = 'deleted'")
         .execute(&pool)
         .await?;
     for hub in [a, b] {
@@ -339,11 +339,10 @@ async fn deleted_knots_keep_their_identity_and_are_not_reclaimed_by_hello(
             KnotNackReason::InvalidPayload,
         );
     }
-    let owner: arksync_utils::uuid::Uuid = sqlx::query_scalar(
-        "select station_hub_id from station_knots where hardware_uid = 'deleted'",
-    )
-    .fetch_one(&pool)
-    .await?;
+    let owner: arksync_utils::uuid::Uuid =
+        sqlx::query_scalar("select hub_id from knots where hardware_uid = 'deleted'")
+            .fetch_one(&pool)
+            .await?;
     assert_eq!(owner, a.uuid_v4());
     Ok(())
 }

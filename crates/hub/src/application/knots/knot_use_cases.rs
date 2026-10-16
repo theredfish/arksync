@@ -13,7 +13,7 @@ pub async fn list_knots(
     executor: impl PgExecutor<'_>,
     hub_id: HubId,
 ) -> Result<Vec<KnotRecord>, HubKnotError> {
-    Ok(knot_store::list_station_knots(executor, hub_id).await?)
+    Ok(knot_store::list_knots(executor, hub_id).await?)
 }
 
 pub async fn register_knot_hello(
@@ -21,11 +21,11 @@ pub async fn register_knot_hello(
     hub_id: HubId,
     hello: &ProtocolKnotHello,
 ) -> Result<ProtocolKnotConfig, HubKnotError> {
-    ensure_station_knot_for_hardware_uid(txn, hub_id, &hello.hardware_uid).await?;
+    ensure_knot_for_hardware_uid(txn, hub_id, &hello.hardware_uid).await?;
     Ok(knot_protocol_config_for_hardware_uid(txn, hub_id, &hello.hardware_uid).await?)
 }
 
-async fn ensure_station_knot_for_hardware_uid(
+async fn ensure_knot_for_hardware_uid(
     txn: &mut PgTransaction<'_>,
     hub_id: HubId,
     hardware_uid: &str,
@@ -43,5 +43,5 @@ async fn ensure_station_knot_for_hardware_uid(
         config_error: None,
     };
 
-    Ok(knot_store::find_or_insert_station_knot_by_hardware_uid(&mut **txn, &knot).await?)
+    Ok(knot_store::find_or_insert_knot_by_hardware_uid(&mut **txn, &knot).await?)
 }

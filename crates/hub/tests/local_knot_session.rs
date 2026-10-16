@@ -126,7 +126,7 @@ async fn local_sessions_register_exchange_config_and_rejoin_without_hardware(
 
             if round == 0 {
                 let mut txn = pool.begin().await?;
-                knot_store::increment_station_knot_config_version(&mut *txn, local_hub_id(), registered.id)
+                knot_store::increment_knot_config_version(&mut *txn, local_hub_id(), registered.id)
                     .await.map_err(|error| eyre::eyre!("config version: {error:?}"))?;
                 let config = knot_protocol_config_for_hardware_uid(&mut txn, local_hub_id(), hardware_uid).await?;
                 txn.commit().await?;
@@ -294,10 +294,10 @@ async fn configure_is_retried_after_a_full_knot_outbox_without_overwriting_messa
         let hello_ack = hub_peer.receive().await.unwrap().unwrap();
         knot_peer.send(hello_ack.clone()).await.unwrap();
         let first_confirmation = knot_peer.receive().await.unwrap().unwrap();
-        let record = knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), uid).await
+        let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid).await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         let mut txn = pool.begin().await?;
-        knot_store::increment_station_knot_config_version(&mut *txn, local_hub_id(), record.id).await
+        knot_store::increment_knot_config_version(&mut *txn, local_hub_id(), record.id).await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         let config = knot_protocol_config_for_hardware_uid(&mut txn, local_hub_id(), uid).await?;
         txn.commit().await?;
@@ -342,7 +342,7 @@ async fn configure_is_retried_after_a_full_knot_outbox_without_overwriting_messa
         assert_eq!(ack.payload, KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id: confirmation.id })));
         knot_peer.send(ack).await.unwrap();
         status.wait_for(|state| state.pending_messages == 0 && state.config.as_ref().is_some_and(|c| c.version == 2)).await?;
-        let record = knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), uid).await
+        let record = knot_store::knot_by_hardware_uid(&pool, local_hub_id(), uid).await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         assert_eq!(record.applied_config_version, Some(2));
         assert_eq!(record.config_status, "applied");
@@ -455,7 +455,7 @@ async fn cancellation_during_sql_rolls_back_configuration_confirmation(
         .unwrap();
         let hello_ack = peer.receive().await.unwrap().unwrap();
         let mut lock = pool.begin().await?;
-        sqlx::query("select id from station_knots where hardware_uid = $1 for update")
+        sqlx::query("select id from knots where hardware_uid = $1 for update")
             .bind(uid)
             .fetch_one(&mut *lock)
             .await?;

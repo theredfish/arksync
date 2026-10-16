@@ -23,15 +23,15 @@ impl From<sqlx::Error> for KnotStoreError {
     }
 }
 
-pub async fn upsert_station_knot(
+pub async fn upsert_knot(
     executor: impl PgExecutor<'_>,
     knot: &KnotRecord,
 ) -> Result<(), sqlx::Error> {
     let result = sqlx::query(
         r#"
-        insert into station_knots (
+        insert into knots (
             id,
-            station_hub_id,
+            hub_id,
             name,
             hardware_uid,
             role,
@@ -46,8 +46,8 @@ pub async fn upsert_station_knot(
             $2,
             $3,
             $4,
-            $5::station_knot_role,
-            $6::station_knot_status,
+            $5::knot_role,
+            $6::knot_status,
             $7,
             $8,
             $9,
@@ -59,8 +59,8 @@ pub async fn upsert_station_knot(
             role = excluded.role,
             status = excluded.status,
             deleted_at = null
-        where station_knots.station_hub_id = excluded.station_hub_id
-          and station_knots.hardware_uid = excluded.hardware_uid
+        where knots.hub_id = excluded.hub_id
+          and knots.hardware_uid = excluded.hardware_uid
         "#,
     )
     .bind(knot.id)
@@ -82,15 +82,15 @@ pub async fn upsert_station_knot(
     Ok(())
 }
 
-pub async fn find_or_insert_station_knot_by_hardware_uid(
+pub async fn find_or_insert_knot_by_hardware_uid(
     executor: impl PgExecutor<'_>,
     knot: &KnotRecord,
 ) -> Result<KnotRecord, KnotStoreError> {
     let knot = sqlx::query_as(
         r#"
-        insert into station_knots (
+        insert into knots (
             id,
-            station_hub_id,
+            hub_id,
             name,
             hardware_uid,
             role,
@@ -105,8 +105,8 @@ pub async fn find_or_insert_station_knot_by_hardware_uid(
             $2,
             $3,
             $4,
-            $5::station_knot_role,
-            $6::station_knot_status,
+            $5::knot_role,
+            $6::knot_status,
             $7,
             $8,
             $9,
@@ -114,11 +114,11 @@ pub async fn find_or_insert_station_knot_by_hardware_uid(
         )
         on conflict (hardware_uid) do update
         set hardware_uid = excluded.hardware_uid
-        where station_knots.station_hub_id = excluded.station_hub_id
-          and station_knots.deleted_at is null
+        where knots.hub_id = excluded.hub_id
+          and knots.deleted_at is null
         returning
             id,
-            station_hub_id as hub_id,
+            hub_id,
             name,
             hardware_uid,
             role::text as role,
@@ -145,7 +145,7 @@ pub async fn find_or_insert_station_knot_by_hardware_uid(
     knot.ok_or(KnotStoreError::OwnershipConflict)
 }
 
-pub async fn list_station_knots(
+pub async fn list_knots(
     executor: impl PgExecutor<'_>,
     hub_id: HubId,
 ) -> Result<Vec<KnotRecord>, KnotStoreError> {
@@ -153,7 +153,7 @@ pub async fn list_station_knots(
         r#"
         select
             id,
-            station_hub_id as hub_id,
+            hub_id,
             name,
             hardware_uid,
             role::text as role,
@@ -162,8 +162,8 @@ pub async fn list_station_knots(
             applied_config_version,
             config_status,
             config_error
-        from station_knots
-        where station_hub_id = $1 and deleted_at is null
+        from knots
+        where hub_id = $1 and deleted_at is null
         order by created_at asc
         "#,
     )
@@ -174,7 +174,7 @@ pub async fn list_station_knots(
     Ok(knots)
 }
 
-pub async fn station_knot_by_hardware_uid(
+pub async fn knot_by_hardware_uid(
     executor: impl PgExecutor<'_>,
     hub_id: HubId,
     hardware_uid: &str,
@@ -183,7 +183,7 @@ pub async fn station_knot_by_hardware_uid(
         r#"
         select
             id,
-            station_hub_id as hub_id,
+            hub_id,
             name,
             hardware_uid,
             role::text as role,
@@ -192,9 +192,9 @@ pub async fn station_knot_by_hardware_uid(
             applied_config_version,
             config_status,
             config_error
-        from station_knots
+        from knots
         where hardware_uid = $1
-            and station_hub_id = $2
+            and hub_id = $2
             and deleted_at is null
         "#,
     )
@@ -206,20 +206,20 @@ pub async fn station_knot_by_hardware_uid(
     Ok(knot)
 }
 
-pub async fn increment_station_knot_config_version(
+pub async fn increment_knot_config_version(
     executor: impl PgExecutor<'_>,
     hub_id: HubId,
     knot_id: arksync_utils::uuid::Uuid,
 ) -> Result<i64, KnotStoreError> {
     let version = sqlx::query_scalar(
         r#"
-        update station_knots
+        update knots
         set
             config_version = config_version + 1,
             config_status = 'pending',
             config_error = null
         where id = $1
-            and station_hub_id = $2
+            and hub_id = $2
             and deleted_at is null
         returning config_version
         "#,

@@ -171,7 +171,7 @@ async fn handle_control_message(
             .await?
         }
         KnotControlMessage::Heartbeat => {
-            match knot_store::station_knot_by_hardware_uid(pool, hub_id, hardware_uid).await {
+            match knot_store::knot_by_hardware_uid(pool, hub_id, hardware_uid).await {
                 Ok(_) => KnotControlMessage::Ack(KnotAck::Heartbeat { event_id: event.id }),
                 Err(knot_store::KnotStoreError::NotFound) => KnotControlMessage::Nack(KnotNack {
                     event_id: event.id,

@@ -137,7 +137,7 @@ async fn maybe_configure_local_demo_actuator(
     if source_hub_id.uuid_v4() != hub_id.uuid_v4() || knot_id.uuid_v4() != CONFIG.local_knot_id {
         return Ok(());
     }
-    let sensor = crate::infrastructure::store::sensors::sensor_by_station_knot_id_and_device_uid(
+    let sensor = crate::infrastructure::store::sensors::sensor_by_knot_id_and_device_uid(
         pool,
         knot_id.uuid_v4(),
         measurement.device_uid.as_ref(),
@@ -153,7 +153,7 @@ async fn maybe_configure_local_demo_actuator(
     ensure_local_demo_temperature_relay_rule(&mut txn, *knot_id, sensor_id)
         .await
         .wrap_err("failed to ensure local demo relay rule")?;
-    knot_store::increment_station_knot_config_version(&mut *txn, hub_id, knot_id.uuid_v4())
+    knot_store::increment_knot_config_version(&mut *txn, hub_id, knot_id.uuid_v4())
         .await
         .map_err(|error| eyre!("failed to increment Knot config version: {error:?}"))?;
     let config =

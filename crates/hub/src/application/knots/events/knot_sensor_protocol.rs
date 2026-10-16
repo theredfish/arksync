@@ -47,7 +47,7 @@ pub(super) async fn handle_knot_sensor_protocol(
         .begin()
         .await
         .wrap_err("failed to begin Knot sensor message transaction")?;
-    let knot = knot_store::station_knot_by_hardware_uid(&mut *txn, hub_id, hardware_uid)
+    let knot = knot_store::knot_by_hardware_uid(&mut *txn, hub_id, hardware_uid)
         .await
         .map_err(|error| match error {
             knot_store::KnotStoreError::NotFound => eyre::Report::new(InvalidSensorPayload),
@@ -184,12 +184,8 @@ async fn ensure_sensor(
         return Ok(sensor_id);
     }
 
-    match sensor_store::sensor_by_station_knot_id_and_device_uid(
-        &mut **txn,
-        knot.id,
-        device_uid.as_ref(),
-    )
-    .await
+    match sensor_store::sensor_by_knot_id_and_device_uid(&mut **txn, knot.id, device_uid.as_ref())
+        .await
     {
         Ok(record) => return Ok(record.id.into()),
         Err(SensorStoreError::NotFound) => {}
@@ -199,7 +195,7 @@ async fn ensure_sensor(
     let inserted = insert_sensor(
         &mut **txn,
         PluggedSensor {
-            station_knot_id: KnotId::from(knot.id),
+            knot_id: KnotId::from(knot.id),
             device_uid,
             kind: sensor.kind,
             connection: sensor.connection.clone(),

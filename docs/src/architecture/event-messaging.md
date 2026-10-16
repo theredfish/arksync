@@ -60,6 +60,8 @@ Before sending configuration through `Ack::Hello` or `Configure`, the Hub record
 
 A Hub owns many Knots; each Knot belongs to exactly one Hub. The runtime supplies a `HubId` to each session and handler. An incoming message cannot select the Hub used for database access or responses. Configuration, heartbeat, sensor processing, configuration results, and registry loading all check this ownership.
 
+Persistence uses `hubs`, `knots`, `knots.hub_id`, and `knot_id` on sensors, actuators, and configuration deliveries. The rename migration preserves existing rows and relationships and has an inverse rollback; older migrations retain their original names.
+
 Hardware UIDs remain globally unique, including soft-deleted Knots. A new Hello for existing hardware retrieves the same Knot only for its active owner; another Hub receives `ConfigurationConflict`, without configuration disclosure or reassignment. Concurrent registration follows the same rule. Explicit transfer and reactivation workflows are outside this milestone.
 
 Receipts are keyed by `(hub_id, source_hardware_uid, event_id)`, with a foreign key to the owner and hardware identity. Ownership is checked before deduplication, so a foreign message cannot reserve a receipt or be acknowledged as a previously processed message. Duplicate IDs from different Knots do not suppress each other's effects. The ownership migration backfills existing receipts; ambiguous hardware identities or orphan receipts must be resolved before migration rather than discarded. Rolling back to the old global EventId key fails if new scoped IDs collide.

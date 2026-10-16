@@ -21,12 +21,12 @@ pub async fn insert_knot_config_delivery(
     };
     let result = sqlx::query(
         r#"
-        insert into knot_config_deliveries (event_id, station_knot_id, config_version, config)
-        select $1, id, $3, $4 from station_knots
+        insert into knot_config_deliveries (event_id, knot_id, config_version, config)
+        select $1, id, $3, $4 from knots
         where id = $2 and config_version = $3 and deleted_at is null
-          and station_hub_id = $5
+          and hub_id = $5
         on conflict (event_id) do update set event_id = excluded.event_id
-        where knot_config_deliveries.station_knot_id = excluded.station_knot_id
+        where knot_config_deliveries.knot_id = excluded.knot_id
           and knot_config_deliveries.config = excluded.config
         "#,
     )
@@ -42,7 +42,7 @@ pub async fn insert_knot_config_delivery(
 
 #[derive(sqlx::FromRow)]
 struct ConfigDelivery {
-    station_knot_id: Uuid,
+    knot_id: Uuid,
     config_version: i64,
     outcome: Option<String>,
     error: Option<String>,
@@ -60,11 +60,11 @@ pub async fn settle_knot_config_delivery(
 ) -> Result<bool, sqlx::Error> {
     let delivery: Option<ConfigDelivery> = sqlx::query_as(
         r#"
-        select d.station_knot_id, d.config_version, d.outcome, d.error
+        select d.knot_id, d.config_version, d.outcome, d.error
         from knot_config_deliveries d
-        join station_knots k on k.id = d.station_knot_id
+        join knots k on k.id = d.knot_id
         where d.event_id = $1 and k.hardware_uid = $2 and k.deleted_at is null
-          and k.station_hub_id = $3
+          and k.hub_id = $3
         for update of d
         "#,
     )
@@ -95,7 +95,7 @@ pub async fn settle_knot_config_delivery(
         .await?;
     sqlx::query(
         r#"
-        update station_knots
+        update knots
         set applied_config_version = case when $3 = 'applied'
                 then greatest(applied_config_version, $2) else applied_config_version end,
             config_status = case when config_version = $2
@@ -105,10 +105,10 @@ pub async fn settle_knot_config_delivery(
                 and (applied_config_version is null or applied_config_version < $2 or $3 = 'applied')
                 then $4 else config_error end
         where id = $1 and config_version >= $2 and deleted_at is null
-          and station_hub_id = $5
+          and hub_id = $5
         "#,
     )
-    .bind(delivery.station_knot_id)
+    .bind(delivery.knot_id)
     .bind(delivery.config_version)
     .bind(outcome)
     .bind(rejection)
