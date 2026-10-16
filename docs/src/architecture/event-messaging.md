@@ -93,6 +93,20 @@ The Hub records a processing receipt and all business effects in one database tr
 
 An invalid sensor identity produces a terminal `InvalidPayload` NACK. The whole batch rolls back, including its receipt and sensor registrations; the registry cache changes only after commit. Database failures remain retryable and produce no ACK.
 
+## Sensor Observations Before Registration
+
+`KnotMessage::Observation` carries a full `Inventory` or one live `Measurement`. It is appended after the existing Control and Sensor variants; their V1 Postcard representations stay unchanged. Both peers must support the new variant to exchange observations; capability negotiation is not added here.
+
+The observation session ID is the EventId of the Hello that established the endpoint. The Hub pins it after successful registration and rejects a different Hello ID on that same endpoint. A new endpoint creates a new session ID while retaining the persisted Knot ID. Inventory revisions start at one and increase when content changes; repeating an identical revision resynchronizes subscribers without resetting measurement ordering. Missing entries in a newer inventory remove observations. Sensor references are local to the session and revision, and `device_uid` is optional: no PostgreSQL SensorId is required.
+
+Each measurement names its inventory revision and sensor reference, with a positive sequence increasing per sensor in that revision. Acquisition time, value, unit, and quality travel with it. Valid readings require a finite value and a present sensor; unavailable readings carry no value, and invalid readings may retain a finite raw value for diagnostics. The portable cursor rejects wrong sessions, missing or mismatched inventories, conflicting revisions, unknown references, and old or duplicate sequences. Wall clocks never decide ordering.
+
+The portable `KnotObservationPublisher` coalesces pending measurements by sensor. The Tokio adapter admits at most 64 inventory entries and keeps one current inventory plus at most one pending reading per entry, independently of the reliable outbox. `KnotSessionHandle::publish` and `try_publish_at` choose the appropriate delivery path; `try_observe_at` also accepts a borrowed observation. Rejection is explicit and does not change the accepted state. These entry limits are not an embedded byte budget; transport framing and metadata-size budgets remain separate work.
+
+The Knot sends observations after its handshake, behind due reliable traffic, with control messages taking priority. A full transport retains the pending snapshot and latest values; it does not advance successful-send state. A successful live send is not retried or acknowledged. The current inventory is sent before measurements, every five seconds, and after presence recovery, preserving its original observation timestamp. A lost inventory can therefore be repaired; intermediate live readings may be lost. A new inventory revision discards pending measurements for the previous revision.
+
+The Hub validates observations against its established peer and session before routing them through its protocol EventRouter. This path performs no sensor registration, measurement persistence, receipt insertion, or legacy sensor projection. Ordering belongs to the session, so direct calls to the durable handler ignore observations. This milestone tests simulated readings over real local sessions. UART acquisition, the Hub's operator-facing observation projection, calibration commands, and UI integration follow in later steps. The existing durable Sensor path retains its current behavior until those steps replace the implicit registration workflow.
+
 ## Retry And Failure Semantics
 
 Messages that require confirmation remain in the Knot's bounded in-memory outbox. The default policy is:

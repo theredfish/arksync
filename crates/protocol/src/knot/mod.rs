@@ -7,9 +7,11 @@
 mod config;
 mod control;
 mod message;
+mod observation;
 mod sensor;
 
 pub use config::*;
 pub use control::*;
 pub use message::*;
+pub use observation::*;
 pub use sensor::*;

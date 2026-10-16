@@ -4,10 +4,12 @@
 
 mod knot_protocol_runtime;
 mod message_link;
+mod observations;
 mod outbox;
 mod presence;
 
 pub use knot_protocol_runtime::*;
 pub use message_link::*;
+pub use observations::*;
 pub use outbox::*;
 pub use presence::*;

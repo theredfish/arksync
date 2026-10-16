@@ -6,7 +6,7 @@ use alloc::{string::String, vec::Vec};
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotConfig, KnotConfigApplied, KnotConfigRejected,
-    KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
+    KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage, KnotObservationMessage,
 };
 use arksync_protocol::ArkSyncActor;
 
@@ -38,6 +38,7 @@ pub struct KnotProtocolRuntime {
     config: Option<KnotConfig>,
     outbox: KnotOutbox,
     hello_id: Option<EventId>,
+    session_id: Option<EventId>,
     hub_id: Option<[u8; 16]>,
     heartbeat: Option<(EventId, u64)>,
     last_heartbeat_at_ms: u64,
@@ -57,6 +58,7 @@ impl KnotProtocolRuntime {
             config: None,
             outbox: KnotOutbox::new(retry_policy),
             hello_id: None,
+            session_id: None,
             hub_id: None,
             heartbeat: None,
             last_heartbeat_at_ms: 0,
@@ -88,6 +90,7 @@ impl KnotProtocolRuntime {
 
         self.outbox.enqueue(envelope, now_ms)?;
         self.hello_id = Some(event_id);
+        self.session_id = Some(event_id);
         self.presence = PeerPresence::new(now_ms);
         Ok(())
     }
@@ -106,6 +109,25 @@ impl KnotProtocolRuntime {
         let envelope = self.envelope(event_id, occurred_at, message);
         self.outbox.enqueue(envelope, now_ms)?;
         Ok(())
+    }
+
+    /// Prepare best-effort observations only after this session's handshake.
+    /// The adapter owns the coalescing publisher and sends without the reliable outbox.
+    pub fn observation_envelope(
+        &self,
+        message: KnotObservationMessage,
+        event_id: EventId,
+        occurred_at: Timestamp,
+    ) -> Result<KnotEnvelope, KnotProtocolRuntimeError> {
+        if self.hub_id.is_none()
+            || self.hello_id.is_some()
+            || self.config.is_none()
+            || self.connection_state() != ConnectionState::Connected
+            || self.session_id != Some(message.session_id())
+        {
+            return Err(KnotProtocolRuntimeError::UnexpectedMessage);
+        }
+        Ok(self.envelope(event_id, occurred_at, KnotMessage::Observation(message)))
     }
 
     pub fn receive(

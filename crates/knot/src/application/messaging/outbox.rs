@@ -82,7 +82,8 @@ impl KnotOutbox {
 
     pub fn due_messages(&mut self, now_ms: u64) -> Vec<KnotEnvelope> {
         let policy = self.policy;
-        self.pending
+        let mut messages: Vec<_> = self
+            .pending
             .iter_mut()
             .filter_map(|pending| {
                 if pending.next_attempt_at_ms > now_ms {
@@ -95,14 +96,17 @@ impl KnotOutbox {
 
                 Some(pending.envelope.clone())
             })
-            .collect()
+            .collect();
+        messages.sort_by_key(|envelope| !matches!(envelope.payload, KnotMessage::Control(_)));
+        messages
     }
 
     /// Peeks without advancing retry time. A full transport has not sent anything.
     pub fn next_due_message(&self, now_ms: u64) -> Option<&KnotEnvelope> {
         self.pending
             .iter()
-            .find(|pending| pending.next_attempt_at_ms <= now_ms)
+            .filter(|pending| pending.next_attempt_at_ms <= now_ms)
+            .min_by_key(|pending| !matches!(pending.envelope.payload, KnotMessage::Control(_)))
             .map(|pending| &pending.envelope)
     }
 
