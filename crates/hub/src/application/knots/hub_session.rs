@@ -7,8 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use arksync_bus::{EventHandler, EventId, EventRouter, Timestamp};
 use arksync_knot::application::{
-    ConnectionState, KeepAliveConfig, KnotOutbox, MessageLink, PeerPresence, RetryPolicy,
-    TokioMessageLink,
+    ConnectionState, KeepAliveConfig, KnotObservationCursor, KnotOutbox, MessageLink, PeerPresence,
+    RetryPolicy, TokioMessageLink, DEFAULT_OBSERVATION_CAPACITY,
 };
 use arksync_knot::domain::KnotEventSource;
 use arksync_protocol::knot::{KnotAck, KnotControlMessage, KnotEnvelope, KnotMessage};
@@ -104,6 +104,7 @@ pub struct HubSession {
     outgoing: mpsc::Receiver<KnotEnvelope>,
     events: EventRouter<KnotMessage, ArkSyncActor>,
     sensor_events: EventRouter<SensorEvent, KnotEventSource>,
+    observations: Option<KnotObservationCursor>,
 }
 
 impl HubSession {
@@ -133,6 +134,7 @@ impl HubSession {
             outgoing: receiver,
             events: EventRouter::new(),
             sensor_events: EventRouter::new(),
+            observations: None,
         })
     }
 
@@ -245,6 +247,23 @@ impl HubSession {
         }
         let received_at = timestamp_now();
         let received_at_ms = started_at.elapsed().as_millis() as u64;
+        if let KnotMessage::Observation(observation) = &message.payload {
+            let Some(cursor) = &mut self.observations else {
+                return None;
+            };
+            if let Err(error) = cursor.accept(observation) {
+                log::debug!("Hub ignored observation {}: {error:?}", message.id);
+                return None;
+            }
+            self.presence.observe(received_at_ms);
+            self.status
+                .send_modify(|status| status.last_received_at = Some(received_at));
+            self.update_connection();
+            if self.events.publish(message).rejected > 0 {
+                log::warn!("Hub observation subscriber rejected message {}", message.id);
+            }
+            return None;
+        }
         let operation = tokio::time::timeout(
             DATABASE_OPERATION_TIMEOUT,
             handle_knot_protocol_event(
@@ -288,6 +307,9 @@ impl HubSession {
             result.response.as_ref().map(|r| &r.payload)
         {
             if let KnotAck::Hello { config, .. } = ack {
+                self.observations.get_or_insert_with(|| {
+                    KnotObservationCursor::new(message.id, DEFAULT_OBSERVATION_CAPACITY)
+                });
                 let ArkSyncActor::Knot { hardware_uid } = &message.source else {
                     unreachable!()
                 };
@@ -321,7 +343,16 @@ impl HubSession {
             return false;
         };
         match &self.status.borrow().hardware_uid {
-            Some(expected) => expected == hardware_uid,
+            Some(expected) => {
+                expected == hardware_uid
+                    && (!matches!(
+                        message.payload,
+                        KnotMessage::Control(KnotControlMessage::Hello(_))
+                    ) || self
+                        .observations
+                        .as_ref()
+                        .is_none_or(|cursor| cursor.session_id() == message.id))
+            }
             None => {
                 matches!(&message.payload, KnotMessage::Control(KnotControlMessage::Hello(hello)) if hello.hardware_uid == *hardware_uid)
             }

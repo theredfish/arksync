@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{KnotControlMessage, KnotSensorMessage};
+use super::{KnotControlMessage, KnotObservationMessage, KnotSensorMessage};
 use crate::ArkSyncEnvelope;
 
 /// Versioned message envelope exchanged between a Hub and a Knot.
@@ -15,6 +15,7 @@ pub type KnotEnvelope = ArkSyncEnvelope<KnotMessage>;
 pub enum KnotMessage {
     Control(KnotControlMessage),
     Sensor(KnotSensorMessage),
+    Observation(KnotObservationMessage),
 }
 
 impl KnotMessage {
@@ -23,6 +24,7 @@ impl KnotMessage {
         match self {
             Self::Control(message) => message.requires_ack(),
             Self::Sensor(_) => true,
+            Self::Observation(_) => false,
         }
     }
 }

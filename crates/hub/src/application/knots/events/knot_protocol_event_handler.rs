@@ -48,6 +48,14 @@ pub async fn handle_knot_protocol_event(
         });
     };
 
+    // Observation ordering belongs to the established session, never this durable handler.
+    if matches!(event.payload, KnotMessage::Observation(_)) {
+        return Ok(KnotProtocolEventResult {
+            response: None,
+            sensor_events: Vec::new(),
+        });
+    }
+
     let KnotMessage::Sensor(_) = &event.payload else {
         return handle_control_message(pool, hub_id, event, response_event_id, responded_at).await;
     };

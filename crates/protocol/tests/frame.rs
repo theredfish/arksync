@@ -4,7 +4,11 @@
 
 use arksync_bus::{EventEnvelope, EventId, Timestamp};
 use arksync_protocol::knot::{
-    KnotAck, KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
+    KnotAck, KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotHello, KnotLiveMeasurement,
+    KnotMeasurementQuality, KnotMeasurementUnit, KnotMessage, KnotObservationMessage,
+    KnotObservedSensor, KnotSensorConnection, KnotSensorDescriptor, KnotSensorInventory,
+    KnotSensorKind, KnotSensorMeasurementBatch, KnotSensorMessage, KnotSensorObservationState,
+    KnotSensorRef,
 };
 use arksync_protocol::{decode_frame, encode_frame, ArkSyncActor, ProtocolFrameError, CONFIG};
 
@@ -126,4 +130,62 @@ fn protocol_config_defines_the_frame_format() {
     assert_eq!(config.protocol_version, 1);
     assert_eq!(config.supported_versions, &[1]);
     assert!(config.supports_version(config.protocol_version));
+}
+
+#[test]
+fn inventory_and_live_measurements_round_trip_without_a_registered_sensor() {
+    let mut envelope = hello_envelope();
+    let inventory = KnotSensorInventory {
+        session_id: envelope.id,
+        revision: 1,
+        sensors: vec![KnotObservedSensor {
+            reference: KnotSensorRef(42),
+            device_uid: None,
+            sensor: KnotSensorDescriptor {
+                hardware_uid: "unidentified".into(),
+                kind: KnotSensorKind::Temperature,
+                connection: KnotSensorConnection::I2c { address: 0x66 },
+                firmware: None,
+            },
+            state: KnotSensorObservationState::Present,
+        }],
+    };
+    let measurement = KnotLiveMeasurement {
+        session_id: envelope.id,
+        inventory_revision: 1,
+        sensor: KnotSensorRef(42),
+        sequence: 3,
+        acquired_at: Timestamp::from_unix_millis(123),
+        value: Some(25.5),
+        unit: KnotMeasurementUnit::Celsius,
+        quality: KnotMeasurementQuality::Valid,
+    };
+    for message in [
+        KnotObservationMessage::Inventory(inventory),
+        KnotObservationMessage::Measurement(measurement),
+    ] {
+        envelope.payload = KnotMessage::Observation(message);
+        assert!(!envelope.payload.requires_ack());
+        let mut buffer = [0; 512];
+        let frame = encode_frame(&envelope, &mut buffer).unwrap();
+        assert_eq!(decode_frame::<KnotMessage>(frame).unwrap(), envelope);
+    }
+}
+
+#[test]
+fn durable_sensor_frame_keeps_its_v1_discriminants() {
+    let mut envelope = hello_envelope();
+    envelope.payload = KnotMessage::Sensor(KnotSensorMessage::Measurements(
+        KnotSensorMeasurementBatch {
+            measurements: vec![],
+        },
+    ));
+    let mut buffer = [0; 256];
+    assert_eq!(
+        encode_frame(&envelope, &mut buffer).unwrap(),
+        &[
+            65, 82, 75, 1, 1, 1, 1, 1, 1, 1, 65, 1, 129, 1, 1, 1, 1, 1, 1, 1, 1, 10, 107, 110, 111,
+            116, 45, 114, 112, 105, 45, 49, 128, 128, 217, 235, 204, 103, 1, 3, 0,
+        ]
+    );
 }
