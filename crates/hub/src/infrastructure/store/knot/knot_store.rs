@@ -2,13 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use sqlx::{PgExecutor, PgTransaction};
+use crate::domain::HubId;
+use sqlx::PgExecutor;
 
 use crate::infrastructure::store::KnotRecord;
 
 #[derive(Debug)]
 pub enum KnotStoreError {
     NotFound,
+    OwnershipConflict,
     Database(sqlx::Error),
 }
 
@@ -25,7 +27,7 @@ pub async fn upsert_station_knot(
     executor: impl PgExecutor<'_>,
     knot: &KnotRecord,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
+    let result = sqlx::query(
         r#"
         insert into station_knots (
             id,
@@ -53,12 +55,12 @@ pub async fn upsert_station_knot(
         )
         on conflict (id) do update
         set
-            station_hub_id = excluded.station_hub_id,
             name = excluded.name,
-            hardware_uid = excluded.hardware_uid,
             role = excluded.role,
             status = excluded.status,
             deleted_at = null
+        where station_knots.station_hub_id = excluded.station_hub_id
+          and station_knots.hardware_uid = excluded.hardware_uid
         "#,
     )
     .bind(knot.id)
@@ -74,10 +76,13 @@ pub async fn upsert_station_knot(
     .execute(executor)
     .await?;
 
+    if result.rows_affected() == 0 {
+        return Err(sqlx::Error::RowNotFound);
+    }
     Ok(())
 }
 
-pub async fn insert_station_knot(
+pub async fn find_or_insert_station_knot_by_hardware_uid(
     executor: impl PgExecutor<'_>,
     knot: &KnotRecord,
 ) -> Result<KnotRecord, KnotStoreError> {
@@ -107,6 +112,10 @@ pub async fn insert_station_knot(
             $9,
             $10
         )
+        on conflict (hardware_uid) do update
+        set hardware_uid = excluded.hardware_uid
+        where station_knots.station_hub_id = excluded.station_hub_id
+          and station_knots.deleted_at is null
         returning
             id,
             station_hub_id as hub_id,
@@ -130,14 +139,15 @@ pub async fn insert_station_knot(
     .bind(knot.applied_config_version)
     .bind(&knot.config_status)
     .bind(&knot.config_error)
-    .fetch_one(executor)
+    .fetch_optional(executor)
     .await?;
 
-    Ok(knot)
+    knot.ok_or(KnotStoreError::OwnershipConflict)
 }
 
 pub async fn list_station_knots(
     executor: impl PgExecutor<'_>,
+    hub_id: HubId,
 ) -> Result<Vec<KnotRecord>, KnotStoreError> {
     let knots = sqlx::query_as(
         r#"
@@ -153,10 +163,11 @@ pub async fn list_station_knots(
             config_status,
             config_error
         from station_knots
-        where deleted_at is null
+        where station_hub_id = $1 and deleted_at is null
         order by created_at asc
         "#,
     )
+    .bind(hub_id.uuid_v4())
     .fetch_all(executor)
     .await?;
 
@@ -165,6 +176,7 @@ pub async fn list_station_knots(
 
 pub async fn station_knot_by_hardware_uid(
     executor: impl PgExecutor<'_>,
+    hub_id: HubId,
     hardware_uid: &str,
 ) -> Result<KnotRecord, KnotStoreError> {
     let knot = sqlx::query_as(
@@ -182,10 +194,12 @@ pub async fn station_knot_by_hardware_uid(
             config_error
         from station_knots
         where hardware_uid = $1
+            and station_hub_id = $2
             and deleted_at is null
         "#,
     )
     .bind(hardware_uid)
+    .bind(hub_id.uuid_v4())
     .fetch_one(executor)
     .await?;
 
@@ -194,6 +208,7 @@ pub async fn station_knot_by_hardware_uid(
 
 pub async fn increment_station_knot_config_version(
     executor: impl PgExecutor<'_>,
+    hub_id: HubId,
     knot_id: arksync_utils::uuid::Uuid,
 ) -> Result<i64, KnotStoreError> {
     let version = sqlx::query_scalar(
@@ -204,24 +219,15 @@ pub async fn increment_station_knot_config_version(
             config_status = 'pending',
             config_error = null
         where id = $1
+            and station_hub_id = $2
             and deleted_at is null
         returning config_version
         "#,
     )
     .bind(knot_id)
+    .bind(hub_id.uuid_v4())
     .fetch_optional(executor)
     .await?;
 
     version.ok_or(KnotStoreError::NotFound)
-}
-
-pub async fn find_or_insert_station_knot_by_hardware_uid(
-    txn: &mut PgTransaction<'_>,
-    knot: &KnotRecord,
-) -> Result<KnotRecord, KnotStoreError> {
-    match station_knot_by_hardware_uid(&mut **txn, &knot.hardware_uid).await {
-        Ok(knot) => Ok(knot),
-        Err(KnotStoreError::NotFound) => insert_station_knot(&mut **txn, knot).await,
-        Err(err) => Err(err),
-    }
 }

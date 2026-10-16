@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use crate::application::{insert_sensor, list_sensors, HubSensorError};
-use crate::domain::{PluggedSensor, SensorId};
+use crate::domain::{HubId, PluggedSensor, SensorId};
 use arksync_utils::uuid::Uuid;
 use sqlx::PgExecutor;
 
@@ -21,8 +21,11 @@ pub struct SensorRegistry {
 }
 
 impl SensorRegistry {
-    pub async fn load(executor: impl PgExecutor<'_>) -> Result<Self, HubSensorError> {
-        let sensors = list_sensors(executor).await?;
+    pub async fn load(
+        executor: impl PgExecutor<'_>,
+        hub_id: HubId,
+    ) -> Result<Self, HubSensorError> {
+        let sensors = list_sensors(executor, hub_id).await?;
         let sensors_by_device_uid = sensors
             .into_iter()
             .map(|sensor| {

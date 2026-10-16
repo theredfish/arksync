@@ -12,7 +12,7 @@ use sqlx::PgPool;
 
 use crate::application::register_knot_hello;
 use crate::application::{HubSensorEventEnvelope, SensorRegistry};
-use crate::config::CONFIG;
+use crate::domain::HubId;
 use crate::infrastructure::store::{
     insert_knot_message_receipt, knot as knot_store, KnotMessageStoreError,
 };
@@ -26,15 +26,17 @@ pub struct KnotProtocolEventResult {
 
 pub async fn handle_knot_protocol_event(
     pool: &PgPool,
+    hub_id: HubId,
     event: &KnotEnvelope,
     response_event_id: EventId,
     responded_at: Timestamp,
     received_at: Timestamp,
     sensor_registry: &mut SensorRegistry,
 ) -> Result<KnotProtocolEventResult> {
-    let ArkSyncActor::Knot { hardware_uid } = &event.source else {
+    let ArkSyncActor::Knot { .. } = &event.source else {
         return Ok(KnotProtocolEventResult {
             response: Some(response(
+                hub_id,
                 response_event_id,
                 responded_at,
                 KnotControlMessage::Nack(KnotNack {
@@ -46,20 +48,12 @@ pub async fn handle_knot_protocol_event(
         });
     };
 
-    let KnotMessage::Sensor(message) = &event.payload else {
-        return handle_control_message(pool, event, response_event_id, responded_at).await;
+    let KnotMessage::Sensor(_) = &event.payload else {
+        return handle_control_message(pool, hub_id, event, response_event_id, responded_at).await;
     };
 
-    let result = handle_knot_sensor_protocol(
-        pool,
-        event.id,
-        hardware_uid,
-        message,
-        event.occurred_at,
-        received_at,
-        sensor_registry,
-    )
-    .await;
+    let result =
+        handle_knot_sensor_protocol(pool, hub_id, event, received_at, sensor_registry).await;
 
     let (sensor_events, reply) = match result {
         Ok(events) => (
@@ -77,13 +71,14 @@ pub async fn handle_knot_protocol_event(
     };
 
     Ok(KnotProtocolEventResult {
-        response: Some(response(response_event_id, responded_at, reply)),
+        response: Some(response(hub_id, response_event_id, responded_at, reply)),
         sensor_events,
     })
 }
 
 async fn handle_control_message(
     pool: &PgPool,
+    hub_id: HubId,
     event: &KnotEnvelope,
     response_event_id: EventId,
     responded_at: Timestamp,
@@ -107,24 +102,37 @@ async fn handle_control_message(
                     .begin()
                     .await
                     .wrap_err("failed to begin Knot Hello transaction")?;
-                let is_new =
-                    insert_knot_message_receipt(&mut *txn, event.id, hardware_uid, "hello")
-                        .await
-                        .map_err(message_store_error)?;
-                let config = if is_new {
-                    register_knot_hello(&mut txn, hello)
-                        .await
-                        .wrap_err("failed to register Knot Hello")?
-                } else {
-                    crate::application::knot_protocol_config_for_hardware_uid(
-                        &mut txn,
-                        hardware_uid,
-                    )
-                    .await
-                    .wrap_err("failed to reload config for duplicate Knot Hello")?
+                let config = match register_knot_hello(&mut txn, hub_id, hello).await {
+                    Ok(config) => config,
+                    Err(crate::application::HubKnotError::KnotStore(
+                        knot_store::KnotStoreError::OwnershipConflict,
+                    )) => {
+                        txn.rollback().await?;
+                        return Ok(KnotProtocolEventResult {
+                            response: Some(response(
+                                hub_id,
+                                response_event_id,
+                                responded_at,
+                                KnotControlMessage::Nack(KnotNack {
+                                    event_id: event.id,
+                                    reason: KnotNackReason::ConfigurationConflict,
+                                }),
+                            )),
+                            sensor_events: Vec::new(),
+                        });
+                    }
+                    Err(error) => return Err(error.into()),
                 };
-                if !knot_store::insert_knot_config_delivery(&mut *txn, response_event_id, &config)
-                    .await?
+                insert_knot_message_receipt(&mut *txn, hub_id, event.id, hardware_uid, "hello")
+                    .await
+                    .map_err(message_store_error)?;
+                if !knot_store::insert_knot_config_delivery(
+                    &mut *txn,
+                    hub_id,
+                    response_event_id,
+                    &config,
+                )
+                .await?
                 {
                     return Err(eyre::eyre!(
                         "Hello configuration changed before it could be issued"
@@ -141,12 +149,20 @@ async fn handle_control_message(
             }
         }
         KnotControlMessage::ConfigApplied(applied) => {
-            record_config_result(pool, event, applied.event_id, applied.config_version, None)
-                .await?
+            record_config_result(
+                pool,
+                hub_id,
+                event,
+                applied.event_id,
+                applied.config_version,
+                None,
+            )
+            .await?
         }
         KnotControlMessage::ConfigRejected(rejected) => {
             record_config_result(
                 pool,
+                hub_id,
                 event,
                 rejected.event_id,
                 rejected.config_version,
@@ -155,7 +171,7 @@ async fn handle_control_message(
             .await?
         }
         KnotControlMessage::Heartbeat => {
-            match knot_store::station_knot_by_hardware_uid(pool, hardware_uid).await {
+            match knot_store::station_knot_by_hardware_uid(pool, hub_id, hardware_uid).await {
                 Ok(_) => KnotControlMessage::Ack(KnotAck::Heartbeat { event_id: event.id }),
                 Err(knot_store::KnotStoreError::NotFound) => KnotControlMessage::Nack(KnotNack {
                     event_id: event.id,
@@ -181,13 +197,19 @@ async fn handle_control_message(
     };
 
     Ok(KnotProtocolEventResult {
-        response: Some(response(response_event_id, responded_at, response_message)),
+        response: Some(response(
+            hub_id,
+            response_event_id,
+            responded_at,
+            response_message,
+        )),
         sensor_events: Vec::new(),
     })
 }
 
 async fn record_config_result(
     pool: &PgPool,
+    hub_id: HubId,
     event: &KnotEnvelope,
     config_event_id: EventId,
     version: u64,
@@ -202,6 +224,7 @@ async fn record_config_result(
         .wrap_err("failed to begin Knot config-result transaction")?;
     let valid = knot_store::settle_knot_config_delivery(
         &mut txn,
+        hub_id,
         config_event_id,
         hardware_uid,
         version,
@@ -220,7 +243,7 @@ async fn record_config_result(
     } else {
         "config_applied"
     };
-    let is_new = insert_knot_message_receipt(&mut *txn, event.id, hardware_uid, kind)
+    let is_new = insert_knot_message_receipt(&mut *txn, hub_id, event.id, hardware_uid, kind)
         .await
         .map_err(message_store_error)?;
     if is_new {
@@ -236,6 +259,7 @@ async fn record_config_result(
 }
 
 fn response(
+    hub_id: HubId,
     event_id: EventId,
     occurred_at: Timestamp,
     message: KnotControlMessage,
@@ -243,7 +267,7 @@ fn response(
     EventEnvelope::new_with_id(
         event_id,
         ArkSyncActor::Hub {
-            hub_id: *CONFIG.local_hub_id.as_bytes(),
+            hub_id: *hub_id.as_bytes(),
         },
         occurred_at,
         KnotMessage::Control(message),

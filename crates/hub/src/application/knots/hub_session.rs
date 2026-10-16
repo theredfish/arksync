@@ -21,7 +21,7 @@ use tokio::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 use crate::application::{handle_knot_protocol_event, SensorRegistry};
-use crate::config::CONFIG;
+use crate::domain::HubId;
 use crate::infrastructure::store::knot::insert_knot_config_delivery;
 
 const PENDING_RESPONSE_CAPACITY: usize = 100;
@@ -38,6 +38,7 @@ pub struct HubSessionStatus {
 
 #[derive(Clone)]
 pub struct HubSessionHandle {
+    hub_id: HubId,
     pool: PgPool,
     outgoing: mpsc::Sender<KnotEnvelope>,
     status: watch::Receiver<HubSessionStatus>,
@@ -54,7 +55,7 @@ impl HubSessionHandle {
         };
         if message.source
             != (ArkSyncActor::Hub {
-                hub_id: *CONFIG.local_hub_id.as_bytes(),
+                hub_id: *self.hub_id.as_bytes(),
             })
             || self.status.borrow().knot_id != Some(config.knot_id)
         {
@@ -68,7 +69,7 @@ impl HubSessionHandle {
             })?;
         let registered = tokio::time::timeout(
             DATABASE_OPERATION_TIMEOUT,
-            insert_knot_config_delivery(&self.pool, message.id, config),
+            insert_knot_config_delivery(&self.pool, self.hub_id, message.id, config),
         )
         .await??;
         if !registered {
@@ -92,6 +93,7 @@ impl HubSessionHandle {
 /// subscribers. Sends do not await transport capacity; reception is paused when
 /// the bounded response queue fills, while cancellation and expiry remain active.
 pub struct HubSession {
+    hub_id: HubId,
     pool: PgPool,
     link: TokioMessageLink<KnotEnvelope>,
     sensors: SensorRegistry,
@@ -107,13 +109,15 @@ pub struct HubSession {
 impl HubSession {
     pub async fn new(
         pool: PgPool,
+        hub_id: HubId,
         link: TokioMessageLink<KnotEnvelope>,
         keep_alive_config: KeepAliveConfig,
     ) -> Result<Self> {
-        let sensors = SensorRegistry::load(&pool).await?;
+        let sensors = SensorRegistry::load(&pool, hub_id).await?;
         let (outgoing, receiver) = mpsc::channel(PENDING_RESPONSE_CAPACITY);
         let (status, status_rx) = watch::channel(HubSessionStatus::default());
         Ok(Self {
+            hub_id,
             pool: pool.clone(),
             link,
             sensors,
@@ -121,6 +125,7 @@ impl HubSession {
             presence: PeerPresence::default(),
             status,
             handle: HubSessionHandle {
+                hub_id,
                 pool,
                 outgoing,
                 status: status_rx,
@@ -244,6 +249,7 @@ impl HubSession {
             DATABASE_OPERATION_TIMEOUT,
             handle_knot_protocol_event(
                 &self.pool,
+                self.hub_id,
                 message,
                 EventId::new(),
                 timestamp_now(),

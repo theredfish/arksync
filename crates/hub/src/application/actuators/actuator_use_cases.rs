@@ -5,7 +5,7 @@
 use crate::application::HubActuatorError;
 use crate::domain::{
     Actuator, ActuatorBackend, ActuatorConnection, ActuatorKind, ActuatorProtocol,
-    GpioActuatorConnection, RelayActuator, SensorId,
+    GpioActuatorConnection, HubId, RelayActuator, SensorId,
 };
 use crate::infrastructure::store::{
     actuators as actuator_store, knot as knot_store, sensors as sensor_store, ActuatorRecord,
@@ -68,9 +68,10 @@ pub async fn insert_relay_actuator(
 
 pub async fn actuator_config_ack_for_knot_hardware_uid(
     txn: &mut PgTransaction<'_>,
+    hub_id: HubId,
     hardware_uid: &str,
 ) -> Result<LegacyKnotActuatorConfig, HubActuatorError> {
-    let knot = knot_store::station_knot_by_hardware_uid(&mut **txn, hardware_uid).await?;
+    let knot = knot_store::station_knot_by_hardware_uid(&mut **txn, hub_id, hardware_uid).await?;
     let actuator_records =
         actuator_store::list_actuators_by_station_knot_id(&mut **txn, knot.id).await?;
     let actuator_rules = actuator_store::list_actuator_rules_by_actuator_ids(
@@ -78,7 +79,7 @@ pub async fn actuator_config_ack_for_knot_hardware_uid(
         &actuator_ids(&actuator_records),
     )
     .await?;
-    let sensor_bindings = sensor_store::list_sensors(&mut **txn)
+    let sensor_bindings = sensor_store::list_sensors(&mut **txn, hub_id)
         .await?
         .into_iter()
         .filter(|sensor| sensor.station_knot_id == knot.id)
@@ -110,10 +111,12 @@ pub async fn actuator_config_ack_for_knot_hardware_uid(
 
 pub async fn knot_protocol_config_for_hardware_uid(
     txn: &mut PgTransaction<'_>,
+    hub_id: HubId,
     hardware_uid: &str,
 ) -> Result<ProtocolKnotConfig, HubActuatorError> {
-    let knot = knot_store::station_knot_by_hardware_uid(&mut **txn, hardware_uid).await?;
-    let legacy_config = actuator_config_ack_for_knot_hardware_uid(txn, hardware_uid).await?;
+    let knot = knot_store::station_knot_by_hardware_uid(&mut **txn, hub_id, hardware_uid).await?;
+    let legacy_config =
+        actuator_config_ack_for_knot_hardware_uid(txn, hub_id, hardware_uid).await?;
 
     let sensor_bindings = legacy_config
         .sensor_bindings

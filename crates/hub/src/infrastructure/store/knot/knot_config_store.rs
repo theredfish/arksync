@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::domain::HubId;
 use arksync_bus::EventId;
 use arksync_protocol::knot::KnotConfig;
 use arksync_utils::uuid::Uuid;
@@ -11,6 +12,7 @@ use sqlx::{PgExecutor, PgTransaction};
 /// different content or issuing a version other than the desired one fails.
 pub async fn insert_knot_config_delivery(
     executor: impl PgExecutor<'_>,
+    hub_id: HubId,
     event_id: EventId,
     config: &KnotConfig,
 ) -> Result<bool, sqlx::Error> {
@@ -22,6 +24,7 @@ pub async fn insert_knot_config_delivery(
         insert into knot_config_deliveries (event_id, station_knot_id, config_version, config)
         select $1, id, $3, $4 from station_knots
         where id = $2 and config_version = $3 and deleted_at is null
+          and station_hub_id = $5
         on conflict (event_id) do update set event_id = excluded.event_id
         where knot_config_deliveries.station_knot_id = excluded.station_knot_id
           and knot_config_deliveries.config = excluded.config
@@ -31,6 +34,7 @@ pub async fn insert_knot_config_delivery(
     .bind(Uuid::from_bytes(config.knot_id))
     .bind(version)
     .bind(sqlx::types::Json(config))
+    .bind(hub_id.uuid_v4())
     .execute(executor)
     .await?;
     Ok(result.rows_affected() == 1)
@@ -48,6 +52,7 @@ struct ConfigDelivery {
 /// A stale but legitimate confirmation is accepted without replacing newer state.
 pub async fn settle_knot_config_delivery(
     txn: &mut PgTransaction<'_>,
+    hub_id: HubId,
     event_id: EventId,
     hardware_uid: &str,
     version: u64,
@@ -59,11 +64,13 @@ pub async fn settle_knot_config_delivery(
         from knot_config_deliveries d
         join station_knots k on k.id = d.station_knot_id
         where d.event_id = $1 and k.hardware_uid = $2 and k.deleted_at is null
+          and k.station_hub_id = $3
         for update of d
         "#,
     )
     .bind(event_id.uuid_v4())
     .bind(hardware_uid)
+    .bind(hub_id.uuid_v4())
     .fetch_optional(&mut **txn)
     .await?;
     let Some(delivery) = delivery else {
@@ -98,12 +105,14 @@ pub async fn settle_knot_config_delivery(
                 and (applied_config_version is null or applied_config_version < $2 or $3 = 'applied')
                 then $4 else config_error end
         where id = $1 and config_version >= $2 and deleted_at is null
+          and station_hub_id = $5
         "#,
     )
     .bind(delivery.station_knot_id)
     .bind(delivery.config_version)
     .bind(outcome)
     .bind(rejection)
+    .bind(hub_id.uuid_v4())
     .execute(&mut **txn)
     .await?;
     Ok(true)

@@ -5,10 +5,12 @@
 use arksync_bus::EventId;
 use sqlx::PgExecutor;
 
+use crate::domain::HubId;
 use crate::infrastructure::store::KnotMessageStoreError;
 
 pub async fn insert_knot_message_receipt(
     executor: impl PgExecutor<'_>,
+    hub_id: HubId,
     event_id: EventId,
     source_hardware_uid: &str,
     message_kind: &str,
@@ -18,15 +20,17 @@ pub async fn insert_knot_message_receipt(
         insert into knot_message_receipts (
             event_id,
             source_hardware_uid,
-            message_kind
+            message_kind,
+            hub_id
         )
-        values ($1, $2, $3)
-        on conflict (event_id) do nothing
+        values ($1, $2, $3, $4)
+        on conflict (hub_id, source_hardware_uid, event_id) do nothing
         "#,
     )
     .bind(event_id.uuid_v4())
     .bind(source_hardware_uid)
     .bind(message_kind)
+    .bind(hub_id.uuid_v4())
     .execute(executor)
     .await?;
 

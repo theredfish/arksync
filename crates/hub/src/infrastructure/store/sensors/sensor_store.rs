@@ -2,6 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use crate::domain::HubId;
 use sqlx::PgExecutor;
 
 use crate::infrastructure::store::{NewSensorRecord, SensorRecord};
@@ -41,6 +42,7 @@ impl From<sqlx::Error> for SensorStoreError {
 
 pub async fn list_sensors(
     executor: impl PgExecutor<'_>,
+    hub_id: HubId,
 ) -> Result<Vec<SensorRecord>, SensorStoreError> {
     let sensors = sqlx::query_as(
         r#"
@@ -57,9 +59,11 @@ pub async fn list_sensors(
             measurement_interval_ms
         from sensors
         where deleted_at is null
+          and station_knot_id in (select id from station_knots where station_hub_id = $1 and deleted_at is null)
         order by created_at asc
         "#,
     )
+    .bind(hub_id.uuid_v4())
     .fetch_all(executor)
     .await?;
 

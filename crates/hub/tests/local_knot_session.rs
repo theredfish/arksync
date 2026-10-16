@@ -20,6 +20,10 @@ use tokio::task::JoinSet;
 use tokio::time::{timeout, Duration};
 use tokio_util::sync::CancellationToken;
 
+fn local_hub_id() -> arksync_hub::HubId {
+    arksync_hub::config::CONFIG.local_hub_id.into()
+}
+
 fn envelope(source: ArkSyncActor, message: KnotControlMessage) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         EventId::new(),
@@ -57,7 +61,7 @@ async fn local_sessions_register_exchange_config_and_rejoin_without_hardware(
         for round in 0..2 {
             // Use the production sessions and handlers, not direct handler calls.
             let (hub_link, knot_link) = local_tokio_message_link(1);
-            let mut hub = HubSession::new(pool.clone(), hub_link, keep_alive_config).await?;
+            let mut hub = HubSession::new(pool.clone(), local_hub_id(), hub_link, keep_alive_config).await?;
             let hub_handle = hub.handle();
             let hub_status = hub_handle.status();
             let (hub_events_tx, mut hub_events) = mpsc::channel(64);
@@ -99,7 +103,7 @@ async fn local_sessions_register_exchange_config_and_rejoin_without_hardware(
             next_event(&mut knot_events, |event| matches!(event.payload,
                 KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id })) if event_id == applied.id)).await;
 
-            let knots = list_knots(&pool).await?;
+            let knots = list_knots(&pool, local_hub_id()).await?;
             let matching: Vec<_> = knots.iter().filter(|knot| knot.hardware_uid == hardware_uid).collect();
             assert_eq!(matching.len(), 1);
             let registered = matching[0];
@@ -122,9 +126,9 @@ async fn local_sessions_register_exchange_config_and_rejoin_without_hardware(
 
             if round == 0 {
                 let mut txn = pool.begin().await?;
-                knot_store::increment_station_knot_config_version(&mut *txn, registered.id)
+                knot_store::increment_station_knot_config_version(&mut *txn, local_hub_id(), registered.id)
                     .await.map_err(|error| eyre::eyre!("config version: {error:?}"))?;
-                let config = knot_protocol_config_for_hardware_uid(&mut txn, hardware_uid).await?;
+                let config = knot_protocol_config_for_hardware_uid(&mut txn, local_hub_id(), hardware_uid).await?;
                 txn.commit().await?;
                 let configure = envelope(hello_ack.source.clone(), KnotControlMessage::Configure(config));
                 let configure_id = configure.id;
@@ -167,6 +171,7 @@ async fn hub_session_handles_duplicate_hello_presence_expiry_and_recovery(
         let (hub_link, mut peer) = local_tokio_message_link(1);
         let hub = HubSession::new(
             pool.clone(),
+            local_hub_id(),
             hub_link,
             KeepAliveConfig::new(50, 300).unwrap(),
         )
@@ -239,7 +244,7 @@ async fn hub_session_handles_duplicate_hello_presence_expiry_and_recovery(
             .await?;
         assert_eq!(status.borrow().knot_id, id);
         assert_eq!(
-            list_knots(&pool)
+            list_knots(&pool, local_hub_id())
                 .await?
                 .iter()
                 .filter(|knot| knot.hardware_uid == hardware_uid)
@@ -268,7 +273,7 @@ async fn configure_is_retried_after_a_full_knot_outbox_without_overwriting_messa
         // Interpose two local endpoints to control delivery order between production sessions.
         let (hub_link, mut hub_peer) = local_tokio_message_link(2);
         let (mut knot_peer, knot_link) = local_tokio_message_link(2);
-        let hub = HubSession::new(pool.clone(), hub_link, KeepAliveConfig::default()).await?;
+        let hub = HubSession::new(pool.clone(), local_hub_id(), hub_link, KeepAliveConfig::default()).await?;
         let hub_handle = hub.handle();
         let knot = TokioKnotSession::new(TokioKnotRuntimeConfig {
             hardware_uid: uid.into(),
@@ -289,12 +294,12 @@ async fn configure_is_retried_after_a_full_knot_outbox_without_overwriting_messa
         let hello_ack = hub_peer.receive().await.unwrap().unwrap();
         knot_peer.send(hello_ack.clone()).await.unwrap();
         let first_confirmation = knot_peer.receive().await.unwrap().unwrap();
-        let record = knot_store::station_knot_by_hardware_uid(&pool, uid).await
+        let record = knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), uid).await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         let mut txn = pool.begin().await?;
-        knot_store::increment_station_knot_config_version(&mut *txn, record.id).await
+        knot_store::increment_station_knot_config_version(&mut *txn, local_hub_id(), record.id).await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
-        let config = knot_protocol_config_for_hardware_uid(&mut txn, uid).await?;
+        let config = knot_protocol_config_for_hardware_uid(&mut txn, local_hub_id(), uid).await?;
         txn.commit().await?;
         let command = envelope(hello_ack.source.clone(), KnotControlMessage::Configure(config));
         hub_handle.send(command.clone()).await?;
@@ -337,7 +342,7 @@ async fn configure_is_retried_after_a_full_knot_outbox_without_overwriting_messa
         assert_eq!(ack.payload, KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id: confirmation.id })));
         knot_peer.send(ack).await.unwrap();
         status.wait_for(|state| state.pending_messages == 0 && state.config.as_ref().is_some_and(|c| c.version == 2)).await?;
-        let record = knot_store::station_knot_by_hardware_uid(&pool, uid).await
+        let record = knot_store::station_knot_by_hardware_uid(&pool, local_hub_id(), uid).await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         assert_eq!(record.applied_config_version, Some(2));
         assert_eq!(record.config_status, "applied");
@@ -365,6 +370,7 @@ async fn database_waits_do_not_block_presence_expiry_or_shutdown(
         let (hub_link, mut peer) = local_tokio_message_link(2);
         let hub = HubSession::new(
             single.clone(),
+            local_hub_id(),
             hub_link,
             KeepAliveConfig::new(50, 150).unwrap(),
         )
@@ -421,8 +427,13 @@ async fn cancellation_during_sql_rolls_back_configuration_confirmation(
     txn.commit().await?;
     timeout(Duration::from_secs(5), async {
         let (link, mut peer) = local_tokio_message_link(2);
-        let hub =
-            HubSession::new(pool.clone(), link, KeepAliveConfig::new(50, 200).unwrap()).await?;
+        let hub = HubSession::new(
+            pool.clone(),
+            local_hub_id(),
+            link,
+            KeepAliveConfig::new(50, 200).unwrap(),
+        )
+        .await?;
         let mut status = hub.handle().status();
         let shutdown = CancellationToken::new();
         let _guard = shutdown.clone().drop_guard();
@@ -503,8 +514,13 @@ async fn database_deadline_releases_the_session_without_acknowledging_unfinished
             .connect_with((*pool.connect_options()).clone())
             .await?;
         let (link, mut peer) = local_tokio_message_link(2);
-        let hub =
-            HubSession::new(single.clone(), link, KeepAliveConfig::new(50, 200).unwrap()).await?;
+        let hub = HubSession::new(
+            single.clone(),
+            local_hub_id(),
+            link,
+            KeepAliveConfig::new(50, 200).unwrap(),
+        )
+        .await?;
         let shutdown = CancellationToken::new();
         let _guard = shutdown.clone().drop_guard();
         let mut tasks = JoinSet::new();
