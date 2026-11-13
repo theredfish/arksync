@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1f84b57a.js";
+            window.path_to_searchindex_js = "../searchindex-f4a6379d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-736c1d48.js"></script>
@@ -182,7 +182,7 @@
                     <main>
                         <h1 id="architecture-overview"><a class="header" href="#architecture-overview">Architecture Overview</a></h1>
 <p>ArkSync separates station coordination from direct hardware access. The Hub owns persistent station state and user-facing workflows, while Knots execute close to sensors and actuators.</p>
-<p>The following diagram shows the intended high-level topology. The local Knot path is used by the current Raspberry Pi deployment. MQTT is the planned transport for remote embedded Knots; it will carry the same Knot protocol messages rather than redefine them.</p>
+<p>The following diagram shows the intended high-level topology. The local Knot path is used by the current Raspberry Pi deployment. Remote Knots exchange the same protocol messages through transport-specific adapters. The protocol is designed independently of the transport technology, leaving concrete communication choices open.</p>
 <pre class="mermaid">flowchart LR
     subgraph RemoteEdge["Remote edge"]
         RemoteSensors["Atlas Scientific sensors&lt;br/&gt;I2C / UART"]
@@ -203,16 +203,20 @@
         Dashboard &lt;--&gt; Hub
     end
 
-    EspKnot -.-&gt;|"Knot protocol&lt;br/&gt;MQTT transport - planned"| Hub
+    EspKnot -.-&gt;|"Knot protocol&lt;br/&gt;Transport adapter"| Hub
 </pre>
 
 <h2 id="knot"><a class="header" href="#knot">Knot</a></h2>
 <p>The Knot owns portable protocol messages and hardware-facing execution. Its reusable domain and runtime contracts are <code>no_std</code> first. Platform adapters provide concrete scheduling, transport, sensor, and actuator integrations:</p>
 <ul>
 <li>the Raspberry Pi Hub uses a Tokio-backed local Knot runtime;</li>
-<li>a remote ESP32 Knot will use an embedded runtime and MQTT transport;</li>
+<li>a remote ESP32 Knot will use an embedded runtime and a transport adapter suited to its deployment;</li>
 <li>both paths preserve the same protocol-level messages.</li>
 </ul>
+<h2 id="communication-and-transport"><a class="header" href="#communication-and-transport">Communication and transport</a></h2>
+<p>ArkSync defines its own Hub/Knot communication protocol. Message semantics and the portable protocol core remain independent of the underlying link. Transport adapters may use LoRaWAN, Wi-Fi, or other communication technologies according to deployment needs.</p>
+<p>LoRaWAN is currently the preferred candidate for communication across long buildings and outdoor deployments.</p>
+<p>See <a href="event-messaging.html#runtime-and-communication-boundaries">event messaging</a> for the EventRouter, protocol, and transport boundaries between Knot and Hub runtimes.</p>
 <h2 id="hub"><a class="header" href="#hub">Hub</a></h2>
 <p>The Hub is the station coordination boundary. It receives Knot messages, applies application workflows, persists station state, and supplies the dashboard. The Hub is a host runtime and may use Tokio, SQLx, and operating-system services.</p>
 <p>On a standalone Raspberry Pi deployment, the Hub also launches a local Knot. This gives directly connected I2C, UART, and GPIO hardware the same logical boundary as hardware attached to a future remote Knot.</p>

@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-1f84b57a.js";
+            window.path_to_searchindex_js = "../searchindex-f4a6379d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-736c1d48.js"></script>
@@ -182,16 +182,23 @@
                     <main>
                         <h1 id="event-messaging"><a class="header" href="#event-messaging">Event Messaging</a></h1>
 <p>ArkSync defines versioned communication contracts between its actors. The currently implemented contract connects a Hub and a Knot, regardless of whether the Knot runs in the Hub process or on remote embedded hardware. These contracts are independent from Tokio, Embassy, MQTT, LoRa, Zenoh, and PostgreSQL.</p>
-<p>The current delivery model is <strong>at least once</strong>. PostgreSQL remains the durable source of truth for station state. ArkSync stores message processing receipts for idempotence, but it does not use event sourcing.</p>
+<p>Confirmable messages use <strong>at-least-once delivery</strong> while their session remains alive; non-confirmable messages are sent once without confirmation. PostgreSQL remains the durable source of truth for station state. ArkSync stores processing receipts and replies for idempotence, but it does not use event sourcing.</p>
 <h2 id="responsibilities"><a class="header" href="#responsibilities">Responsibilities</a></h2>
 <p>Messaging is split across four boundaries:</p>
 <ul>
-<li><code>arksync-bus</code> owns generic event envelopes, identifiers, Postcard helpers, and synchronous in-process routing.</li>
+<li><code>arksync-event-router</code> owns generic event envelopes, identifiers, Postcard helpers, and synchronous in-process routing.</li>
 <li><code>arksync-protocol</code> owns the versioned, transport-independent wire contracts exchanged between ArkSync actors. The current Hub/Knot contract is scoped under <code>arksync_protocol::knot</code> so future actor-specific contracts can evolve without flattening every message into one global enum.</li>
 <li><code>arksync-knot</code> owns the portable Knot protocol state machine, its bounded outbox, and runtime-specific link adapters.</li>
 <li><code>arksync-hub</code> owns message processing, transaction boundaries, durable receipts, and local or remote link orchestration.</li>
 </ul>
 <p>Sensor and actuator crates keep their internal application messages. Explicit mappers at the Knot and Hub boundaries prevent an internal refactor from silently changing the wire representation.</p>
+<h2 id="runtime-and-communication-boundaries"><a class="header" href="#runtime-and-communication-boundaries">Runtime And Communication Boundaries</a></h2>
+<p>Each runtime owns its local event routing. Runtime adapters connect that routing to the shared Hub/Knot protocol and a <code>MessageLink</code> endpoint. The diagram shows both directions of communication and the implemented local link alongside the extension point for remote transports.</p>
+<figure style="margin: 1.5rem 0; text-align: center;">
+    <img src="images/runtime-communication-boundaries.svg" alt="EventRouter and Knot/Hub runtime communication boundaries" width="100%" style="display: block; width: 100%; max-width: 100%; max-height: none; height: auto; margin: 0 auto;">
+</figure>
+<p>The hardware and protocol routers shown above are separate, typed instances. Hardware events are mapped into outgoing protocol messages; accepted inbound messages are routed to local subscribers. On the Hub, protocol messages and committed sensor projections also use separate routers. <code>EventRouter</code> performs synchronous local dispatch; sessions own protocol handling, acknowledgements, retries, and transaction orchestration.</p>
+<p>In the local deployment, both runtime boxes run in the same Raspberry Pi process. The link carries typed <code>KnotEnvelope</code> values through bounded channels. Remote adapters will encode and decode protocol frames across their chosen transport; dotted connections show that planned path. The protocol contract stays the same in both deployments.</p>
 <h2 id="envelope-and-frame"><a class="header" href="#envelope-and-frame">Envelope And Frame</a></h2>
 <p>Every actor-specific contract uses the common <code>ArkSyncEnvelope</code>. The current <code>KnotEnvelope</code> specializes it with a <code>KnotMessage</code> payload and contains:</p>
 <ul>
@@ -200,8 +207,41 @@
 <li>the time at which the event occurred;</li>
 <li>a <code>KnotMessage</code> payload.</li>
 </ul>
-<p>The wire frame starts with the ArkSync frame magic and a protocol version, followed by a Postcard-encoded envelope. Datagram transports can carry this frame directly. Stream transports add their own length delimiter outside the ArkSync frame.</p>
-<p>Protocol enum variants are append-only within a version because Postcard encodes their discriminants. An incompatible representation requires a new protocol version and updated golden-frame tests.</p>
+<p>The wire frame starts with the <code>ARK</code> frame identifier and a protocol version, followed by a Postcard-encoded envelope. Datagram transports can carry this frame directly. Stream transports add their own length delimiter outside the ArkSync frame.</p>
+<p>For example, a minimal <code>Hello</code> from Knot <code>k1</code> uses event ID <code>00000000-0000-4000-8000-000000000000</code>, timestamp <code>0</code> (Unix epoch, for illustration), all four capabilities set to <code>false</code>, and no previously applied configuration version. The current encoder produces these 36 bytes, shown in hexadecimal:</p>
+<pre><code class="language-text">Frame header (4 bytes)
+41 52 4B                                        # frame identifier: ASCII "ARK"
+02                                              # protocol version: 2
+
+Postcard-encoded envelope (32 bytes)
+00 00 00 00 00 00 40 00 80 00 00 00 00 00 00 00 # id: the Hello message's EventId
+01 02 6B 31                                     # source: Knot, UID length 2, "k1"
+00                                              # occurred_at: 0 milliseconds
+00 00 00                                        # nested enum tags: Con = 0, Control = 0, Hello = 0
+02 6B 31                                        # Hello.hardware_uid: length 2, "k1"
+00 00 00 00                                     # capabilities: gpio, uart, i2c, EZO = false
+00                                              # last_applied_config_version: None
+</code></pre>
+<p>Only the first four bytes are the frame header. Everything after them belongs to the envelope, including its <code>Hello</code> payload. The constant frame identifier <code>ARK</code> identifies the format; the envelope’s <code>EventId</code> identifies this individual message.</p>
+<p>The payload is the nested value <code>KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Hello(...)))</code>. Postcard encodes each enum’s zero-based variant index: <code>Con</code>, <code>Control</code>, and <code>Hello</code> are each the first variant of their respective enum, so each tag is <code>00</code>. These tags describe one message; they do not mean that the payload is empty.</p>
+<p>Protocol enum variants are append-only within a version because Postcard encodes their discriminants. An incompatible representation requires a new protocol version and updated golden-frame tests. Version <strong>2</strong> introduces the delivery classification below; version 1 frames are explicitly rejected. Both peers must use version 2.</p>
+<h2 id="delivery-and-business-payload"><a class="header" href="#delivery-and-business-payload">Delivery And Business Payload</a></h2>
+<p><code>KnotMessage</code> separates delivery semantics from the business families in <code>KnotPayload</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Message</th><th>Sender behavior</th><th>Receiver behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Con(Control(...))</code> or <code>Con(Sensor(...))</code></td><td>Retain and retry the same envelope until confirmed or terminally rejected.</td><td>Return an ACK after processing, optionally carrying the business result.</td></tr>
+<tr><td><code>Non(Control(...))</code> or <code>Non(Sensor(...))</code></td><td>Send once; retain locally only while the transport is full.</td><td>Process without an ACK or response.</td></tr>
+<tr><td><code>Ack(...)</code></td><td>Send once; replay when its original CON is received again.</td><td>Consume the correlated result without acknowledging it.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>requires_ack()</code> is true only for <code>Con</code>. <code>Control</code> and <code>Sensor</code> classify business payloads independently. Currently the Knot application port supports CON payloads and NON sensor messages; the Hub also accepts NON heartbeats. Hello and configuration workflows require CON because their outcomes must be confirmed.</p>
+<p>An ACK means processing succeeded or reached an explicit rejection. For durable Hub operations, it is emitted after commit. <code>Ack::Processed</code> carries only the original <code>event_id</code>; <code>Ack::Hello</code>, <code>Ack::ConfigApplied</code>, and <code>Ack::ConfigRejected</code> carry a piggybacked result. <code>Ack::Rejected</code> carries a protocol rejection reason, replacing the former NACK message. A sender consumes the important result before removing the CON from its outbox.</p>
+<p>These are ArkSync semantics inspired by CoAP’s piggybacked responses, without adopting CoAP’s full protocol. In particular, NON has no response in this contract. A long-running operation can acknowledge acceptance with an operation identifier, then emit a new CON event when its state changes or it finishes. That future state-machine workflow does not require separate delayed responses to the original message.</p>
 <h2 id="handshake-and-configuration"><a class="header" href="#handshake-and-configuration">Handshake And Configuration</a></h2>
 <pre class="mermaid">sequenceDiagram
     participant K as Knot
@@ -209,25 +249,33 @@
     participant H as Hub
     participant D as PostgreSQL
 
-    K-&gt;&gt;O: Queue Hello(event_id, hardware_uid, capabilities)
-    O-&gt;&gt;H: Send Hello
-    H-&gt;&gt;D: Receipt + register/load Knot + load config (transaction)
+    K-&gt;&gt;O: Queue CON Hello(event_id, hardware_uid, capabilities)
+    O-&gt;&gt;H: Send CON Hello
+    H-&gt;&gt;D: Receipt + register/load Knot + config + ACK (transaction)
     D--&gt;&gt;H: Commit
     H--&gt;&gt;K: Ack::Hello(event_id, config)
     K-&gt;&gt;K: Validate and apply config
-    K-&gt;&gt;O: Queue ConfigApplied(config_event_id, version)
-    O-&gt;&gt;H: Send ConfigApplied
+    K-&gt;&gt;O: Queue CON ConfigApplied(config_event_id, version)
+    O-&gt;&gt;H: Send CON ConfigApplied
     H-&gt;&gt;D: Receipt + update config status (transaction)
     D--&gt;&gt;H: Commit
-    H--&gt;&gt;K: Ack::Processed(event_id)
+    H--&gt;&gt;K: ACK Processed(event_id)
+
+    H-&gt;&gt;D: Record issued configuration
+    H-&gt;&gt;K: CON Configure(event_id, config)
+    K-&gt;&gt;K: Validate and load config
+    K--&gt;&gt;H: ACK ConfigApplied(event_id, version) or ConfigRejected
+    H-&gt;&gt;D: Receipt + settle issued configuration (transaction)
+    D--&gt;&gt;H: Commit, then retire Configure from Hub outbox
 </pre>
 
 <p>A new Knot announces its stable hardware UID in <code>Hello</code>. The Hub registers unknown hardware by default and returns the current configuration in <code>Ack::Hello</code>. The configuration contains the logical Knot ID, sensor bindings, actuator configuration, and a monotonically increasing version.</p>
-<p>The Hub can later send <code>Configure</code> without restarting the handshake. The Knot answers with <code>ConfigApplied</code> or <code>ConfigRejected</code>; both responses correlate the configuration message through its <code>EventId</code>.</p>
+<p>In the current contract, <code>Ack::Hello</code> is a piggybacked application response: it acknowledges the committed registration and carries the configuration in the same message. Its <code>event_id</code> refers to the original <code>Hello</code>; its own envelope has a separate ID, which <code>ConfigApplied</code> or <code>ConfigRejected</code> references. Returning the configuration does not confirm that the Knot has applied it. <code>Ack::Processed</code> separately confirms successful processing, after commit for durable operations. This confirmation is a new CON event describing a state change after the Hello exchange; it is not an ACK of the Hello ACK.</p>
+<p>The Hub can later send CON <code>Configure</code> without restarting the handshake. The Knot answers directly with <code>Ack::ConfigApplied</code> or <code>Ack::ConfigRejected</code>, correlated to that command’s <code>EventId</code>. The Hub commits this result before retiring the command, and sends no ACK in return.</p>
 <p>Before sending configuration through <code>Ack::Hello</code> or <code>Configure</code>, the Hub records the issued <code>EventId</code>, Knot identity, version, and content in <code>knot_config_deliveries</code>. A confirmation must match that delivery and cannot contradict its previously accepted outcome. Late confirmations cannot decrease the applied version or replace the status of a newer desired version. Rejection preserves the last applied version, and startup preserves configuration state. The Knot rejects zero or older versions, identity changes, and different content with the same version.</p>
 <h2 id="local-sessions-and-presence"><a class="header" href="#local-sessions-and-presence">Local Sessions And Presence</a></h2>
-<p><code>TokioKnotSession</code> and <code>HubSession</code> run this exchange over the local bounded link without starting any sensor or actuator driver. Each <code>HubSession</code> manages communication with one Knot. Callers attach <code>EventRouter</code> subscribers before starting either session, publish through a session handle, and observe the latest connection state through <code>status()</code>. The production runtimes use these same sessions.</p>
-<p>After the Hello acknowledgement, the Knot sends <code>Heartbeat</code> probes, answered by a correlated <code>Ack::Heartbeat</code>. The default interval is five seconds, with a fifteen-second expiry, configurable through <code>KeepAliveConfig</code>. Each session tracks elapsed monotonic time; message timestamps remain wall-clock acquisition times. Heartbeats do not insert durable processing receipts or create sensors or measurements.</p>
+<p><code>TokioKnotSession</code> and <code>HubSession</code> run this exchange over the local bounded link without starting any sensor or actuator driver. Each <code>HubSession</code> manages communication with one Knot. Callers attach <code>EventRouter</code> subscribers before starting either session, publish through a session handle, and observe the latest connection state through <code>status()</code>. <code>HubRuntime</code> creates the Hub session; <code>TokioKnotRuntime</code> creates the Knot session and starts its sensor and actuator services.</p>
+<p>After the Hello acknowledgement, the Knot sends CON <code>Heartbeat</code> probes, answered by a correlated <code>Ack::Processed</code>. The default interval is five seconds, with a fifteen-second expiry, configurable through <code>KeepAliveConfig</code>. Each session tracks elapsed monotonic time; message timestamps remain wall-clock acquisition times. Heartbeats do not insert durable processing receipts or create sensors or measurements.</p>
 <p>Connection state is volatile and distinct from the persisted Knot identity:</p>
 <ul>
 <li><code>Connecting</code>: waiting for the handshake;</li>
@@ -237,11 +285,11 @@
 </ul>
 <p>The Knot binds to the Hub identified by its Hello acknowledgement. The Hub binds its endpoint to the announcing hardware UID. Expiry preserves the current configuration; subsequent valid traffic on the same open session restores presence. A closed endpoint requires a new session. Recreating both local endpoints and sending a new Hello retrieves the same persisted Knot ID and latest configuration. Automatic supervision and network reconnection are not implemented yet.</p>
 <p>Sending does not await a full transport while holding up ACK reception. The Knot advances retry time only after a successful send and retains pending reliable messages when the link is full. Heartbeat probes are bounded to one pending request and are replaced after expiry. The Hub bounds its response queue and pauses incoming processing when that queue fills; cancellation and presence expiry remain scheduled, including while a transactional handler awaits PostgreSQL. Handler execution has a five-second deadline. A timeout produces no ACK, allowing the sender to retry.</p>
-<p>Session handles provide local queue acceptance, not end-to-end delivery confirmation. The Knot handle’s nonblocking publish returns an unsent message on saturation. The current hardware adapter logs and discards a sensor message that cannot enter this queue; live-data prioritization and coalescing belong to the next sensor milestone. The Hub handle accepts <code>Configure</code> commands for its established peer, waits for queue capacity, and registers each delivery before enqueueing it. The legacy hardware services remain running if the communication session closes, with their last applied configuration; explicit runtime shutdown stops their parent tasks. The sensor service’s internal task shutdown is a separate lifecycle improvement.</p>
+<p>Session handles provide local queue acceptance, not end-to-end delivery confirmation. The Knot handle’s nonblocking publish returns an unsent message on saturation or unsupported publication. ACKs belong to the protocol runtime. CON and NON application queues are separate so a full reliable outbox does not prevent best-effort sends. The current hardware adapter logs and discards a sensor message that cannot enter this queue; live-data prioritization and coalescing belong to the next sensor milestone. The Hub handle accepts <code>Configure</code> commands for its established peer, waits for queue capacity, and registers each delivery before enqueueing it. The legacy hardware services remain running if the communication session closes, with their last applied configuration; explicit runtime shutdown stops their parent tasks. The sensor service’s internal task shutdown is a separate lifecycle improvement.</p>
 <h2 id="sensor-messages"><a class="header" href="#sensor-messages">Sensor Messages</a></h2>
 <p>Sensor discovery, provisioning conflicts, provisioning, and measurements use <code>KnotSensorMessage</code>. Measurements are batched at the protocol level even though the current UART runtime emits one measurement per batch.</p>
-<p>The Hub records a processing receipt and all business effects in one database transaction. It sends <code>Ack::Processed</code> only after the transaction commits. Receiving the same <code>EventId</code> again produces another ACK without duplicating sensor registration or measurements.</p>
-<p>An invalid sensor identity produces a terminal <code>InvalidPayload</code> NACK. The whole batch rolls back, including its receipt and sensor registrations; the registry cache changes only after commit. Database failures remain retryable and produce no ACK.</p>
+<p>The Hub records a processing receipt and all business effects in one database transaction. It sends <code>Ack::Processed</code> only after the transaction commits. The receipt stores the exact request and reply in the same transaction. A duplicate replays the original ACK envelope without duplicating sensor registration or measurements. Reusing an ID with a different source or content is rejected. NON sensor messages use the same atomic ingestion and deduplication but produce no ACK.</p>
+<p>An invalid sensor identity or non-finite measurement produces <code>Ack::Rejected(InvalidPayload)</code> for a CON. The whole batch rolls back, including its receipt and sensor registrations; the registry cache changes only after commit. Database failures remain retryable and produce no ACK.</p>
 <h2 id="retry-and-failure-semantics"><a class="header" href="#retry-and-failure-semantics">Retry And Failure Semantics</a></h2>
 <p>Messages that require confirmation remain in the Knot’s bounded in-memory outbox. The default policy is:</p>
 <ul>
@@ -251,9 +299,10 @@
 <li>no retry limit.</li>
 </ul>
 <p>A retry preserves the original envelope and <code>EventId</code>. A corrected or logically new message receives a new <code>EventId</code>. Transport failures and Hub infrastructure failures produce no ACK, so the normal retry schedule applies.</p>
-<p>The Hub also retains up to 100 pending <code>Configure</code> commands with the same retry delays, until a correlated <code>ConfigApplied</code> or <code>ConfigRejected</code> is committed. ACKs have transport priority so the Knot can drain its outbox. If that outbox is full, configuration remains unchanged until a later retry can enqueue its confirmation. Repeated commands reuse an already-pending identical confirmation.</p>
-<p>A retryable NACK reschedules the same message immediately. A terminal NACK removes it from the outbox. Outbox exhaustion is explicit and observable rather than silently dropping a message.</p>
-<p>The V1 outbox is volatile and does not survive an embedded-device reboot. Closing a Tokio session also discards its pending outbox; recreating an endpoint currently restores identity and configuration, not pending delivery. Flash-backed persistence and outbox handoff across sessions are future extensions.</p>
+<p>The Hub queues up to 100 <code>Configure</code> commands and sends one active command at a time with the same retry delays, until its correlated ACK result is committed. ACKs have transport priority. The Knot has separate bounded queues for ACK and NON messages, each with the configured outbox capacity (at least one slot). ACKs and NON messages leave their queue only after a successful transport send; neither is retried independently.</p>
+<p>The Knot retains the exact reply to its latest <code>Configure</code> for retries of that active command. A full ACK queue leaves configuration unchanged until a retry can reserve its reply. Repeated commands reuse the reply; reusing that command ID with different content cannot overwrite the cached result. The Hub durably retains successful request/reply pairs, including the original Hello configuration, so replay remains stable after a session restart or a desired configuration change. Legacy receipts without a stored request cannot prove an exact match and are treated as conflicts.</p>
+<p><code>Ack::Rejected(TemporarilyUnavailable)</code> reschedules the same CON immediately. Terminal rejections and configuration results end retries. Queue exhaustion returns an explicit error without overwriting a pending message or applying unreportable configuration.</p>
+<p>The outboxes and the Knot’s reply cache are volatile. Closing a Tokio session or rebooting a device discards its pending sends; recreating an endpoint currently restores identity and configuration, not pending delivery. Flash-backed persistence and outbox handoff across sessions are future extensions. PostgreSQL receipts and committed outcomes survive Hub restarts.</p>
 <h2 id="router-link-and-transport"><a class="header" href="#router-link-and-transport">Router, Link, And Transport</a></h2>
 <p>These concepts have separate roles:</p>
 <ul>
