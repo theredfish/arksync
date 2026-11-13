@@ -13,4 +13,8 @@ pub struct KnotRecord {
     pub hardware_uid: String,
     pub role: String,
     pub status: String,
+    pub config_version: i64,
+    pub applied_config_version: Option<i64>,
+    pub config_status: String,
+    pub config_error: Option<String>,
 }

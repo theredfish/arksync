@@ -7,7 +7,7 @@ use crate::domain::{SensorId, SensorMeasurement, SensorMeasurementPoint, SensorT
 use crate::infrastructure::store::{
     sensor_measurements as sensor_measurement_store, SensorMeasurementRecord,
 };
-use arksync_bus::{EventId, Timestamp};
+use arksync_event_router::{EventId, Timestamp};
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::{MeasurementUnit, SensorKind};
 use sqlx::PgExecutor;

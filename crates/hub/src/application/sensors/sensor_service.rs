@@ -8,7 +8,7 @@ use crate::domain::{
     SensorOverview, SensorRegistrationStatus,
 };
 use crate::infrastructure::store::{sensors as sensor_store, NewSensorRecord};
-use arksync_bus::Timestamp;
+use arksync_event_router::Timestamp;
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::{SensorConnectionMetadata, SensorMeasurementRecorded};
 use arksync_sensor::sensor::DEFAULT_MEASUREMENT_INTERVAL;

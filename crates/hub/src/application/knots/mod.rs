@@ -3,9 +3,11 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 mod events;
+mod hub_session;
 mod knot_errors;
 mod knot_use_cases;
 
 pub use events::*;
+pub use hub_session::*;
 pub use knot_errors::*;
 pub use knot_use_cases::*;

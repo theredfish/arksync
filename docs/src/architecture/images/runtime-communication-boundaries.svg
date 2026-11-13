@@ -1,0 +1,83 @@
+<svg width="720" height="864" viewBox="0 0 720 864" role="img" aria-labelledby="diagram-title diagram-desc" xmlns="http://www.w3.org/2000/svg">
+<title id="diagram-title">EventRouter and Knot/Hub communication boundaries</title>
+<desc id="diagram-desc">Each runtime routes events locally. Protocol sessions communicate bidirectionally through MessageLink endpoints, over local Tokio channels or future remote transport adapters.</desc>
+<style>
+svg { font-family: var(--font-sans, system-ui, sans-serif); }
+.panel { fill: var(--card, #1e2933); stroke: var(--border, #405969); stroke-width: 1; }
+.box { fill: var(--secondary, #2d4354); stroke: var(--border, #405969); stroke-width: 1.3; }
+.router { fill: var(--accent-surface, #365267); stroke: var(--primary, #4ad2db); stroke-width: 1.6; }
+.label { fill: var(--foreground, #f5f6fb); font-size: 14px; font-weight: 600; }
+.small { fill: var(--muted-foreground, #a0a7b0); font-size: 12px; }
+.group { fill: var(--foreground, #f5f6fb); font-size: 14px; font-weight: 650; }
+.caption { fill: var(--muted-foreground, #a0a7b0); font-size: 11px; }
+.edge { fill: none; stroke: var(--muted-foreground, #a0a7b0); stroke-width: 1.5; }
+.arrow { fill: var(--muted-foreground, #a0a7b0); }
+</style>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+<path d="M0 0 L10 5 L0 10z" class="arrow"/>
+</marker>
+</defs>
+<rect x="8" y="8" width="342" height="496" rx="10" class="panel"/>
+<rect x="370" y="8" width="342" height="496" rx="10" class="panel"/>
+<rect x="8" y="528" width="704" height="328" rx="10" class="panel"/>
+<text x="179" y="36" text-anchor="middle" class="group">Knot runtime · local or remote</text>
+<text x="541" y="36" text-anchor="middle" class="group">Hub runtime</text>
+<rect x="32" y="64" width="294" height="64" rx="10" class="router"/>
+<text x="179.0" y="91.0" text-anchor="middle" class="label">EventRouter</text>
+<text x="179.0" y="111.0" text-anchor="middle" class="small">Internal hardware events</text>
+<rect x="32" y="174" width="294" height="84" rx="10" class="box"/>
+<text x="179.0" y="201.0" text-anchor="middle" class="label">Runtime adapter</text>
+<text x="179.0" y="221.0" text-anchor="middle" class="small">Handlers, mapper,</text>
+<text x="179.0" y="241.0" text-anchor="middle" class="small">protocol session + outbox</text>
+<rect x="32" y="306" width="294" height="68" rx="10" class="router"/>
+<text x="179.0" y="335.0" text-anchor="middle" class="label">EventRouter</text>
+<text x="179.0" y="355.0" text-anchor="middle" class="small">Accepted inbound protocol messages</text>
+<rect x="32" y="426" width="294" height="52" rx="10" class="box"/>
+<text x="179.0" y="457.0" text-anchor="middle" class="label">Local subscribers</text>
+<rect x="394" y="174" width="294" height="84" rx="10" class="box"/>
+<text x="541.0" y="201.0" text-anchor="middle" class="label">Runtime adapter</text>
+<text x="541.0" y="221.0" text-anchor="middle" class="small">Protocol session +</text>
+<text x="541.0" y="241.0" text-anchor="middle" class="small">transactional handlers</text>
+<rect x="394" y="306" width="294" height="68" rx="10" class="router"/>
+<text x="541.0" y="335.0" text-anchor="middle" class="label">EventRouter</text>
+<text x="541.0" y="355.0" text-anchor="middle" class="small">Accepted messages / committed events</text>
+<rect x="394" y="426" width="294" height="52" rx="10" class="box"/>
+<text x="541.0" y="457.0" text-anchor="middle" class="label">Hub application / subscribers</text>
+<text x="541" y="88" text-anchor="middle" class="small">Use cases, transactions and responses</text>
+<text x="541" y="110" text-anchor="middle" class="small">remain inside the Hub boundary.</text>
+<path d="M179 128 V174" class="edge" marker-end="url(#arrow)"/>
+<text x="179" y="151" text-anchor="middle" class="caption">Map + publish outgoing messages</text>
+<path d="M179 258 V306" class="edge" marker-end="url(#arrow)"/>
+<text x="179" y="284" text-anchor="middle" class="caption">After protocol handling</text>
+<path d="M179 374 V426" class="edge" marker-end="url(#arrow)"/>
+<text x="179" y="403" text-anchor="middle" class="caption">Matching handlers</text>
+<path d="M541 258 V306" class="edge" marker-end="url(#arrow)"/>
+<text x="541" y="284" text-anchor="middle" class="caption">After successful processing</text>
+<path d="M541 374 V426" class="edge" marker-end="url(#arrow)"/>
+<text x="541" y="403" text-anchor="middle" class="caption">Matching handlers</text>
+<path d="M394 452 H380 V216 H394" class="edge" marker-end="url(#arrow)"/>
+<text transform="translate(376 334) rotate(-90)" text-anchor="middle" class="caption">Configure via session handle</text>
+<path d="M32 216 H20 V602 H32" class="edge" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<path d="M688 216 H700 V602 H688" class="edge" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="360" y="552" text-anchor="middle" class="group">Communication boundary · KnotEnvelope ⇄ KnotEnvelope</text>
+<rect x="32" y="574" width="164" height="56" rx="10" class="box"/>
+<text x="114.0" y="597.0" text-anchor="middle" class="label">MessageLink</text>
+<text x="114.0" y="617.0" text-anchor="middle" class="small">Knot endpoint</text>
+<rect x="524" y="574" width="164" height="56" rx="10" class="box"/>
+<text x="606.0" y="597.0" text-anchor="middle" class="label">MessageLink</text>
+<text x="606.0" y="617.0" text-anchor="middle" class="small">Hub endpoint</text>
+<rect x="236" y="660" width="248" height="60" rx="10" class="box"/>
+<text x="360.0" y="685.0" text-anchor="middle" class="label">Local link</text>
+<text x="360.0" y="705.0" text-anchor="middle" class="small">Bounded Tokio channels</text>
+<rect x="236" y="764" width="248" height="68" rx="10" class="box"/>
+<text x="360.0" y="783.0" text-anchor="middle" class="label">Remote link · planned</text>
+<text x="360.0" y="803.0" text-anchor="middle" class="small">Framing + transport adapters</text>
+<text x="360.0" y="823.0" text-anchor="middle" class="small">LoRaWAN, Wi-Fi, …</text>
+<path d="M148 630 V690 H236" class="edge" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<path d="M572 630 V690 H484" class="edge" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<path d="M68 630 V798 H236" class="edge" stroke-dasharray="5 5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<path d="M652 630 V798 H484" class="edge" stroke-dasharray="5 5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="360" y="858" text-anchor="middle" class="small">
+</text>
+</svg>

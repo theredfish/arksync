@@ -8,7 +8,7 @@ mod sensor_plugged;
 mod sensor_provisioned;
 mod sensor_provisioning_conflict;
 
-use arksync_bus::EventEnvelope;
+use arksync_event_router::EventEnvelope;
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::SensorEvent;
 

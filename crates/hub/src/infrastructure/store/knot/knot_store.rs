@@ -33,7 +33,11 @@ pub async fn upsert_station_knot(
             name,
             hardware_uid,
             role,
-            status
+            status,
+            config_version,
+            applied_config_version,
+            config_status,
+            config_error
         )
         values (
             $1,
@@ -41,7 +45,11 @@ pub async fn upsert_station_knot(
             $3,
             $4,
             $5::station_knot_role,
-            $6::station_knot_status
+            $6::station_knot_status,
+            $7,
+            $8,
+            $9,
+            $10
         )
         on conflict (id) do update
         set
@@ -59,6 +67,10 @@ pub async fn upsert_station_knot(
     .bind(&knot.hardware_uid)
     .bind(&knot.role)
     .bind(&knot.status)
+    .bind(knot.config_version)
+    .bind(knot.applied_config_version)
+    .bind(&knot.config_status)
+    .bind(&knot.config_error)
     .execute(executor)
     .await?;
 
@@ -77,7 +89,11 @@ pub async fn insert_station_knot(
             name,
             hardware_uid,
             role,
-            status
+            status,
+            config_version,
+            applied_config_version,
+            config_status,
+            config_error
         )
         values (
             $1,
@@ -85,7 +101,11 @@ pub async fn insert_station_knot(
             $3,
             $4,
             $5::station_knot_role,
-            $6::station_knot_status
+            $6::station_knot_status,
+            $7,
+            $8,
+            $9,
+            $10
         )
         returning
             id,
@@ -93,7 +113,11 @@ pub async fn insert_station_knot(
             name,
             hardware_uid,
             role::text as role,
-            status::text as status
+            status::text as status,
+            config_version,
+            applied_config_version,
+            config_status,
+            config_error
         "#,
     )
     .bind(knot.id)
@@ -102,6 +126,10 @@ pub async fn insert_station_knot(
     .bind(&knot.hardware_uid)
     .bind(&knot.role)
     .bind(&knot.status)
+    .bind(knot.config_version)
+    .bind(knot.applied_config_version)
+    .bind(&knot.config_status)
+    .bind(&knot.config_error)
     .fetch_one(executor)
     .await?;
 
@@ -119,7 +147,11 @@ pub async fn list_station_knots(
             name,
             hardware_uid,
             role::text as role,
-            status::text as status
+            status::text as status,
+            config_version,
+            applied_config_version,
+            config_status,
+            config_error
         from station_knots
         where deleted_at is null
         order by created_at asc
@@ -143,7 +175,11 @@ pub async fn station_knot_by_hardware_uid(
             name,
             hardware_uid,
             role::text as role,
-            status::text as status
+            status::text as status,
+            config_version,
+            applied_config_version,
+            config_status,
+            config_error
         from station_knots
         where hardware_uid = $1
             and deleted_at is null
@@ -154,6 +190,29 @@ pub async fn station_knot_by_hardware_uid(
     .await?;
 
     Ok(knot)
+}
+
+pub async fn increment_station_knot_config_version(
+    executor: impl PgExecutor<'_>,
+    knot_id: arksync_utils::uuid::Uuid,
+) -> Result<i64, KnotStoreError> {
+    let version = sqlx::query_scalar(
+        r#"
+        update station_knots
+        set
+            config_version = config_version + 1,
+            config_status = 'pending',
+            config_error = null
+        where id = $1
+            and deleted_at is null
+        returning config_version
+        "#,
+    )
+    .bind(knot_id)
+    .fetch_optional(executor)
+    .await?;
+
+    version.ok_or(KnotStoreError::NotFound)
 }
 
 pub async fn find_or_insert_station_knot_by_hardware_uid(

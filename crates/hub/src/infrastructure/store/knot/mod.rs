@@ -2,8 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+mod knot_config_store;
 mod knot_definitions;
 mod knot_store;
 
+pub use knot_config_store::*;
 pub use knot_definitions::*;
 pub use knot_store::*;

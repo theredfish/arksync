@@ -11,6 +11,7 @@ pub enum HubActuatorError {
     KnotStore(KnotStoreError),
     ActuatorStore(ActuatorStoreError),
     SensorStore(SensorStoreError),
+    Uuid(arksync_utils::uuid::Error),
 }
 
 impl fmt::Display for HubActuatorError {
@@ -19,6 +20,7 @@ impl fmt::Display for HubActuatorError {
             HubActuatorError::KnotStore(err) => write!(f, "knot store error: {err:?}"),
             HubActuatorError::ActuatorStore(err) => write!(f, "actuator store error: {err}"),
             HubActuatorError::SensorStore(err) => write!(f, "sensor store error: {err}"),
+            HubActuatorError::Uuid(err) => write!(f, "UUID error: {err}"),
         }
     }
 }

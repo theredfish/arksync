@@ -2,6 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+#![no_std]
+
 mod config_handler;
 
 pub use config_handler::ConfigHandler;

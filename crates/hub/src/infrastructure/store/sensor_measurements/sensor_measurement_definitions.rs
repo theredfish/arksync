@@ -4,7 +4,7 @@
 
 use crate::domain::SensorMeasurement;
 use crate::infrastructure::store::{sensor_kind_as_str, sensor_kind_from_str};
-use arksync_bus::{EventId, Timestamp};
+use arksync_event_router::{EventId, Timestamp};
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::MeasurementUnit;
 use arksync_utils::uuid::Uuid;

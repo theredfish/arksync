@@ -4,9 +4,10 @@ members = [
     "crates/cli",
     "crates/config",
     "crates/db",
-    "crates/bus",
+    "crates/event-router",
     "crates/hub",
     "crates/knot",
+    "crates/protocol",
     "crates/macros",
     "crates/sensor",
     "crates/testing",
@@ -14,6 +15,7 @@ members = [
     "crates/utils",
     "src-tauri"
 ]
+default-members = ["src-tauri"]
 resolver = "2"
 
 [workspace.package]
@@ -26,9 +28,10 @@ arksync-actuator = { path = "crates/actuator" }
 arksync-cli = { path = "crates/cli" }
 arksync-config = { path = "crates/config" }
 arksync-db = { path = "crates/db" }
-arksync-bus = { path = "crates/bus" }
+arksync-event-router = { path = "crates/event-router" }
 arksync-hub = { path = "crates/hub" }
 arksync-knot = { path = "crates/knot" }
+arksync-protocol = { path = "crates/protocol" }
 arksync-macros = { path = "crates/macros" }
 arksync-sensor = { path = "crates/sensor" }
 arksync-testing = { path = "crates/testing" }
