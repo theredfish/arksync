@@ -4,12 +4,13 @@
 
 #![cfg(feature = "knot-tokio-runtime")]
 
-use arksync_bus::{EventEnvelope, EventId, Timestamp};
+use arksync_event_router::{EventEnvelope, EventId, Timestamp};
 use arksync_knot::application::{
     local_tokio_message_link, KnotProtocolRuntime, MessageLink, RetryPolicy,
 };
 use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotConfig, KnotControlMessage, KnotEnvelope, KnotMessage,
+    KnotPayload,
 };
 use arksync_protocol::ArkSyncActor;
 
@@ -55,7 +56,7 @@ async fn local_link_exchanges_hello_config_and_confirmation() {
     assert_eq!(hello.id, hello_id);
     assert!(matches!(
         hello.payload,
-        KnotMessage::Control(KnotControlMessage::Hello(_))
+        KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Hello(_)))
     ));
 
     hub_link
@@ -63,10 +64,10 @@ async fn local_link_exchanges_hello_config_and_confirmation() {
             hello_ack_id,
             ArkSyncActor::Hub { hub_id: [1; 16] },
             timestamp(1_780_000_000_100),
-            KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Hello {
+            KnotMessage::Ack(KnotAck::Hello {
                 event_id: hello_id,
                 config: config(),
-            })),
+            }),
         ))
         .await
         .unwrap();
@@ -89,7 +90,7 @@ async fn local_link_exchanges_hello_config_and_confirmation() {
     assert_eq!(runtime.config(), Some(&config()));
     assert!(matches!(
         confirmation.payload,
-        KnotMessage::Control(KnotControlMessage::ConfigApplied(applied))
+        KnotMessage::Con(KnotPayload::Control(KnotControlMessage::ConfigApplied(applied)))
             if applied.event_id == hello_ack_id && applied.config_version == 1
     ));
 }

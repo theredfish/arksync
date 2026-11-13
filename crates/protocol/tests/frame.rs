@@ -2,9 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::{EventEnvelope, EventId, Timestamp};
+use arksync_event_router::{EventEnvelope, EventId, Timestamp};
 use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
+    KnotPayload,
 };
 use arksync_protocol::{decode_frame, encode_frame, ArkSyncActor, ProtocolFrameError, CONFIG};
 
@@ -15,7 +16,7 @@ fn hello_envelope() -> KnotEnvelope {
             hardware_uid: "knot-rpi-1".into(),
         },
         Timestamp::from_unix_millis(1_779_840_000_000),
-        KnotMessage::Control(KnotControlMessage::Hello(KnotHello {
+        KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Hello(KnotHello {
             hardware_uid: "knot-rpi-1".into(),
             capabilities: KnotCapabilities {
                 gpio: true,
@@ -24,7 +25,7 @@ fn hello_envelope() -> KnotEnvelope {
                 atlas_scientific_ezo: true,
             },
             last_applied_config_version: Some(7),
-        })),
+        }))),
     )
 }
 
@@ -45,25 +46,25 @@ fn frame_round_trips_a_hello_message() {
 #[test]
 fn heartbeat_and_its_correlated_ack_round_trip() {
     let mut envelope = hello_envelope();
-    envelope.payload = KnotMessage::Control(KnotControlMessage::Heartbeat);
+    envelope.payload = KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Heartbeat));
     let mut buffer = [0; 256];
     let frame = encode_frame(&envelope, &mut buffer).unwrap();
     assert_eq!(decode_frame::<KnotMessage>(frame).unwrap(), envelope);
     assert!(envelope.payload.requires_ack());
 
-    let ack = KnotAck::Heartbeat {
+    let ack = KnotAck::Processed {
         event_id: envelope.id,
     };
     assert_eq!(ack.event_id(), envelope.id);
     envelope.source = ArkSyncActor::Hub { hub_id: [2; 16] };
-    envelope.payload = KnotMessage::Control(KnotControlMessage::Ack(ack));
+    envelope.payload = KnotMessage::Ack(ack);
     let frame = encode_frame(&envelope, &mut buffer).unwrap();
     assert_eq!(decode_frame::<KnotMessage>(frame).unwrap(), envelope);
     assert!(!envelope.payload.requires_ack());
 }
 
 #[test]
-fn hello_frame_has_a_stable_v1_representation() {
+fn hello_frame_has_a_stable_v2_representation() {
     let envelope = hello_envelope();
     let mut buffer = [0; 256];
 
@@ -72,9 +73,9 @@ fn hello_frame_has_a_stable_v1_representation() {
     assert_eq!(
         frame,
         &[
-            65, 82, 75, 1, 1, 1, 1, 1, 1, 1, 65, 1, 129, 1, 1, 1, 1, 1, 1, 1, 1, 10, 107, 110, 111,
-            116, 45, 114, 112, 105, 45, 49, 128, 128, 217, 235, 204, 103, 0, 0, 10, 107, 110, 111,
-            116, 45, 114, 112, 105, 45, 49, 1, 1, 0, 1, 1, 7,
+            65, 82, 75, 2, 1, 1, 1, 1, 1, 1, 65, 1, 129, 1, 1, 1, 1, 1, 1, 1, 1, 10, 107, 110, 111,
+            116, 45, 114, 112, 105, 45, 49, 128, 128, 217, 235, 204, 103, 0, 0, 0, 10, 107, 110,
+            111, 116, 45, 114, 112, 105, 45, 49, 1, 1, 0, 1, 1, 7,
         ]
     );
 }
@@ -123,7 +124,54 @@ fn protocol_config_defines_the_frame_format() {
     let config = CONFIG.load();
 
     assert_eq!(config.frame_magic, *b"ARK");
-    assert_eq!(config.protocol_version, 1);
-    assert_eq!(config.supported_versions, &[1]);
+    assert_eq!(config.protocol_version, 2);
+    assert_eq!(config.supported_versions, &[2]);
     assert!(config.supports_version(config.protocol_version));
+}
+
+#[test]
+fn version_one_frames_are_rejected_before_decoding_the_changed_payload() {
+    let old_hello = [
+        65, 82, 75, 1, 1, 1, 1, 1, 1, 1, 65, 1, 129, 1, 1, 1, 1, 1, 1, 1, 1, 10, 107, 110, 111,
+        116, 45, 114, 112, 105, 45, 49, 128, 128, 217, 235, 204, 103, 0, 0, 10, 107, 110, 111, 116,
+        45, 114, 112, 105, 45, 49, 1, 1, 0, 1, 1, 7,
+    ];
+    assert_eq!(
+        decode_frame::<KnotMessage>(&old_hello),
+        Err(ProtocolFrameError::UnsupportedVersion(1))
+    );
+}
+
+#[test]
+fn non_round_trips_without_requiring_acknowledgement() {
+    let mut envelope = hello_envelope();
+    envelope.payload = KnotMessage::Non(KnotPayload::Control(KnotControlMessage::Heartbeat));
+    let mut buffer = [0; 256];
+    let frame = encode_frame(&envelope, &mut buffer).unwrap();
+    assert_eq!(decode_frame::<KnotMessage>(frame).unwrap(), envelope);
+    assert!(!envelope.payload.requires_ack());
+}
+
+#[test]
+fn documented_minimal_hello_matches_the_wire_format() {
+    let envelope = EventEnvelope::new_with_id(
+        EventId::from_bytes([0; 16]),
+        ArkSyncActor::Knot {
+            hardware_uid: "k1".into(),
+        },
+        Timestamp::from_unix_millis(0),
+        KnotMessage::from(KnotControlMessage::Hello(KnotHello {
+            hardware_uid: "k1".into(),
+            capabilities: KnotCapabilities::default(),
+            last_applied_config_version: None,
+        })),
+    );
+    let mut buffer = [0; 128];
+    assert_eq!(
+        encode_frame(&envelope, &mut buffer).unwrap(),
+        &[
+            0x41, 0x52, 0x4b, 0x02, 0, 0, 0, 0, 0, 0, 0x40, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 1, 2,
+            0x6b, 0x31, 0, 0, 0, 0, 2, 0x6b, 0x31, 0, 0, 0, 0, 0,
+        ]
+    );
 }

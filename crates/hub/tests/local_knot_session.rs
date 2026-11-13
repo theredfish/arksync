@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::{EventEnvelope, EventHandlerError, EventId, Timestamp};
+use arksync_event_router::{EventEnvelope, EventHandlerError, EventId, Timestamp};
 use arksync_hub::infrastructure::store::knot as knot_store;
 use arksync_hub::{
     knot_protocol_config_for_hardware_uid, list_knots, setup_local_station, HubSession,
@@ -13,6 +13,7 @@ use arksync_knot::application::{
 };
 use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
+    KnotPayload,
 };
 use arksync_protocol::ArkSyncActor;
 use tokio::sync::mpsc;
@@ -20,12 +21,12 @@ use tokio::task::JoinSet;
 use tokio::time::{timeout, Duration};
 use tokio_util::sync::CancellationToken;
 
-fn envelope(source: ArkSyncActor, message: KnotControlMessage) -> KnotEnvelope {
+fn envelope(source: ArkSyncActor, message: impl Into<KnotMessage>) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         EventId::new(),
         source,
         Timestamp::from_unix_millis(1_780_000_000_000),
-        KnotMessage::Control(message),
+        message.into(),
     )
 }
 
@@ -84,10 +85,10 @@ async fn local_sessions_register_exchange_config_and_rejoin_without_hardware(
             tasks.spawn(async move { knot.run(knot_shutdown).await.expect("Knot session failed"); });
 
             let hello = next_event(&mut hub_events, |event| matches!(event.payload,
-                KnotMessage::Control(KnotControlMessage::Hello(_)))).await;
+                KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Hello(_))))).await;
             let hello_ack = next_event(&mut knot_events, |event| matches!(event.payload,
-                KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Hello { event_id, .. })) if event_id == hello.id)).await;
-            let KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Hello { config, .. })) = &hello_ack.payload else { unreachable!() };
+                KnotMessage::Ack(KnotAck::Hello { event_id, .. }) if event_id == hello.id)).await;
+            let KnotMessage::Ack(KnotAck::Hello { config, .. }) = &hello_ack.payload else { unreachable!() };
             assert_eq!(config.version, round + 1);
             assert!(config.sensor_bindings.is_empty());
             assert!(config.actuator_configs.is_empty());
@@ -95,9 +96,9 @@ async fn local_sessions_register_exchange_config_and_rejoin_without_hardware(
             first_knot_id = Some(config.knot_id);
 
             let applied = next_event(&mut hub_events, |event| matches!(event.payload,
-                KnotMessage::Control(KnotControlMessage::ConfigApplied(applied)) if applied.event_id == hello_ack.id)).await;
+                KnotMessage::Con(KnotPayload::Control(KnotControlMessage::ConfigApplied(applied))) if applied.event_id == hello_ack.id)).await;
             next_event(&mut knot_events, |event| matches!(event.payload,
-                KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id })) if event_id == applied.id)).await;
+                KnotMessage::Ack(KnotAck::Processed { event_id }) if event_id == applied.id)).await;
 
             let knots = list_knots(&pool).await?;
             let matching: Vec<_> = knots.iter().filter(|knot| knot.hardware_uid == hardware_uid).collect();
@@ -110,9 +111,9 @@ async fn local_sessions_register_exchange_config_and_rejoin_without_hardware(
             let receipts_before: i64 = sqlx::query_scalar("select count(*) from knot_message_receipts")
                 .fetch_one(&pool).await?;
             for _ in 0..3 {
-                let heartbeat = next_event(&mut hub_events, |event| event.payload == KnotMessage::Control(KnotControlMessage::Heartbeat)).await;
+                let heartbeat = next_event(&mut hub_events, |event| event.payload == KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Heartbeat))).await;
                 next_event(&mut knot_events, |event| matches!(event.payload,
-                    KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Heartbeat { event_id })) if event_id == heartbeat.id)).await;
+                    KnotMessage::Ack(KnotAck::Processed { event_id }) if event_id == heartbeat.id)).await;
             }
             let receipts_after: i64 = sqlx::query_scalar("select count(*) from knot_message_receipts")
                 .fetch_one(&pool).await?;
@@ -129,11 +130,13 @@ async fn local_sessions_register_exchange_config_and_rejoin_without_hardware(
                 let configure = envelope(hello_ack.source.clone(), KnotControlMessage::Configure(config));
                 let configure_id = configure.id;
                 hub_handle.send(configure).await?;
-                let applied = next_event(&mut hub_events, |event| matches!(event.payload,
-                    KnotMessage::Control(KnotControlMessage::ConfigApplied(applied))
-                        if applied.event_id == configure_id && applied.config_version == 2)).await;
-                next_event(&mut knot_events, |event| matches!(event.payload,
-                    KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id })) if event_id == applied.id)).await;
+                next_event(&mut hub_events, |event| matches!(event.payload,
+                    KnotMessage::Ack(KnotAck::ConfigApplied { event_id, config_version: 2 })
+                        if event_id == configure_id)).await;
+                let stored = knot_store::station_knot_by_hardware_uid(&pool, hardware_uid).await
+                    .map_err(|error| eyre::eyre!("{error:?}"))?;
+                assert_eq!(stored.applied_config_version, Some(2));
+
             }
 
             shutdown.cancel();
@@ -201,9 +204,9 @@ async fn hub_session_handles_duplicate_hello_presence_expiry_and_recovery(
         let reply = peer.receive().await.unwrap().unwrap();
         assert_eq!(
             reply.payload,
-            KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Heartbeat {
+            KnotMessage::Ack(KnotAck::Processed {
                 event_id: heartbeat.id
-            }))
+            })
         );
         status
             .wait_for(|state| state.connection == ConnectionState::Unavailable)
@@ -230,9 +233,9 @@ async fn hub_session_handles_duplicate_hello_presence_expiry_and_recovery(
         let reply = peer.receive().await.unwrap().unwrap();
         assert_eq!(
             reply.payload,
-            KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Heartbeat {
+            KnotMessage::Ack(KnotAck::Processed {
                 event_id: heartbeat.id
-            }))
+            })
         );
         status
             .wait_for(|state| state.connection == ConnectionState::Connected)
@@ -257,7 +260,7 @@ async fn hub_session_handles_duplicate_hello_presence_expiry_and_recovery(
 }
 
 #[arksync_testing::test]
-async fn configure_is_retried_after_a_full_knot_outbox_without_overwriting_messages(
+async fn configure_ack_bypasses_a_full_outbox_and_replays_after_loss(
     pool: arksync_testing::PgPool,
 ) -> eyre::Result<()> {
     let mut txn = pool.begin().await?;
@@ -268,85 +271,150 @@ async fn configure_is_retried_after_a_full_knot_outbox_without_overwriting_messa
         // Interpose two local endpoints to control delivery order between production sessions.
         let (hub_link, mut hub_peer) = local_tokio_message_link(2);
         let (mut knot_peer, knot_link) = local_tokio_message_link(2);
-        let hub = HubSession::new(pool.clone(), hub_link, KeepAliveConfig::default()).await?;
+        let mut hub = HubSession::new(pool.clone(), hub_link, KeepAliveConfig::default()).await?;
+        let (committed_tx, mut committed) = mpsc::channel(32);
+        hub.subscribe(move |event: &KnotEnvelope| {
+            committed_tx
+                .try_send(event.clone())
+                .map_err(|_| EventHandlerError::Rejected)
+        });
         let hub_handle = hub.handle();
-        let knot = TokioKnotSession::new(TokioKnotRuntimeConfig {
-            hardware_uid: uid.into(),
-            capabilities: KnotCapabilities::default(),
-            retry_policy: RetryPolicy { capacity: 1, ..RetryPolicy::default() },
-            keep_alive_config: KeepAliveConfig::default(),
-        }, knot_link);
+        let knot = TokioKnotSession::new(
+            TokioKnotRuntimeConfig {
+                hardware_uid: uid.into(),
+                capabilities: KnotCapabilities::default(),
+                retry_policy: RetryPolicy {
+                    capacity: 1,
+                    ..RetryPolicy::default()
+                },
+                keep_alive_config: KeepAliveConfig::default(),
+            },
+            knot_link,
+        );
         let mut status = knot.handle().status();
         let shutdown = CancellationToken::new();
         let _guard = shutdown.clone().drop_guard();
         let mut tasks = JoinSet::new();
         tasks.spawn(hub.run(shutdown.clone()));
         let knot_shutdown = shutdown.clone();
-        tasks.spawn(async move { knot.run(knot_shutdown).await.unwrap(); });
+        tasks.spawn(async move {
+            knot.run(knot_shutdown).await.unwrap();
+        });
 
         let hello = knot_peer.receive().await.unwrap().unwrap();
         hub_peer.send(hello).await.unwrap();
         let hello_ack = hub_peer.receive().await.unwrap().unwrap();
         knot_peer.send(hello_ack.clone()).await.unwrap();
         let first_confirmation = knot_peer.receive().await.unwrap().unwrap();
-        let record = knot_store::station_knot_by_hardware_uid(&pool, uid).await
+        let record = knot_store::station_knot_by_hardware_uid(&pool, uid)
+            .await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         let mut txn = pool.begin().await?;
-        knot_store::increment_station_knot_config_version(&mut *txn, record.id).await
+        knot_store::increment_station_knot_config_version(&mut *txn, record.id)
+            .await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         let config = knot_protocol_config_for_hardware_uid(&mut txn, uid).await?;
         txn.commit().await?;
-        let command = envelope(hello_ack.source.clone(), KnotControlMessage::Configure(config));
+        let command = envelope(
+            hello_ack.source.clone(),
+            KnotControlMessage::Configure(config),
+        );
         hub_handle.send(command.clone()).await?;
         let mut conflicting_command = command.clone();
-        let KnotMessage::Control(KnotControlMessage::Configure(config)) = &mut conflicting_command.payload else { unreachable!() };
-        config.sensor_bindings.push(arksync_protocol::knot::KnotSensorBinding { sensor_id: [3; 16], device_uid: "sensor".into() });
-        assert!(hub_handle.send(conflicting_command).await.is_err(), "an existing event ID cannot overwrite a queued command");
+        let KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Configure(config))) =
+            &mut conflicting_command.payload
+        else {
+            unreachable!()
+        };
+        config
+            .sensor_bindings
+            .push(arksync_protocol::knot::KnotSensorBinding {
+                sensor_id: [3; 16],
+                device_uid: "sensor".into(),
+            });
+        assert!(
+            hub_handle.send(conflicting_command).await.is_err(),
+            "an existing event ID cannot overwrite a queued command"
+        );
 
         let sent = hub_peer.receive().await.unwrap().unwrap();
         assert_eq!(sent, command);
         let invalid_confirmation = envelope(
-            ArkSyncActor::Knot { hardware_uid: uid.into() },
+            ArkSyncActor::Knot {
+                hardware_uid: uid.into(),
+            },
             KnotControlMessage::ConfigApplied(arksync_protocol::knot::KnotConfigApplied {
-                event_id: command.id, config_version: 1,
+                event_id: command.id,
+                config_version: 1,
             }),
         );
         hub_peer.send(invalid_confirmation.clone()).await.unwrap();
-        let nack = hub_peer.receive().await.unwrap().unwrap();
-        assert_eq!(nack.payload, KnotMessage::Control(KnotControlMessage::Nack(arksync_protocol::knot::KnotNack {
-            event_id: invalid_confirmation.id,
-            reason: arksync_protocol::knot::KnotNackReason::ConfigurationConflict,
-        })));
-        // Configure arrives while the only Knot slot still holds ConfigApplied(v1).
+        let rejection = hub_peer.receive().await.unwrap().unwrap();
+        assert_eq!(
+            rejection.payload,
+            KnotMessage::Ack(KnotAck::Rejected {
+                event_id: invalid_confirmation.id,
+                reason: arksync_protocol::knot::KnotRejectionReason::ConfigurationConflict,
+            })
+        );
+        // The reliable follow-up still occupies the Knot outbox; ACK has its own bounded queue.
         knot_peer.send(sent).await.unwrap();
+        let lost_ack = knot_peer.receive().await.unwrap().unwrap();
+        assert_eq!(
+            lost_ack.payload,
+            KnotMessage::Ack(KnotAck::ConfigApplied {
+                event_id: command.id,
+                config_version: 2,
+            })
+        );
         hub_peer.send(first_confirmation.clone()).await.unwrap();
         let ack = hub_peer.receive().await.unwrap().unwrap();
-        assert_eq!(ack.payload, KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id: first_confirmation.id })));
+        assert_eq!(
+            ack.payload,
+            KnotMessage::Ack(KnotAck::Processed {
+                event_id: first_confirmation.id
+            })
+        );
         knot_peer.send(ack).await.unwrap();
         status.wait_for(|state| state.pending_messages == 0).await?;
-        assert_eq!(status.borrow().config.as_ref().unwrap().version, 1);
+        assert_eq!(status.borrow().config.as_ref().unwrap().version, 2);
 
         let retry = hub_peer.receive().await.unwrap().unwrap();
-        assert_eq!(retry, command, "retry must preserve content, timestamp and EventId");
+        assert_eq!(
+            retry, command,
+            "retry must preserve content, timestamp and EventId"
+        );
         knot_peer.send(retry).await.unwrap();
-        let confirmation = knot_peer.receive().await.unwrap().unwrap();
-        assert!(matches!(confirmation.payload, KnotMessage::Control(KnotControlMessage::ConfigApplied(result))
-            if result.event_id == command.id && result.config_version == 2));
-        hub_peer.send(confirmation.clone()).await.unwrap();
-        let ack = hub_peer.receive().await.unwrap().unwrap();
-        assert_eq!(ack.payload, KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id: confirmation.id })));
-        knot_peer.send(ack).await.unwrap();
-        status.wait_for(|state| state.pending_messages == 0 && state.config.as_ref().is_some_and(|c| c.version == 2)).await?;
-        let record = knot_store::station_knot_by_hardware_uid(&pool, uid).await
+        let replay = knot_peer.receive().await.unwrap().unwrap();
+        assert_eq!(
+            replay, lost_ack,
+            "duplicate CON must replay the same processing result"
+        );
+        hub_peer.send(replay.clone()).await.unwrap();
+        next_event(&mut committed, |event| event == &replay).await;
+        status
+            .wait_for(|state| {
+                state.pending_messages == 0 && state.config.as_ref().is_some_and(|c| c.version == 2)
+            })
+            .await?;
+        let record = knot_store::station_knot_by_hardware_uid(&pool, uid)
+            .await
             .map_err(|e| eyre::eyre!("{e:?}"))?;
         assert_eq!(record.applied_config_version, Some(2));
         assert_eq!(record.config_status, "applied");
-        assert!(timeout(Duration::from_millis(2_200), hub_peer.receive()).await.is_err(),
-            "a committed confirmation must stop Hub retries");
+        assert!(
+            timeout(Duration::from_millis(2_200), hub_peer.receive())
+                .await
+                .is_err(),
+            "a committed confirmation must stop Hub retries"
+        );
         shutdown.cancel();
-        while let Some(result) = tasks.join_next().await { result?; }
+        while let Some(result) = tasks.join_next().await {
+            result?;
+        }
         eyre::Ok(())
-    }).await??;
+    })
+    .await??;
     Ok(())
 }
 
@@ -450,10 +518,10 @@ async fn cancellation_during_sql_rolls_back_configuration_confirmation(
             .await?;
         let confirmation = envelope(
             source,
-            KnotControlMessage::ConfigApplied(arksync_protocol::knot::KnotConfigApplied {
+            KnotAck::ConfigApplied {
                 event_id: hello_ack.id,
                 config_version: 1,
-            }),
+            },
         );
         peer.send(confirmation.clone()).await.unwrap();
         status
@@ -535,9 +603,7 @@ async fn database_deadline_releases_the_session_without_acknowledging_unfinished
         let response = peer.receive().await.unwrap().unwrap();
         assert_eq!(
             response.payload,
-            KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Heartbeat {
-                event_id: retry.id,
-            })),
+            KnotMessage::Ack(KnotAck::Processed { event_id: retry.id }),
             "the first operation expired and must never be acknowledged"
         );
         shutdown.cancel();

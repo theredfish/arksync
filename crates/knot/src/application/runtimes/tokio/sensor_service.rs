@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::{EventEnvelope, EventHandler, EventHandlerError, EventRouter};
+use arksync_event_router::{EventEnvelope, EventHandler, EventHandlerError, EventRouter};
 use arksync_sensor::infrastructure::events::SensorEvent;
 use arksync_sensor::services::SensorService;
 use tokio::sync::mpsc;

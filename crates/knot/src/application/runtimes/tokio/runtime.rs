@@ -5,7 +5,7 @@
 use std::string::String;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use arksync_bus::Timestamp;
+use arksync_event_router::Timestamp;
 use arksync_protocol::knot::{KnotCapabilities, KnotEnvelope, KnotMessage as ProtocolKnotMessage};
 use arksync_sensor::infrastructure::events::SensorEvent;
 use tokio::sync::mpsc;
@@ -94,7 +94,7 @@ impl TokioKnotRuntime {
                 _ = shutdown.cancelled() => break,
                 Some(sensor_event) = sensor_event_rx.recv() => {
                     observe_actuator_sensor_value(&actuator_input_tx, &sensor_event.payload).await;
-                    let message = ProtocolKnotMessage::Sensor(knot_sensor_message(sensor_event.payload));
+                    let message = ProtocolKnotMessage::from(knot_sensor_message(sensor_event.payload));
                     // Hardware execution must not wait for space in the protocol outbox.
                     if let Err(error) = session_handle.try_publish_at(message, sensor_event.occurred_at) {
                         log::warn!("Knot could not queue sensor message: {error}");

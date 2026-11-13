@@ -20,7 +20,7 @@ tauri-build.workspace = true
 
 [dependencies]
 arksync-actuator = { workspace = true, features = ["linux-gpio"] }
-arksync-bus.workspace = true
+arksync-event-router.workspace = true
 arksync-db.workspace = true
 arksync-hub.workspace = true
 chrono.workspace = true

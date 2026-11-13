@@ -31,7 +31,7 @@ pub struct KnotSensorProvisioningConflict {
     pub sensor: KnotSensorDescriptor,
 }
 
-/// Batch of sensor values processed atomically under one envelope [`arksync_bus::EventId`].
+/// Batch of sensor values processed atomically under one envelope [`arksync_event_router::EventId`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KnotSensorMeasurementBatch {
     pub measurements: Vec<KnotSensorMeasurement>,

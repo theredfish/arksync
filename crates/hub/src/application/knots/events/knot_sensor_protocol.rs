@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::{EventEnvelope, EventId, Timestamp};
+use arksync_event_router::{EventEnvelope, EventId, Timestamp};
 use arksync_knot::domain::{KnotEventSource, KnotHubId, KnotId};
 use arksync_protocol::knot::{
     KnotMeasurementUnit, KnotSensorConnection, KnotSensorDescriptor, KnotSensorKind,
@@ -15,7 +15,7 @@ use arksync_sensor::infrastructure::events::{
 };
 use arksync_sensor::serial_port::SerialPortMetadata;
 use eyre::{eyre, Result, WrapErr};
-use sqlx::{PgPool, PgTransaction};
+use sqlx::PgTransaction;
 
 use crate::application::{
     default_measurement_interval_ms, insert_sensor, record_sensor_measurement,
@@ -23,40 +23,19 @@ use crate::application::{
 };
 use crate::domain::{PluggedSensor, SensorId};
 use crate::infrastructure::store::{
-    insert_knot_message_receipt, knot as knot_store, sensors as sensor_store, KnotRecord,
-    SensorStoreError,
+    knot as knot_store, sensors as sensor_store, KnotRecord, SensorStoreError,
 };
 
 pub(super) async fn handle_knot_sensor_protocol(
-    pool: &PgPool,
+    txn: &mut PgTransaction<'_>,
     event_id: EventId,
     hardware_uid: &str,
     message: &KnotSensorMessage,
     occurred_at: Timestamp,
     received_at: Timestamp,
-    sensor_registry: &mut SensorRegistry,
-) -> Result<Vec<HubSensorEventEnvelope>> {
-    let mut txn = pool
-        .begin()
-        .await
-        .wrap_err("failed to begin Knot sensor message transaction")?;
-    let is_new = insert_knot_message_receipt(
-        &mut *txn,
-        event_id,
-        hardware_uid,
-        sensor_message_kind(message),
-    )
-    .await
-    .map_err(|error| eyre!("Knot message store error: {error:?}"))?;
-
-    if !is_new {
-        txn.commit()
-            .await
-            .wrap_err("failed to commit duplicate Knot sensor message transaction")?;
-        return Ok(Vec::new());
-    }
-
-    let knot = knot_store::station_knot_by_hardware_uid(&mut *txn, hardware_uid)
+    sensor_registry: &SensorRegistry,
+) -> Result<SensorProtocolEffects> {
+    let knot = knot_store::station_knot_by_hardware_uid(&mut **txn, hardware_uid)
         .await
         .map_err(|error| match error {
             knot_store::KnotStoreError::NotFound => eyre::Report::new(InvalidSensorPayload),
@@ -82,14 +61,8 @@ pub(super) async fn handle_knot_sensor_protocol(
         KnotSensorMessage::Provisioned(provisioned) => {
             let device_uid = device_uid(&provisioned.device_uid)?;
             let sensor = measured_sensor(&provisioned.sensor);
-            let sensor_id = ensure_sensor(
-                &mut txn,
-                sensor_registry,
-                &knot,
-                device_uid.clone(),
-                &sensor,
-            )
-            .await?;
+            let sensor_id =
+                ensure_sensor(txn, sensor_registry, &knot, device_uid.clone(), &sensor).await?;
             remembered_sensors.push((device_uid.to_string(), sensor_id));
             projected_events.push(EventEnvelope::new_with_id(
                 event_id,
@@ -113,16 +86,10 @@ pub(super) async fn handle_knot_sensor_protocol(
             for measurement in &batch.measurements {
                 let device_uid = device_uid(&measurement.device_uid)?;
                 let sensor = measured_sensor(&measurement.sensor);
-                let sensor_id = ensure_sensor(
-                    &mut txn,
-                    sensor_registry,
-                    &knot,
-                    device_uid.clone(),
-                    &sensor,
-                )
-                .await?;
+                let sensor_id =
+                    ensure_sensor(txn, sensor_registry, &knot, device_uid.clone(), &sensor).await?;
                 record_sensor_measurement(
-                    &mut *txn,
+                    &mut **txn,
                     SensorMeasurementInput {
                         event_id,
                         source: source.clone(),
@@ -154,15 +121,17 @@ pub(super) async fn handle_knot_sensor_protocol(
         }
     }
 
-    txn.commit()
-        .await
-        .wrap_err("failed to commit Knot sensor message transaction")?;
+    Ok(SensorProtocolEffects {
+        events: projected_events,
+        knot_id: knot.id,
+        remembered_sensors,
+    })
+}
 
-    for (device_uid, sensor_id) in remembered_sensors {
-        sensor_registry.remember_sensor(knot.id, device_uid, sensor_id);
-    }
-
-    Ok(projected_events)
+pub(super) struct SensorProtocolEffects {
+    pub events: Vec<HubSensorEventEnvelope>,
+    pub knot_id: arksync_utils::uuid::Uuid,
+    pub remembered_sensors: Vec<(String, SensorId)>,
 }
 
 async fn ensure_sensor(
@@ -263,7 +232,7 @@ fn device_uid(value: &str) -> Result<DeviceUid> {
     DeviceUid::try_from(value).map_err(|_| InvalidSensorPayload.into())
 }
 
-fn sensor_message_kind(message: &KnotSensorMessage) -> &'static str {
+pub(super) fn sensor_message_kind(message: &KnotSensorMessage) -> &'static str {
     match message {
         KnotSensorMessage::Plugged(_) => "sensor_plugged",
         KnotSensorMessage::Provisioned(_) => "sensor_provisioned",

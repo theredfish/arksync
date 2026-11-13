@@ -4,7 +4,7 @@
 
 use arksync_actuator::application::protocol::ActuatorMessage;
 use arksync_actuator::relay::{RelayDriver, RelayState, MIST_RELAY};
-use arksync_bus::{
+use arksync_event_router::{
     EventEnvelope, EventHandler, EventHandlerError, EventId, EventRouter, Timestamp,
 };
 use std::time::{SystemTime, UNIX_EPOCH};

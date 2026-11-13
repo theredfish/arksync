@@ -5,10 +5,17 @@
 #[derive(Debug)]
 pub enum KnotMessageStoreError {
     Database(sqlx::Error),
+    Serialization(serde_json::Error),
 }
 
 impl From<sqlx::Error> for KnotMessageStoreError {
     fn from(value: sqlx::Error) -> Self {
         Self::Database(value)
+    }
+}
+
+impl From<serde_json::Error> for KnotMessageStoreError {
+    fn from(value: serde_json::Error) -> Self {
+        Self::Serialization(value)
     }
 }

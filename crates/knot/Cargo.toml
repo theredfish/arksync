@@ -20,11 +20,11 @@ knot-tokio-runtime = [
     "tokio/time",
     "tokio-util",
 ]
-uuid-v4 = ["arksync-bus/uuid-v4", "arksync-utils/uuid-v4"]
+uuid-v4 = ["arksync-event-router/uuid-v4", "arksync-utils/uuid-v4"]
 
 [dependencies]
 arksync-actuator = { workspace = true, optional = true }
-arksync-bus.workspace = true
+arksync-event-router.workspace = true
 arksync-protocol.workspace = true
 arksync-macros.workspace = true
 arksync-sensor = { workspace = true, optional = true }

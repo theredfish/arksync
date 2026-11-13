@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::EventId;
+use arksync_event_router::EventId;
 use arksync_protocol::knot::KnotConfig;
 use arksync_utils::uuid::Uuid;
 use sqlx::{PgExecutor, PgTransaction};
@@ -107,4 +107,19 @@ pub async fn settle_knot_config_delivery(
     .execute(&mut **txn)
     .await?;
     Ok(true)
+}
+
+/// Look up an issued command without trusting a version supplied by the peer.
+pub async fn knot_config_delivery_version(
+    executor: impl PgExecutor<'_>,
+    event_id: EventId,
+    hardware_uid: &str,
+) -> Result<Option<i64>, sqlx::Error> {
+    sqlx::query_scalar(
+        "select d.config_version from knot_config_deliveries d join station_knots k on k.id = d.station_knot_id where d.event_id = $1 and k.hardware_uid = $2 and k.deleted_at is null"
+    )
+    .bind(event_id.uuid_v4())
+    .bind(hardware_uid)
+    .fetch_optional(executor)
+    .await
 }

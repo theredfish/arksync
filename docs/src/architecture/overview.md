@@ -2,7 +2,7 @@
 
 ArkSync separates station coordination from direct hardware access. The Hub owns persistent station state and user-facing workflows, while Knots execute close to sensors and actuators.
 
-The following diagram shows the intended high-level topology. The local Knot path is used by the current Raspberry Pi deployment. MQTT is the planned transport for remote embedded Knots; it will carry the same Knot protocol messages rather than redefine them.
+The following diagram shows the intended high-level topology. The local Knot path is used by the current Raspberry Pi deployment. Remote Knots exchange the same protocol messages through transport-specific adapters. The protocol is designed independently of the transport technology, leaving concrete communication choices open.
 
 ```mermaid
 flowchart LR
@@ -25,7 +25,7 @@ flowchart LR
         Dashboard <--> Hub
     end
 
-    EspKnot -.->|"Knot protocol<br/>MQTT transport - planned"| Hub
+    EspKnot -.->|"Knot protocol<br/>Transport adapter"| Hub
 ```
 
 ## Knot
@@ -33,8 +33,16 @@ flowchart LR
 The Knot owns portable protocol messages and hardware-facing execution. Its reusable domain and runtime contracts are `no_std` first. Platform adapters provide concrete scheduling, transport, sensor, and actuator integrations:
 
 - the Raspberry Pi Hub uses a Tokio-backed local Knot runtime;
-- a remote ESP32 Knot will use an embedded runtime and MQTT transport;
+- a remote ESP32 Knot will use an embedded runtime and a transport adapter suited to its deployment;
 - both paths preserve the same protocol-level messages.
+
+## Communication and transport
+
+ArkSync defines its own Hub/Knot communication protocol. Message semantics and the portable protocol core remain independent of the underlying link. Transport adapters may use LoRaWAN, Wi-Fi, or other communication technologies according to deployment needs.
+
+LoRaWAN is currently the preferred candidate for communication across long buildings and outdoor deployments.
+
+See [event messaging](event-messaging.md#runtime-and-communication-boundaries) for the EventRouter, protocol, and transport boundaries between Knot and Hub runtimes.
 
 ## Hub
 

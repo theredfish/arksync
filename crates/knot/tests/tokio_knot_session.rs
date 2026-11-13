@@ -4,26 +4,26 @@
 
 #![cfg(feature = "knot-tokio-runtime")]
 
-use arksync_bus::{EventEnvelope, EventId, Timestamp};
+use arksync_event_router::{EventEnvelope, EventId, Timestamp};
 use arksync_knot::application::{
-    local_tokio_message_link, ConnectionState, KeepAliveConfig, MessageLink, RetryPolicy,
-    TokioKnotRuntimeConfig, TokioKnotSession,
+    local_tokio_message_link, ConnectionState, KeepAliveConfig, KnotPublishError, MessageLink,
+    RetryPolicy, TokioKnotRuntimeConfig, TokioKnotSession,
 };
 use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotConfig, KnotControlMessage, KnotEnvelope, KnotMessage,
-    KnotSensorMeasurementBatch, KnotSensorMessage,
+    KnotPayload, KnotSensorMeasurementBatch, KnotSensorMessage,
 };
 use arksync_protocol::ArkSyncActor;
 use tokio::task::JoinSet;
 use tokio::time::{timeout, Duration};
 use tokio_util::sync::CancellationToken;
 
-fn hub_message(message: KnotControlMessage) -> KnotEnvelope {
+fn hub_message(message: impl Into<KnotMessage>) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         EventId::new(),
         ArkSyncActor::Hub { hub_id: [1; 16] },
         Timestamp::from_unix_millis(0),
-        KnotMessage::Control(message),
+        message.into(),
     )
 }
 
@@ -59,7 +59,9 @@ async fn a_silent_peer_expires_and_a_full_link_does_not_prevent_shutdown() {
         tasks.join_next().await.unwrap().unwrap().unwrap();
         assert_eq!(status.borrow().connection, ConnectionState::Closed);
         assert!(handle
-            .publish(KnotMessage::Control(KnotControlMessage::Heartbeat))
+            .publish(KnotMessage::Con(KnotPayload::Control(
+                KnotControlMessage::Heartbeat
+            )))
             .await
             .is_err());
     })
@@ -95,20 +97,20 @@ async fn saturated_link_still_receives_acks_and_keeps_config_after_closure() {
             sensor_bindings: vec![],
             actuator_configs: vec![],
         };
-        hub.send(hub_message(KnotControlMessage::Ack(KnotAck::Hello {
+        hub.send(hub_message(KnotAck::Hello {
             event_id: hello.id,
             config: config.clone(),
-        })))
+        }))
         .await
         .unwrap();
         let applied = hub.receive().await.unwrap().unwrap();
         assert!(matches!(
             applied.payload,
-            KnotMessage::Control(KnotControlMessage::ConfigApplied(_))
+            KnotMessage::Con(KnotPayload::Control(KnotControlMessage::ConfigApplied(_)))
         ));
-        hub.send(hub_message(KnotControlMessage::Ack(KnotAck::Processed {
+        hub.send(hub_message(KnotAck::Processed {
             event_id: applied.id,
-        })))
+        }))
         .await
         .unwrap();
         status
@@ -122,11 +124,11 @@ async fn saturated_link_still_receives_acks_and_keeps_config_after_closure() {
         for _ in 0..4 {
             handle
                 .try_publish_at(
-                    KnotMessage::Sensor(KnotSensorMessage::Measurements(
+                    KnotMessage::Con(KnotPayload::Sensor(KnotSensorMessage::Measurements(
                         KnotSensorMeasurementBatch {
                             measurements: vec![],
                         },
-                    )),
+                    ))),
                     acquired_at,
                 )
                 .unwrap();
@@ -138,11 +140,9 @@ async fn saturated_link_still_receives_acks_and_keeps_config_after_closure() {
             .unwrap();
         let first = hub.receive().await.unwrap().unwrap();
         // An awaited flush of the whole batch would deadlock on the third message.
-        hub.send(hub_message(KnotControlMessage::Ack(KnotAck::Processed {
-            event_id: first.id,
-        })))
-        .await
-        .unwrap();
+        hub.send(hub_message(KnotAck::Processed { event_id: first.id }))
+            .await
+            .unwrap();
         status
             .wait_for(|status| status.pending_messages == 3)
             .await
@@ -151,9 +151,9 @@ async fn saturated_link_still_receives_acks_and_keeps_config_after_closure() {
         for _ in 0..3 {
             let message = hub.receive().await.unwrap().unwrap();
             assert_eq!(message.occurred_at, acquired_at);
-            hub.send(hub_message(KnotControlMessage::Ack(KnotAck::Processed {
+            hub.send(hub_message(KnotAck::Processed {
                 event_id: message.id,
-            })))
+            }))
             .await
             .unwrap();
         }
@@ -164,13 +164,11 @@ async fn saturated_link_still_receives_acks_and_keeps_config_after_closure() {
         let probe = hub.receive().await.unwrap().unwrap();
         assert_eq!(
             probe.payload,
-            KnotMessage::Control(KnotControlMessage::Heartbeat)
+            KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Heartbeat))
         );
-        hub.send(hub_message(KnotControlMessage::Ack(KnotAck::Heartbeat {
-            event_id: probe.id,
-        })))
-        .await
-        .unwrap();
+        hub.send(hub_message(KnotAck::Processed { event_id: probe.id }))
+            .await
+            .unwrap();
         status
             .wait_for(|status| status.pending_messages == 0)
             .await
@@ -183,4 +181,79 @@ async fn saturated_link_still_receives_acks_and_keeps_config_after_closure() {
     })
     .await
     .expect("local session stalled");
+}
+
+#[tokio::test(start_paused = true)]
+async fn non_publication_progresses_with_a_full_reliable_outbox_and_application_queue() {
+    timeout(Duration::from_secs(3), async {
+        let (mut hub, knot) = local_tokio_message_link(1);
+        let session = TokioKnotSession::new(
+            TokioKnotRuntimeConfig {
+                hardware_uid: "best-effort-knot".into(),
+                capabilities: KnotCapabilities::default(),
+                retry_policy: RetryPolicy {
+                    capacity: 1,
+                    ..RetryPolicy::default()
+                },
+                keep_alive_config: KeepAliveConfig::default(),
+            },
+            knot,
+        );
+        let handle = session.handle();
+        let shutdown = CancellationToken::new();
+        let task = tokio::spawn(session.run(shutdown.clone()));
+        let hello = hub.receive().await.unwrap().unwrap();
+        hub.send(hub_message(KnotAck::Hello {
+            event_id: hello.id,
+            config: KnotConfig {
+                version: 1,
+                knot_id: [2; 16],
+                sensor_bindings: vec![],
+                actuator_configs: vec![],
+            },
+        }))
+        .await
+        .unwrap();
+        let applied = hub.receive().await.unwrap().unwrap();
+        assert!(applied.payload.requires_ack());
+        // Leave ConfigApplied unconfirmed, filling the only reliable slot.
+        let payload = KnotPayload::Sensor(KnotSensorMessage::Measurements(
+            KnotSensorMeasurementBatch {
+                measurements: vec![],
+            },
+        ));
+        handle
+            .try_publish_at(
+                KnotMessage::Con(payload.clone()),
+                Timestamp::from_unix_millis(1),
+            )
+            .unwrap();
+        assert!(matches!(
+            handle.try_publish_at(
+                KnotMessage::Con(payload.clone()),
+                Timestamp::from_unix_millis(2)
+            ),
+            Err(KnotPublishError::Full(_))
+        ));
+        handle
+            .try_publish_at(
+                KnotMessage::Non(payload.clone()),
+                Timestamp::from_unix_millis(3),
+            )
+            .unwrap();
+        let received = hub.receive().await.unwrap().unwrap();
+        assert_eq!(received.payload, KnotMessage::Non(payload));
+        assert_eq!(received.occurred_at, Timestamp::from_unix_millis(3));
+        let ack = KnotMessage::Ack(KnotAck::Processed {
+            event_id: applied.id,
+        });
+        assert!(
+            matches!(handle.try_publish_at(ack.clone(), Timestamp::from_unix_millis(4)),
+            Err(KnotPublishError::Unsupported(message)) if message == ack)
+        );
+        shutdown.cancel();
+        task.await.unwrap().unwrap();
+    })
+    .await
+    .expect("NON publication stalled behind the reliable queue");
 }

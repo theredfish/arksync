@@ -3,8 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use alloc::vec::Vec;
-use arksync_bus::EventId;
-use arksync_protocol::knot::{KnotEnvelope, KnotMessage, KnotNack};
+use arksync_event_router::EventId;
+use arksync_protocol::knot::{KnotEnvelope, KnotRejectionReason};
 
 pub const DEFAULT_OUTBOX_CAPACITY: usize = 256;
 pub const DEFAULT_INITIAL_RETRY_DELAY_MS: u64 = 1_000;
@@ -33,6 +33,7 @@ impl Default for RetryPolicy {
 pub enum KnotOutboxError {
     Full,
     DuplicateEventId,
+    NotConfirmable,
 }
 
 #[derive(Clone, Debug)]
@@ -59,6 +60,9 @@ impl KnotOutbox {
     }
 
     pub fn enqueue(&mut self, envelope: KnotEnvelope, now_ms: u64) -> Result<(), KnotOutboxError> {
+        if !envelope.payload.requires_ack() {
+            return Err(KnotOutboxError::NotConfirmable);
+        }
         if self
             .pending
             .iter()
@@ -121,6 +125,9 @@ impl KnotOutbox {
         envelope: KnotEnvelope,
         now_ms: u64,
     ) -> Result<(), KnotOutboxError> {
+        if !envelope.payload.requires_ack() {
+            return Err(KnotOutboxError::NotConfirmable);
+        }
         if self.pending.iter().any(|p| p.envelope.id == envelope.id) {
             return Err(KnotOutboxError::DuplicateEventId);
         }
@@ -143,25 +150,19 @@ impl KnotOutbox {
         self.pending.len() < self.policy.capacity
     }
 
-    pub fn contains_payload(&self, payload: &KnotMessage) -> bool {
-        self.pending
-            .iter()
-            .any(|pending| pending.envelope.payload == *payload)
-    }
-
     pub fn acknowledge(&mut self, event_id: EventId) -> bool {
         self.remove(event_id)
     }
 
-    pub fn reject(&mut self, nack: &KnotNack, now_ms: u64) -> bool {
-        if !nack.reason.is_retryable() {
-            return self.remove(nack.event_id);
+    pub fn reject(&mut self, event_id: EventId, reason: &KnotRejectionReason, now_ms: u64) -> bool {
+        if !reason.is_retryable() {
+            return self.remove(event_id);
         }
 
         let Some(pending) = self
             .pending
             .iter_mut()
-            .find(|pending| pending.envelope.id == nack.event_id)
+            .find(|pending| pending.envelope.id == event_id)
         else {
             return false;
         };

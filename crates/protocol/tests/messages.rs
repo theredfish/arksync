@@ -2,9 +2,9 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::EventId;
+use arksync_event_router::EventId;
 use arksync_protocol::knot::{
-    KnotAck, KnotControlMessage, KnotMessage, KnotNackReason, KnotSensorMeasurementBatch,
+    KnotAck, KnotMessage, KnotPayload, KnotRejectionReason, KnotSensorMeasurementBatch,
     KnotSensorMessage,
 };
 
@@ -12,20 +12,27 @@ use arksync_protocol::knot::{
 fn only_messages_that_expect_processing_are_acknowledged() {
     let event_id = EventId::from_bytes([1; 16]);
 
+    assert!(!KnotMessage::Ack(KnotAck::Processed { event_id }).requires_ack());
     assert!(
-        !KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id }))
-            .requires_ack()
+        !KnotMessage::Non(KnotPayload::Sensor(KnotSensorMessage::Measurements(
+            KnotSensorMeasurementBatch {
+                measurements: vec![]
+            }
+        )))
+        .requires_ack()
     );
-    assert!(KnotMessage::Sensor(KnotSensorMessage::Measurements(
-        KnotSensorMeasurementBatch {
-            measurements: vec![],
-        }
-    ))
-    .requires_ack());
+    assert!(
+        KnotMessage::Con(KnotPayload::Sensor(KnotSensorMessage::Measurements(
+            KnotSensorMeasurementBatch {
+                measurements: vec![],
+            }
+        )))
+        .requires_ack()
+    );
 }
 
 #[test]
-fn nack_reason_defines_retryability() {
-    assert!(KnotNackReason::TemporarilyUnavailable.is_retryable());
-    assert!(!KnotNackReason::ConfigurationConflict.is_retryable());
+fn rejection_reason_defines_retryability() {
+    assert!(KnotRejectionReason::TemporarilyUnavailable.is_retryable());
+    assert!(!KnotRejectionReason::ConfigurationConflict.is_retryable());
 }

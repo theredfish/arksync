@@ -13,7 +13,7 @@ use {
     alloc::string::String,
     arksync_actuator::application::protocol::{ActuatorConfig, ActuatorMessage, AddActuator},
     arksync_actuator::services::ActuatorService,
-    arksync_bus::{EventPublisher, Timestamp},
+    arksync_event_router::{EventPublisher, Timestamp},
 };
 
 /// Errors returned by the platform-agnostic Knot runtime command handler.

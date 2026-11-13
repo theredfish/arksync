@@ -4,7 +4,7 @@
 
 use crate::application::{default_measurement_interval_ms, HubService};
 use crate::domain::PluggedSensor;
-use arksync_bus::Timestamp;
+use arksync_event_router::Timestamp;
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::device_uid::DeviceUid;
 use arksync_sensor::infrastructure::events::MeasuredSensor;

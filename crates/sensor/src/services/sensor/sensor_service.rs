@@ -10,7 +10,7 @@ use crate::infrastructure::events::{
 use crate::sensor::Sensor;
 use crate::sensor::SensorConnection;
 use crate::services::sensor::{detect_unplugged_sensors, healthcheck};
-use arksync_bus::{EventEnvelope, EventPublisher, Timestamp};
+use arksync_event_router::{EventEnvelope, EventPublisher, Timestamp};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
@@ -283,8 +283,8 @@ impl<'bus> SensorService<'bus> {
     }
 }
 
-fn event_id_from_counter(counter: u128) -> arksync_bus::EventId {
-    arksync_bus::EventId::from_bytes(counter.to_be_bytes())
+fn event_id_from_counter(counter: u128) -> arksync_event_router::EventId {
+    arksync_event_router::EventId::from_bytes(counter.to_be_bytes())
 }
 
 fn timestamp_now() -> Timestamp {
@@ -296,14 +296,14 @@ fn timestamp_now() -> Timestamp {
     Timestamp::from_unix_millis(unix_millis)
 }
 
-fn sensor_event_id(serial_number: &str) -> arksync_bus::EventId {
+fn sensor_event_id(serial_number: &str) -> arksync_event_router::EventId {
     let mut bytes = [0; 16];
 
     for (index, byte) in serial_number.as_bytes().iter().take(16).enumerate() {
         bytes[index] = *byte;
     }
 
-    arksync_bus::EventId::from_bytes(bytes)
+    arksync_event_router::EventId::from_bytes(bytes)
 }
 
 #[cfg(test)]
@@ -366,11 +366,11 @@ mod tests {
     #[tokio::test]
     async fn emits_sensor_plugged_event_when_sensor_is_added() {
         let (event_tx, mut event_rx) = mpsc::channel(2);
-        let mut router = arksync_bus::EventRouter::new();
+        let mut router = arksync_event_router::EventRouter::new();
         router.subscribe(move |event: &EventEnvelope<SensorEvent>| {
             event_tx
                 .try_send(event.clone())
-                .map_err(|_| arksync_bus::EventHandlerError::Rejected)
+                .map_err(|_| arksync_event_router::EventHandlerError::Rejected)
         });
         let mut service = SensorService::new().with_event_publisher(router.publisher());
         let sensor = Arc::new(MockSensor::new("rtd-serial-1")) as Arc<dyn Sensor>;

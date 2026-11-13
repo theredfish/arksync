@@ -2,8 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::{EventHandler, EventId, EventRouter, Timestamp};
-use arksync_protocol::knot::{KnotConfig, KnotEnvelope, KnotMessage};
+use arksync_event_router::{EventHandler, EventId, EventRouter, Timestamp};
+use arksync_protocol::knot::{KnotConfig, KnotEnvelope, KnotMessage, KnotPayload};
 use arksync_protocol::ArkSyncActor;
 use tokio::sync::{mpsc, watch};
 use tokio::time::{Duration, Instant};
@@ -27,42 +27,72 @@ pub struct KnotSessionStatus {
 #[derive(Clone)]
 pub struct KnotSessionHandle {
     outgoing: mpsc::Sender<(Timestamp, KnotMessage)>,
+    non_confirmable: mpsc::Sender<(Timestamp, KnotMessage)>,
     status: watch::Receiver<KnotSessionStatus>,
 }
 
+/// Publishing failure retains ownership of the unsent application message.
+#[derive(Debug)]
+pub enum KnotPublishError {
+    Unsupported(KnotMessage),
+    Full(KnotMessage),
+    Closed(KnotMessage),
+}
+
+impl core::fmt::Display for KnotPublishError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(match self {
+            Self::Unsupported(_) => "message cannot be published by the application",
+            Self::Full(_) => "application message queue is full",
+            Self::Closed(_) => "protocol session is closed",
+        })
+    }
+}
+
+impl std::error::Error for KnotPublishError {}
+
 impl KnotSessionHandle {
+    fn sender(&self, message: &KnotMessage) -> Option<&mpsc::Sender<(Timestamp, KnotMessage)>> {
+        match message {
+            KnotMessage::Con(_) => Some(&self.outgoing),
+            KnotMessage::Non(KnotPayload::Sensor(_)) => Some(&self.non_confirmable),
+            _ => None,
+        }
+    }
+
     /// Queueing is local acceptance, not acknowledgement by the Hub.
     #[expect(
         clippy::result_large_err,
-        reason = "Return ownership of unsent messages so the caller can retry without cloning"
+        reason = "Return ownership of unsent messages"
     )]
-    pub async fn publish(
-        &self,
-        message: KnotMessage,
-    ) -> Result<(), mpsc::error::SendError<KnotMessage>> {
-        self.outgoing
+    pub async fn publish(&self, message: KnotMessage) -> Result<(), KnotPublishError> {
+        let Some(sender) = self.sender(&message) else {
+            return Err(KnotPublishError::Unsupported(message));
+        };
+        sender
             .send((timestamp_now(), message))
             .await
-            .map_err(|mpsc::error::SendError((_, message))| mpsc::error::SendError(message))
+            .map_err(|mpsc::error::SendError((_, message))| KnotPublishError::Closed(message))
     }
 
     #[expect(
         clippy::result_large_err,
-        reason = "Return ownership of unsent messages so the caller can retry without cloning"
+        reason = "Return ownership of unsent messages"
     )]
     pub fn try_publish_at(
         &self,
         message: KnotMessage,
         occurred_at: Timestamp,
-    ) -> Result<(), mpsc::error::TrySendError<KnotMessage>> {
-        self.outgoing
+    ) -> Result<(), KnotPublishError> {
+        let Some(sender) = self.sender(&message) else {
+            return Err(KnotPublishError::Unsupported(message));
+        };
+        sender
             .try_send((occurred_at, message))
             .map_err(|error| match error {
-                mpsc::error::TrySendError::Full((_, message)) => {
-                    mpsc::error::TrySendError::Full(message)
-                }
+                mpsc::error::TrySendError::Full((_, message)) => KnotPublishError::Full(message),
                 mpsc::error::TrySendError::Closed((_, message)) => {
-                    mpsc::error::TrySendError::Closed(message)
+                    KnotPublishError::Closed(message)
                 }
             })
     }
@@ -80,6 +110,7 @@ pub struct TokioKnotSession {
     runtime: KnotProtocolRuntime,
     link: TokioMessageLink<KnotEnvelope>,
     outgoing: mpsc::Receiver<(Timestamp, KnotMessage)>,
+    non_confirmable: mpsc::Receiver<(Timestamp, KnotMessage)>,
     handle: KnotSessionHandle,
     status: watch::Sender<KnotSessionStatus>,
     events: EventRouter<KnotMessage, ArkSyncActor>,
@@ -89,6 +120,7 @@ pub struct TokioKnotSession {
 impl TokioKnotSession {
     pub fn new(config: TokioKnotRuntimeConfig, link: TokioMessageLink<KnotEnvelope>) -> Self {
         let (outgoing, receiver) = mpsc::channel(config.retry_policy.capacity.max(1));
+        let (non_confirmable, non_receiver) = mpsc::channel(config.retry_policy.capacity.max(1));
         let (status, status_rx) = watch::channel(KnotSessionStatus {
             connection: ConnectionState::Connecting,
             config: None,
@@ -104,8 +136,10 @@ impl TokioKnotSession {
             .with_keep_alive_config(config.keep_alive_config),
             link,
             outgoing: receiver,
+            non_confirmable: non_receiver,
             handle: KnotSessionHandle {
                 outgoing,
+                non_confirmable,
                 status: status_rx,
             },
             status,
@@ -174,6 +208,9 @@ impl TokioKnotSession {
                     }
                 }
                 Some((occurred_at, message)) = self.outgoing.recv(), if self.runtime.can_publish() => {
+                    self.runtime.publish(message, EventId::new(), occurred_at, started_at.elapsed().as_millis() as u64)?;
+                }
+                Some((occurred_at, message)) = self.non_confirmable.recv(), if self.runtime.can_publish_non() => {
                     self.runtime.publish(message, EventId::new(), occurred_at, started_at.elapsed().as_millis() as u64)?;
                 }
                 _ = tick.tick() => {

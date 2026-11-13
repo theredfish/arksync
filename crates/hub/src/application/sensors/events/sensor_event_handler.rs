@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use crate::application::{HubError, HubService, SensorRegistry};
-use arksync_bus::Timestamp;
+use arksync_event_router::Timestamp;
 use arksync_knot::application::LegacyKnotActuatorMessage;
 use arksync_sensor::infrastructure::events::SensorEvent;
 use eyre::{eyre, Result};

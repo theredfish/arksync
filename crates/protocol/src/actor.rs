@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use alloc::string::String;
-use arksync_bus::EventEnvelope;
+use arksync_event_router::EventEnvelope;
 use serde::{Deserialize, Serialize};
 
 /// Actor that claims authorship of an ArkSync protocol message.

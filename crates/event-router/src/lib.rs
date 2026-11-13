@@ -12,15 +12,15 @@
 
 extern crate alloc;
 
-mod bus;
 mod event;
 mod ids;
 pub mod postcard;
+mod router;
 
-pub use bus::*;
 pub use event::*;
 pub use ids::*;
 pub use postcard::*;
+pub use router::*;
 
 #[cfg(test)]
 mod tests {

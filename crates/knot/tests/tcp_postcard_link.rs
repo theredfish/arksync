@@ -6,10 +6,11 @@
 
 use std::io;
 
-use arksync_bus::{EventEnvelope, EventId, Timestamp};
+use arksync_event_router::{EventEnvelope, EventId, Timestamp};
 use arksync_knot::application::MessageLink;
 use arksync_protocol::knot::{
-    KnotAck, KnotCapabilities, KnotConfig, KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
+    KnotAck, KnotCapabilities, KnotConfig, KnotControlMessage, KnotEnvelope, KnotHello,
+    KnotMessage, KnotPayload,
 };
 use arksync_protocol::{decode_frame, encode_frame, ArkSyncActor, ProtocolFrameError};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -90,7 +91,7 @@ fn hello(event_id: EventId) -> KnotEnvelope {
             hardware_uid: "knot-rpi-1".into(),
         },
         timestamp(1_780_000_000_000),
-        KnotMessage::Control(KnotControlMessage::Hello(KnotHello {
+        KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Hello(KnotHello {
             hardware_uid: "knot-rpi-1".into(),
             capabilities: KnotCapabilities {
                 gpio: true,
@@ -99,7 +100,7 @@ fn hello(event_id: EventId) -> KnotEnvelope {
                 atlas_scientific_ezo: true,
             },
             last_applied_config_version: None,
-        })),
+        }))),
     )
 }
 
@@ -108,7 +109,7 @@ fn hello_ack(event_id: EventId) -> KnotEnvelope {
         EventId::from_bytes([2; 16]),
         ArkSyncActor::Hub { hub_id: [3; 16] },
         timestamp(1_780_000_000_100),
-        KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Hello {
+        KnotMessage::Ack(KnotAck::Hello {
             event_id,
             config: KnotConfig {
                 version: 1,
@@ -116,7 +117,7 @@ fn hello_ack(event_id: EventId) -> KnotEnvelope {
                 sensor_bindings: vec![],
                 actuator_configs: vec![],
             },
-        })),
+        }),
     )
 }
 
@@ -155,7 +156,7 @@ async fn tcp_reconnect_retries_the_same_postcard_message() {
 
     assert!(matches!(
         ack.payload,
-        KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Hello { event_id, .. }))
+        KnotMessage::Ack(KnotAck::Hello { event_id, .. })
             if event_id == hello_id
     ));
     server.await.unwrap();

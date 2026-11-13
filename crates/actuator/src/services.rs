@@ -10,7 +10,7 @@ use crate::application::protocol::{
     ConfigApplied, ConfigRejected, RemoveActuator, RuntimeStatus,
 };
 use crate::rule_engine::{RuleEngine, SensorValue};
-use arksync_bus::{EventEnvelope, EventId, EventPublisher, Timestamp};
+use arksync_event_router::{EventEnvelope, EventId, EventPublisher, Timestamp};
 
 pub struct ActuatorService<'bus> {
     configs: Vec<ActuatorConfig>,

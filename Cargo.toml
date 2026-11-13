@@ -4,7 +4,7 @@ members = [
     "crates/cli",
     "crates/config",
     "crates/db",
-    "crates/bus",
+    "crates/event-router",
     "crates/hub",
     "crates/knot",
     "crates/protocol",
@@ -27,7 +27,7 @@ arksync-actuator = { path = "crates/actuator" }
 arksync-cli = { path = "crates/cli" }
 arksync-config = { path = "crates/config" }
 arksync-db = { path = "crates/db" }
-arksync-bus = { path = "crates/bus" }
+arksync-event-router = { path = "crates/event-router" }
 arksync-hub = { path = "crates/hub" }
 arksync-knot = { path = "crates/knot" }
 arksync-protocol = { path = "crates/protocol" }

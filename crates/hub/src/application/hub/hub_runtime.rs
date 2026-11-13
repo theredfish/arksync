@@ -4,12 +4,14 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use arksync_bus::{EventEnvelope, EventHandlerError, EventId, Timestamp};
+use arksync_event_router::{EventEnvelope, EventHandlerError, EventId, Timestamp};
 use arksync_knot::application::{
     local_tokio_message_link, KeepAliveConfig, RetryPolicy, TokioKnotRuntime,
     TokioKnotRuntimeConfig,
 };
-use arksync_protocol::knot::{KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotMessage};
+use arksync_protocol::knot::{
+    KnotCapabilities, KnotControlMessage, KnotEnvelope, KnotMessage, KnotPayload,
+};
 use arksync_protocol::ArkSyncActor;
 use arksync_sensor::infrastructure::events::SensorEvent;
 use eyre::{eyre, Result, WrapErr};
@@ -163,7 +165,7 @@ async fn maybe_configure_local_demo_actuator(
             hub_id: *CONFIG.local_hub_id.as_bytes(),
         },
         timestamp_now(),
-        KnotMessage::Control(KnotControlMessage::Configure(config)),
+        KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Configure(config))),
     );
     session
         .send(configure)

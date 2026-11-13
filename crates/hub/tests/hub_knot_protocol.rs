@@ -2,12 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::{EventEnvelope, EventId, Timestamp};
+use arksync_event_router::{EventEnvelope, EventId, Timestamp};
 use arksync_hub::infrastructure::store::knot as knot_store;
 use arksync_hub::{handle_knot_protocol_event, list_knots, setup_local_station, SensorRegistry};
 use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotConfigApplied, KnotConfigRejected, KnotControlMessage,
-    KnotEnvelope, KnotHello, KnotMeasurementUnit, KnotMessage, KnotNack, KnotNackReason,
+    KnotEnvelope, KnotHello, KnotMeasurementUnit, KnotMessage, KnotPayload, KnotRejectionReason,
     KnotSensorConnection, KnotSensorDescriptor, KnotSensorKind, KnotSensorMeasurement,
     KnotSensorMeasurementBatch, KnotSensorMessage, KnotSerialPort,
 };
@@ -17,14 +17,18 @@ fn timestamp(unix_millis: i64) -> Timestamp {
     Timestamp::from_unix_millis(unix_millis)
 }
 
-fn knot_event(event_id: EventId, hardware_uid: &str, message: KnotControlMessage) -> KnotEnvelope {
+fn knot_event(
+    event_id: EventId,
+    hardware_uid: &str,
+    message: impl Into<KnotMessage>,
+) -> KnotEnvelope {
     EventEnvelope::new_with_id(
         event_id,
         ArkSyncActor::Knot {
             hardware_uid: hardware_uid.to_string(),
         },
         timestamp(1_780_000_000_000),
-        KnotMessage::Control(message),
+        message.into(),
     )
 }
 
@@ -52,7 +56,7 @@ fn measurement(event_id: EventId, hardware_uid: &str) -> KnotEnvelope {
             hardware_uid: hardware_uid.to_string(),
         },
         timestamp(1_780_000_000_000),
-        KnotMessage::Sensor(KnotSensorMessage::Measurements(
+        KnotMessage::Con(KnotPayload::Sensor(KnotSensorMessage::Measurements(
             KnotSensorMeasurementBatch {
                 measurements: vec![KnotSensorMeasurement {
                     device_uid: "rkfTHk12L9ZCY39z".to_string(),
@@ -70,7 +74,7 @@ fn measurement(event_id: EventId, hardware_uid: &str) -> KnotEnvelope {
                     unit: KnotMeasurementUnit::Celsius,
                 }],
             },
-        )),
+        ))),
     )
 }
 
@@ -97,6 +101,14 @@ async fn duplicate_hello_registers_one_knot_and_returns_correlated_ack(
     .await?
     .response
     .expect("Hello must produce a response");
+    // Simulate a new session after the desired configuration has changed.
+    let knot = knot_store::station_knot_by_hardware_uid(&pool, hardware_uid)
+        .await
+        .map_err(|error| eyre::eyre!("{error:?}"))?;
+    knot_store::increment_station_knot_config_version(&pool, knot.id)
+        .await
+        .map_err(|error| eyre::eyre!("{error:?}"))?;
+    sensor_registry = SensorRegistry::load(&pool).await?;
     let duplicate = handle_knot_protocol_event(
         &pool,
         &event,
@@ -120,17 +132,21 @@ async fn duplicate_hello_registers_one_knot_and_returns_correlated_ack(
             .fetch_one(&pool)
             .await?;
 
-    let KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Hello {
+    assert_eq!(
+        first, duplicate,
+        "the exact original envelope must survive config changes and session restart"
+    );
+    let KnotMessage::Ack(KnotAck::Hello {
         event_id: first_ack_id,
         config: first_config,
-    })) = first.payload
+    }) = first.payload
     else {
         panic!("expected Hello ACK");
     };
-    let KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Hello {
+    let KnotMessage::Ack(KnotAck::Hello {
         event_id: duplicate_ack_id,
         config: duplicate_config,
-    })) = duplicate.payload
+    }) = duplicate.payload
     else {
         panic!("expected duplicate Hello ACK");
     };
@@ -201,7 +217,7 @@ async fn config_applied_updates_knot_state_once(pool: arksync_testing::PgPool) -
     assert_eq!(knot.applied_config_version, Some(1));
     assert!(matches!(
         response.payload,
-        KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id }))
+        KnotMessage::Ack(KnotAck::Processed { event_id })
             if event_id == applied_id
     ));
 
@@ -258,7 +274,7 @@ async fn config_rejected_records_the_reason_and_is_acknowledged(
     assert_eq!(knot.config_error.as_deref(), Some("GPIO 17 is unavailable"));
     assert!(matches!(
         response.payload,
-        KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { event_id }))
+        KnotMessage::Ack(KnotAck::Processed { event_id })
             if event_id == rejection_id
     ));
 
@@ -310,9 +326,7 @@ async fn duplicate_measurement_batch_has_one_durable_effect(
     assert_eq!(sensor_count, 1);
     assert!(matches!(
         duplicate.response.map(|response| response.payload),
-        Some(KnotMessage::Control(KnotControlMessage::Ack(
-            KnotAck::Processed { event_id }
-        ))) if event_id == measurement_id
+        Some(KnotMessage::Ack(KnotAck::Processed { event_id })) if event_id == measurement_id
     ));
 
     Ok(())
@@ -362,9 +376,9 @@ fn rejected(uid: &str, command: &KnotEnvelope, version: u64) -> KnotEnvelope {
 fn assert_processed(response: &KnotEnvelope, request: &KnotEnvelope) {
     assert_eq!(
         response.payload,
-        KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed {
+        KnotMessage::Ack(KnotAck::Processed {
             event_id: request.id
-        }))
+        })
     );
 }
 
@@ -412,10 +426,10 @@ async fn configuration_results_are_correlated_and_never_regress_state(
         let reply = process(&pool, &mut registry, &invalid).await?;
         assert_eq!(
             reply.payload,
-            KnotMessage::Control(KnotControlMessage::Nack(KnotNack {
+            KnotMessage::Ack(KnotAck::Rejected {
                 event_id: invalid.id,
-                reason: KnotNackReason::ConfigurationConflict,
-            }))
+                reason: KnotRejectionReason::ConfigurationConflict,
+            })
         );
         let receipts: i64 =
             sqlx::query_scalar("select count(*) from knot_message_receipts where event_id = $1")
@@ -512,7 +526,7 @@ async fn startup_preserves_configuration_version_and_application_state(
 }
 
 #[arksync_testing::test]
-async fn invalid_batch_gets_terminal_nack_and_rolls_back_every_effect(
+async fn invalid_batch_gets_terminal_rejection_and_rolls_back_every_effect(
     pool: arksync_testing::PgPool,
 ) -> eyre::Result<()> {
     let mut txn = pool.begin().await?;
@@ -520,7 +534,9 @@ async fn invalid_batch_gets_terminal_nack_and_rolls_back_every_effect(
     txn.commit().await?;
     let mut registry = SensorRegistry::load(&pool).await?;
     let mut event = measurement(EventId::new(), "arksync-local-knot");
-    let KnotMessage::Sensor(KnotSensorMessage::Measurements(batch)) = &mut event.payload else {
+    let KnotMessage::Con(KnotPayload::Sensor(KnotSensorMessage::Measurements(batch))) =
+        &mut event.payload
+    else {
         unreachable!()
     };
     let mut invalid = batch.measurements[0].clone();
@@ -529,10 +545,10 @@ async fn invalid_batch_gets_terminal_nack_and_rolls_back_every_effect(
     let reply = process(&pool, &mut registry, &event).await?;
     assert_eq!(
         reply.payload,
-        KnotMessage::Control(KnotControlMessage::Nack(KnotNack {
+        KnotMessage::Ack(KnotAck::Rejected {
             event_id: event.id,
-            reason: KnotNackReason::InvalidPayload,
-        }))
+            reason: KnotRejectionReason::InvalidPayload,
+        })
     );
     for query in [
         "select count(*) from sensors",
@@ -563,7 +579,230 @@ async fn invalid_batch_gets_terminal_nack_and_rolls_back_every_effect(
         )
         .await
         .is_err(),
-        "database failures must remain retryable rather than becoming terminal NACKs"
+        "database failures must remain retryable rather than becoming terminal rejections"
     );
+    Ok(())
+}
+
+#[arksync_testing::test]
+async fn concurrent_hello_duplicates_share_one_committed_reply(
+    pool: arksync_testing::PgPool,
+) -> eyre::Result<()> {
+    let mut txn = pool.begin().await?;
+    setup_local_station(&mut txn).await?;
+    txn.commit().await?;
+    let mut first_registry = SensorRegistry::load(&pool).await?;
+    let mut second_registry = SensorRegistry::load(&pool).await?;
+    let event = hello(EventId::new(), "concurrent-hello");
+    let (first, second) = tokio::join!(
+        handle_knot_protocol_event(
+            &pool,
+            &event,
+            EventId::new(),
+            timestamp(1),
+            timestamp(1),
+            &mut first_registry
+        ),
+        handle_knot_protocol_event(
+            &pool,
+            &event,
+            EventId::new(),
+            timestamp(2),
+            timestamp(2),
+            &mut second_registry
+        ),
+    );
+    assert_eq!(first?.response, second?.response);
+    let count: i64 =
+        sqlx::query_scalar("select count(*) from knot_message_receipts where event_id = $1")
+            .bind(event.id.uuid_v4())
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(count, 1);
+    Ok(())
+}
+
+#[arksync_testing::test]
+async fn non_ingestion_is_silent_and_deduplicated(
+    pool: arksync_testing::PgPool,
+) -> eyre::Result<()> {
+    let mut txn = pool.begin().await?;
+    setup_local_station(&mut txn).await?;
+    txn.commit().await?;
+    let mut registry = SensorRegistry::load(&pool).await?;
+    let mut event = measurement(EventId::new(), "arksync-local-knot");
+    event.payload = KnotMessage::Non(event.payload.payload().unwrap().clone());
+    let first = handle_knot_protocol_event(
+        &pool,
+        &event,
+        EventId::new(),
+        timestamp(1),
+        timestamp(1),
+        &mut registry,
+    )
+    .await?;
+    let duplicate = handle_knot_protocol_event(
+        &pool,
+        &event,
+        EventId::new(),
+        timestamp(2),
+        timestamp(2),
+        &mut registry,
+    )
+    .await?;
+    assert!(first.accepted);
+    assert!(duplicate.accepted);
+    assert!(first.response.is_none());
+    assert!(duplicate.response.is_none());
+    assert_eq!(first.sensor_events.len(), 1);
+    assert!(duplicate.sensor_events.is_empty());
+    let count: i64 =
+        sqlx::query_scalar("select count(*) from sensor_measurements where event_id = $1")
+            .bind(event.id.uuid_v4())
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(count, 1);
+    let mut invalid = hello(EventId::new(), "non-hello");
+    invalid.payload = KnotMessage::Non(invalid.payload.payload().unwrap().clone());
+    let result = handle_knot_protocol_event(
+        &pool,
+        &invalid,
+        EventId::new(),
+        timestamp(0),
+        timestamp(0),
+        &mut registry,
+    )
+    .await?;
+    assert!(!result.accepted);
+    assert!(result.response.is_none());
+    assert!(!list_knots(&pool)
+        .await?
+        .iter()
+        .any(|knot| knot.hardware_uid == "non-hello"));
+    Ok(())
+}
+
+#[arksync_testing::test]
+async fn conflicting_message_id_cannot_replay_an_unrelated_success(
+    pool: arksync_testing::PgPool,
+) -> eyre::Result<()> {
+    let mut txn = pool.begin().await?;
+    setup_local_station(&mut txn).await?;
+    txn.commit().await?;
+    let mut registry = SensorRegistry::load(&pool).await?;
+    let original = measurement(EventId::new(), "arksync-local-knot");
+    let first_reply = process(&pool, &mut registry, &original).await?;
+    let mut changed = original.clone();
+    let KnotMessage::Con(KnotPayload::Sensor(KnotSensorMessage::Measurements(batch))) =
+        &mut changed.payload
+    else {
+        unreachable!()
+    };
+    batch.measurements[0].value = 99.0;
+    for mut conflict in [changed, original.clone()] {
+        if conflict == original {
+            conflict.source = ArkSyncActor::Knot {
+                hardware_uid: "other-knot".into(),
+            };
+        }
+        assert_eq!(
+            process(&pool, &mut registry, &conflict).await?.payload,
+            KnotMessage::Ack(KnotAck::Rejected {
+                event_id: original.id,
+                reason: KnotRejectionReason::ConfigurationConflict
+            })
+        );
+    }
+    for invalid_number in [f64::NAN, f64::INFINITY] {
+        let mut invalid = original.clone();
+        let KnotMessage::Con(KnotPayload::Sensor(KnotSensorMessage::Measurements(batch))) =
+            &mut invalid.payload
+        else {
+            unreachable!()
+        };
+        batch.measurements[0].sensor.firmware = Some(invalid_number);
+        assert_eq!(
+            process(&pool, &mut registry, &invalid).await?.payload,
+            KnotMessage::Ack(KnotAck::Rejected {
+                event_id: original.id,
+                reason: KnotRejectionReason::InvalidPayload
+            })
+        );
+    }
+    assert_eq!(process(&pool, &mut registry, &original).await?, first_reply);
+    let value: f64 =
+        sqlx::query_scalar("select value from sensor_measurements where event_id = $1")
+            .bind(original.id.uuid_v4())
+            .fetch_one(&pool)
+            .await?;
+    assert_eq!(value, 28.8);
+    Ok(())
+}
+
+#[arksync_testing::test]
+async fn configure_ack_commits_its_result_without_producing_another_ack(
+    pool: arksync_testing::PgPool,
+) -> eyre::Result<()> {
+    let mut txn = pool.begin().await?;
+    setup_local_station(&mut txn).await?;
+    txn.commit().await?;
+    let mut registry = SensorRegistry::load(&pool).await?;
+    let uid = "piggyback-config";
+    let hello_ack = process(&pool, &mut registry, &hello(EventId::new(), uid)).await?;
+    let KnotMessage::Ack(KnotAck::Hello { config, .. }) = hello_ack.payload else {
+        unreachable!()
+    };
+    let command_id = EventId::new();
+    assert!(knot_store::insert_knot_config_delivery(&pool, command_id, &config).await?);
+    let mut event = knot_event(EventId::new(), uid, KnotControlMessage::Heartbeat);
+    event.payload = KnotMessage::Ack(KnotAck::ConfigApplied {
+        event_id: command_id,
+        config_version: config.version,
+    });
+    for _ in 0..2 {
+        let result = handle_knot_protocol_event(
+            &pool,
+            &event,
+            EventId::new(),
+            timestamp(0),
+            timestamp(0),
+            &mut registry,
+        )
+        .await?;
+        assert!(result.accepted);
+        assert_eq!(
+            result.acknowledged.as_ref(),
+            match &event.payload {
+                KnotMessage::Ack(ack) => Some(ack),
+                _ => None,
+            }
+        );
+        assert!(
+            result.response.is_none(),
+            "an ACK must never be acknowledged"
+        );
+    }
+    let record = knot_store::station_knot_by_hardware_uid(&pool, uid)
+        .await
+        .map_err(|error| eyre::eyre!("{error:?}"))?;
+    assert_eq!(record.applied_config_version, Some(1));
+    let mut invalid = event.clone();
+    invalid.id = EventId::new();
+    invalid.payload = KnotMessage::Ack(KnotAck::ConfigApplied {
+        event_id: command_id,
+        config_version: 999,
+    });
+    let result = handle_knot_protocol_event(
+        &pool,
+        &invalid,
+        EventId::new(),
+        timestamp(0),
+        timestamp(0),
+        &mut registry,
+    )
+    .await?;
+    assert!(!result.accepted);
+    assert!(result.acknowledged.is_none());
+    assert!(result.response.is_none());
     Ok(())
 }

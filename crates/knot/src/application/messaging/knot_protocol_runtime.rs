@@ -2,11 +2,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use alloc::{string::String, vec::Vec};
-use arksync_bus::{EventEnvelope, EventId, Timestamp};
+use alloc::{collections::VecDeque, string::String, vec::Vec};
+use arksync_event_router::{EventEnvelope, EventId, Timestamp};
 use arksync_protocol::knot::{
     KnotAck, KnotCapabilities, KnotConfig, KnotConfigApplied, KnotConfigRejected,
-    KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage,
+    KnotControlMessage, KnotEnvelope, KnotHello, KnotMessage, KnotPayload, KnotRejectionReason,
 };
 use arksync_protocol::ArkSyncActor;
 
@@ -37,6 +37,10 @@ pub struct KnotProtocolRuntime {
     capabilities: KnotCapabilities,
     config: Option<KnotConfig>,
     outbox: KnotOutbox,
+    acknowledgements: VecDeque<KnotEnvelope>,
+    non_confirmable: VecDeque<KnotEnvelope>,
+    queue_capacity: usize,
+    last_configuration: Option<(KnotEnvelope, KnotEnvelope)>,
     hello_id: Option<EventId>,
     hub_id: Option<[u8; 16]>,
     heartbeat: Option<(EventId, u64)>,
@@ -56,6 +60,10 @@ impl KnotProtocolRuntime {
             capabilities,
             config: None,
             outbox: KnotOutbox::new(retry_policy),
+            acknowledgements: VecDeque::new(),
+            non_confirmable: VecDeque::new(),
+            queue_capacity: retry_policy.capacity.max(1),
+            last_configuration: None,
             hello_id: None,
             hub_id: None,
             heartbeat: None,
@@ -79,11 +87,12 @@ impl KnotProtocolRuntime {
         let envelope = self.envelope(
             event_id,
             occurred_at,
-            KnotMessage::Control(KnotControlMessage::Hello(KnotHello {
+            KnotControlMessage::Hello(KnotHello {
                 hardware_uid: self.hardware_uid.clone(),
                 capabilities: self.capabilities,
                 last_applied_config_version: self.config.as_ref().map(|config| config.version),
-            })),
+            })
+            .into(),
         );
 
         self.outbox.enqueue(envelope, now_ms)?;
@@ -99,12 +108,24 @@ impl KnotProtocolRuntime {
         occurred_at: Timestamp,
         now_ms: u64,
     ) -> Result<(), KnotProtocolRuntimeError> {
-        if !message.requires_ack() {
-            return Err(KnotProtocolRuntimeError::UnexpectedMessage);
-        }
-
         let envelope = self.envelope(event_id, occurred_at, message);
-        self.outbox.enqueue(envelope, now_ms)?;
+        match &envelope.payload {
+            KnotMessage::Con(_) => self.outbox.enqueue(envelope, now_ms)?,
+            KnotMessage::Non(KnotPayload::Sensor(_)) => {
+                if self.non_confirmable.len() >= self.queue_capacity {
+                    return Err(KnotOutboxError::Full.into());
+                }
+                if self
+                    .non_confirmable
+                    .iter()
+                    .any(|pending| pending.id == event_id)
+                {
+                    return Err(KnotOutboxError::DuplicateEventId.into());
+                }
+                self.non_confirmable.push_back(envelope);
+            }
+            _ => return Err(KnotProtocolRuntimeError::UnexpectedMessage),
+        }
         Ok(())
     }
 
@@ -125,30 +146,27 @@ impl KnotProtocolRuntime {
             return Err(KnotProtocolRuntimeError::UnexpectedSource);
         }
 
-        let KnotMessage::Control(message) = &envelope.payload else {
-            return Err(KnotProtocolRuntimeError::UnexpectedMessage);
-        };
-
-        match message {
-            KnotControlMessage::Ack(KnotAck::Processed { event_id }) => {
-                if self.hello_id == Some(*event_id)
-                    || self.heartbeat.is_some_and(|(id, _)| id == *event_id)
-                {
+        match &envelope.payload {
+            KnotMessage::Ack(KnotAck::Processed { event_id }) => {
+                if self.hello_id == Some(*event_id) {
                     return Err(KnotProtocolRuntimeError::UnexpectedMessage);
                 }
                 if self.outbox.acknowledge(*event_id) {
+                    if self.heartbeat.is_some_and(|(id, _)| id == *event_id) {
+                        self.heartbeat = None;
+                    }
                     self.presence.observe(now_ms);
                 }
             }
-            KnotControlMessage::Ack(KnotAck::Hello { event_id, config }) => {
+            KnotMessage::Ack(KnotAck::Hello { event_id, config }) => {
                 if self.hello_id == Some(*event_id) {
-                    self.apply_config(
+                    self.apply_hello_config(
                         config.clone(),
                         envelope.id,
                         response_event_id,
                         occurred_at,
                         now_ms,
-                        Some(*event_id),
+                        *event_id,
                     )?;
                     self.hello_id = None;
                     self.hub_id = Some(hub_id);
@@ -156,35 +174,79 @@ impl KnotProtocolRuntime {
                     self.presence.observe(now_ms);
                 }
             }
-            KnotControlMessage::Ack(KnotAck::Heartbeat { event_id }) => {
-                if self.heartbeat.is_some_and(|(id, _)| id == *event_id)
-                    && self.outbox.acknowledge(*event_id)
-                {
-                    self.heartbeat = None;
-                    self.presence.observe(now_ms);
-                }
+            KnotMessage::Ack(KnotAck::Rejected { event_id, reason }) => {
+                self.outbox.reject(*event_id, reason, now_ms);
             }
-            KnotControlMessage::Configure(config) => {
-                self.apply_config(
-                    config.clone(),
-                    envelope.id,
+            KnotMessage::Ack(_) => return Err(KnotProtocolRuntimeError::UnexpectedMessage),
+            KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Configure(config))) => {
+                if let Some((request, reply)) = &self.last_configuration {
+                    if request.id == envelope.id {
+                        if request == envelope {
+                            self.queue_ack(reply.clone())?;
+                            self.presence.observe(now_ms);
+                        } else {
+                            let reply = self.envelope(
+                                response_event_id,
+                                occurred_at,
+                                KnotAck::Rejected {
+                                    event_id: envelope.id,
+                                    reason: KnotRejectionReason::ConfigurationConflict,
+                                }
+                                .into(),
+                            );
+                            self.queue_ack(reply)?;
+                            return Err(KnotProtocolRuntimeError::UnexpectedMessage);
+                        }
+                        return Ok(());
+                    }
+                }
+                let rejection = self.config_rejection(config);
+                let ack = match rejection {
+                    Some(reason) => KnotAck::ConfigRejected {
+                        event_id: envelope.id,
+                        config_version: config.version,
+                        reason: reason.into(),
+                    },
+                    None => KnotAck::ConfigApplied {
+                        event_id: envelope.id,
+                        config_version: config.version,
+                    },
+                };
+                let reply = self.envelope(response_event_id, occurred_at, ack.into());
+                self.queue_ack(reply.clone())?;
+                if rejection.is_none() {
+                    self.config = Some(config.clone());
+                }
+                self.last_configuration = Some((envelope.clone(), reply));
+                self.hub_id = Some(hub_id);
+                self.presence.observe(now_ms);
+            }
+            KnotMessage::Con(_) => {
+                let reply = self.envelope(
                     response_event_id,
                     occurred_at,
-                    now_ms,
-                    None,
-                )?;
+                    KnotAck::Rejected {
+                        event_id: envelope.id,
+                        reason: KnotRejectionReason::UnsupportedMessage,
+                    }
+                    .into(),
+                );
+                self.queue_ack(reply)?;
+                return Err(KnotProtocolRuntimeError::UnexpectedMessage);
             }
-            KnotControlMessage::Nack(nack) => {
-                self.outbox.reject(nack, now_ms);
-            }
-            _ => return Err(KnotProtocolRuntimeError::UnexpectedMessage),
+            KnotMessage::Non(_) => return Err(KnotProtocolRuntimeError::UnexpectedMessage),
         }
-
         Ok(())
     }
 
+    /// Convenience for runners that treat every returned envelope as successfully sent.
     pub fn due_messages(&mut self, now_ms: u64) -> Vec<KnotEnvelope> {
-        self.outbox.due_messages(now_ms)
+        let mut messages: Vec<_> = self.acknowledgements.drain(..).collect();
+        messages.extend(self.outbox.due_messages(now_ms));
+        if self.hub_id.is_some() {
+            messages.extend(self.non_confirmable.drain(..));
+        }
+        messages
     }
 
     pub fn config(&self) -> Option<&KnotConfig> {
@@ -223,7 +285,7 @@ impl KnotProtocolRuntime {
             && self.outbox.has_capacity()
         {
             self.publish(
-                KnotMessage::Control(KnotControlMessage::Heartbeat),
+                KnotControlMessage::Heartbeat.into(),
                 event_id,
                 occurred_at,
                 now_ms,
@@ -235,49 +297,89 @@ impl KnotProtocolRuntime {
     }
 
     pub fn next_due_message(&self, now_ms: u64) -> Option<&KnotEnvelope> {
-        self.outbox.next_due_message(now_ms)
+        self.acknowledgements
+            .front()
+            .or_else(|| self.outbox.next_due_message(now_ms))
+            .or_else(|| self.hub_id.and_then(|_| self.non_confirmable.front()))
     }
 
     pub fn mark_sent(&mut self, event_id: EventId, now_ms: u64) {
-        self.outbox.mark_sent(event_id, now_ms);
+        if self
+            .acknowledgements
+            .front()
+            .is_some_and(|event| event.id == event_id)
+        {
+            self.acknowledgements.pop_front();
+        } else if self
+            .non_confirmable
+            .front()
+            .is_some_and(|event| event.id == event_id)
+        {
+            self.non_confirmable.pop_front();
+        } else {
+            self.outbox.mark_sent(event_id, now_ms);
+        }
     }
 
     pub fn can_publish(&self) -> bool {
         self.outbox.has_capacity()
     }
 
+    pub fn can_publish_non(&self) -> bool {
+        self.non_confirmable.len() < self.queue_capacity
+    }
+
     pub fn pending_message_count(&self) -> usize {
-        self.outbox.len()
+        self.outbox.len() + self.acknowledgements.len() + self.non_confirmable.len()
     }
 
     pub fn outbox_overflow_count(&self) -> u64 {
         self.outbox.overflow_count()
     }
 
-    fn apply_config(
-        &mut self,
-        config: KnotConfig,
-        config_event_id: EventId,
-        event_id: EventId,
-        occurred_at: Timestamp,
-        now_ms: u64,
-        replaces: Option<EventId>,
-    ) -> Result<(), KnotProtocolRuntimeError> {
-        let rejection = if config.version == 0 {
+    fn queue_ack(&mut self, reply: KnotEnvelope) -> Result<(), KnotProtocolRuntimeError> {
+        if self
+            .acknowledgements
+            .iter()
+            .any(|pending| pending == &reply)
+        {
+            return Ok(());
+        }
+        if self.acknowledgements.len() >= self.queue_capacity {
+            return Err(KnotOutboxError::Full.into());
+        }
+        self.acknowledgements.push_back(reply);
+        Ok(())
+    }
+
+    fn config_rejection(&self, config: &KnotConfig) -> Option<&'static str> {
+        if config.version == 0 {
             Some("Knot config version must be positive")
         } else if let Some(current) = &self.config {
             if current.knot_id != config.knot_id {
                 Some("Knot config cannot change the assigned Knot identity")
             } else if current.version > config.version {
                 Some("received stale Knot config version")
-            } else if current.version == config.version && current != &config {
+            } else if current.version == config.version && current != config {
                 Some("Knot config changed without a new version")
             } else {
                 None
             }
         } else {
             None
-        };
+        }
+    }
+
+    fn apply_hello_config(
+        &mut self,
+        config: KnotConfig,
+        config_event_id: EventId,
+        event_id: EventId,
+        occurred_at: Timestamp,
+        now_ms: u64,
+        request_id: EventId,
+    ) -> Result<(), KnotProtocolRuntimeError> {
+        let rejection = self.config_rejection(&config);
         let message = if let Some(reason) = rejection {
             KnotControlMessage::ConfigRejected(KnotConfigRejected {
                 event_id: config_event_id,
@@ -292,17 +394,9 @@ impl KnotProtocolRuntime {
             })
         };
 
-        let payload = KnotMessage::Control(message);
-        // Retransmitting a command must not consume another confirmation slot.
-        if replaces.is_none() && self.outbox.contains_payload(&payload) {
-            return Ok(());
-        }
-        let envelope = self.envelope(event_id, occurred_at, payload);
-        if let Some(request_id) = replaces {
-            self.outbox.replace(request_id, envelope, now_ms)?;
-        } else {
-            self.outbox.enqueue(envelope, now_ms)?;
-        }
+        let envelope = self.envelope(event_id, occurred_at, message.into());
+        // Reserve the reliable follow-up before retiring the Hello carrying its configuration.
+        self.outbox.replace(request_id, envelope, now_ms)?;
         if rejection.is_none() {
             self.config = Some(config);
         }

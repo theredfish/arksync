@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use arksync_bus::{EventEnvelope, EventHandlerError, EventId, EventRouter, Timestamp};
+use arksync_event_router::{EventEnvelope, EventHandlerError, EventId, EventRouter, Timestamp};
 use arksync_hub::{
     HubSensorEventEnvelope, HubService, RegisterSensor, RemoveSensor, RenameSensor, SensorId,
     SensorRegistrationStatus,

@@ -7,7 +7,7 @@ use crate::application::{
     record_sensor_measurement, HubService, SensorMeasurementInput, SensorRegistry,
 };
 use crate::config::CONFIG;
-use arksync_bus::Timestamp;
+use arksync_event_router::Timestamp;
 use arksync_knot::application::LegacyKnotActuatorMessage;
 use arksync_knot::domain::KnotEventSource;
 use arksync_sensor::infrastructure::events::SensorMeasurementRecorded;

@@ -162,8 +162,8 @@ name = "arksync"
 version = "0.1.0"
 dependencies = [
  "arksync-actuator",
- "arksync-bus",
  "arksync-db",
+ "arksync-event-router",
  "arksync-hub",
  "chrono",
  "eyre",
@@ -182,24 +182,10 @@ dependencies = [
 name = "arksync-actuator"
 version = "0.1.0"
 dependencies = [
- "arksync-bus",
+ "arksync-event-router",
  "gpiocdev",
  "log",
  "serde",
-]
-
-[[package]]
-name = "arksync-bus"
-version = "0.1.0"
-dependencies = [
- "arksync-macros",
- "arksync-sensor",
- "arksync-utils",
- "critical-section",
- "embassy-sync",
- "postcard",
- "serde",
- "tokio",
 ]
 
 [[package]]
@@ -228,13 +214,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "arksync-event-router"
+version = "0.1.0"
+dependencies = [
+ "arksync-macros",
+ "arksync-sensor",
+ "arksync-utils",
+ "critical-section",
+ "embassy-sync",
+ "postcard",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "arksync-hub"
 version = "0.1.0"
 dependencies = [
  "arksync-actuator",
- "arksync-bus",
  "arksync-config",
  "arksync-db",
+ "arksync-event-router",
  "arksync-knot",
  "arksync-macros",
  "arksync-protocol",
@@ -256,7 +256,7 @@ name = "arksync-knot"
 version = "0.1.0"
 dependencies = [
  "arksync-actuator",
- "arksync-bus",
+ "arksync-event-router",
  "arksync-macros",
  "arksync-protocol",
  "arksync-sensor",
@@ -283,8 +283,8 @@ dependencies = [
 name = "arksync-protocol"
 version = "0.1.0"
 dependencies = [
- "arksync-bus",
  "arksync-config",
+ "arksync-event-router",
  "postcard",
  "serde",
 ]
@@ -293,7 +293,7 @@ dependencies = [
 name = "arksync-sensor"
 version = "0.1.0"
 dependencies = [
- "arksync-bus",
+ "arksync-event-router",
  "chrono",
  "critical-section",
  "eyre",

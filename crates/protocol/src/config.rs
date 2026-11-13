@@ -5,7 +5,7 @@
 use arksync_config::ConfigHandler;
 
 const FRAME_MAGIC: [u8; 3] = *b"ARK";
-const PROTOCOL_VERSION: u8 = 1;
+const PROTOCOL_VERSION: u8 = 2;
 const SUPPORTED_VERSIONS: &[u8] = &[PROTOCOL_VERSION];
 
 pub static CONFIG: ConfigHandler<Config> = ConfigHandler::new(mpl);

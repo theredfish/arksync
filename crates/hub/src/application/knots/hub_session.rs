@@ -5,13 +5,13 @@
 use std::collections::VecDeque;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use arksync_bus::{EventHandler, EventId, EventRouter, Timestamp};
+use arksync_event_router::{EventHandler, EventId, EventRouter, Timestamp};
 use arksync_knot::application::{
     ConnectionState, KeepAliveConfig, KnotOutbox, MessageLink, PeerPresence, RetryPolicy,
     TokioMessageLink,
 };
 use arksync_knot::domain::KnotEventSource;
-use arksync_protocol::knot::{KnotAck, KnotControlMessage, KnotEnvelope, KnotMessage};
+use arksync_protocol::knot::{KnotAck, KnotControlMessage, KnotEnvelope, KnotMessage, KnotPayload};
 use arksync_protocol::ArkSyncActor;
 use arksync_sensor::infrastructure::events::SensorEvent;
 use eyre::Result;
@@ -20,7 +20,7 @@ use tokio::sync::{mpsc, watch};
 use tokio::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
-use crate::application::{handle_knot_protocol_event, SensorRegistry};
+use crate::application::{handle_knot_protocol_event, KnotProtocolEventResult, SensorRegistry};
 use crate::config::CONFIG;
 use crate::infrastructure::store::knot::insert_knot_config_delivery;
 
@@ -47,7 +47,9 @@ impl HubSessionHandle {
     /// Register and queue a Configure command for retransmission until confirmed.
     /// Success accepts it locally; it does not confirm application by the Knot.
     pub async fn send(&self, message: KnotEnvelope) -> Result<()> {
-        let KnotMessage::Control(KnotControlMessage::Configure(config)) = &message.payload else {
+        let KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Configure(config))) =
+            &message.payload
+        else {
             return Err(eyre::eyre!(
                 "Hub session commands must be Configure messages"
             ));
@@ -163,7 +165,8 @@ impl HubSession {
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut pending = VecDeque::new();
         let mut configurations = KnotOutbox::new(RetryPolicy {
-            capacity: PENDING_RESPONSE_CAPACITY,
+            // One active command lets the Knot retain one exact reply for its retries.
+            capacity: 1,
             ..RetryPolicy::default()
         });
 
@@ -200,15 +203,18 @@ impl HubSession {
                 _ = shutdown.cancelled() => return,
                 incoming = self.link.receive(), if pending.len() < PENDING_RESPONSE_CAPACITY => {
                     let Ok(Some(message)) = incoming else { return; };
-                    if let Some(response) = self.process_message(&message, started_at, &shutdown, &mut tick).await {
-                        if matches!(response.payload, KnotMessage::Control(KnotControlMessage::Ack(KnotAck::Processed { .. }))) {
-                            match &message.payload {
-                                KnotMessage::Control(KnotControlMessage::ConfigApplied(result)) => { configurations.acknowledge(result.event_id); }
-                                KnotMessage::Control(KnotControlMessage::ConfigRejected(result)) => { configurations.acknowledge(result.event_id); }
-                                _ => {}
+                    if let Some(result) = self.process_message(&message, started_at, &shutdown, &mut tick).await {
+                        if let Some(ack) = result.acknowledged {
+                            match ack {
+                                KnotAck::Rejected { event_id, reason } => {
+                                    configurations.reject(event_id, &reason, started_at.elapsed().as_millis() as u64);
+                                }
+                                _ => { configurations.acknowledge(ack.event_id()); }
                             }
                         }
-                        pending.push_back(response);
+                        if let Some(response) = result.response {
+                            pending.push_back(response);
+                        }
                     }
                 }
                 Some(message) = self.outgoing.recv(), if configurations.has_capacity() => {
@@ -230,7 +236,7 @@ impl HubSession {
         started_at: Instant,
         shutdown: &CancellationToken,
         tick: &mut tokio::time::Interval,
-    ) -> Option<KnotEnvelope> {
+    ) -> Option<KnotProtocolEventResult> {
         if !self.accepts_source(message) {
             log::warn!(
                 "Hub ignored message {} outside the established Knot session",
@@ -278,17 +284,17 @@ impl HubSession {
                 return None;
             }
         };
-        if let Some(KnotMessage::Control(KnotControlMessage::Ack(ack))) =
-            result.response.as_ref().map(|r| &r.payload)
-        {
-            if let KnotAck::Hello { config, .. } = ack {
-                let ArkSyncActor::Knot { hardware_uid } = &message.source else {
-                    unreachable!()
-                };
-                self.status.send_modify(|status| {
-                    status.hardware_uid = Some(hardware_uid.clone());
-                    status.knot_id = Some(config.knot_id);
-                });
+        if result.accepted {
+            if let Some(KnotMessage::Ack(ack)) = result.response.as_ref().map(|r| &r.payload) {
+                if let KnotAck::Hello { config, .. } = ack {
+                    let ArkSyncActor::Knot { hardware_uid } = &message.source else {
+                        unreachable!()
+                    };
+                    self.status.send_modify(|status| {
+                        status.hardware_uid = Some(hardware_uid.clone());
+                        status.knot_id = Some(config.knot_id);
+                    });
+                }
             }
             self.presence.observe(received_at_ms);
             self.presence.expire(
@@ -302,12 +308,12 @@ impl HubSession {
                 log::warn!("Hub session observer rejected message {}", message.id);
             }
         }
-        for event in result.sensor_events {
-            if self.sensor_events.publish(&event).rejected > 0 {
+        for event in &result.sensor_events {
+            if self.sensor_events.publish(event).rejected > 0 {
                 log::warn!("Hub sensor observer rejected message {}", event.id);
             }
         }
-        result.response
+        Some(result)
     }
 
     fn accepts_source(&self, message: &KnotEnvelope) -> bool {
@@ -317,7 +323,7 @@ impl HubSession {
         match &self.status.borrow().hardware_uid {
             Some(expected) => expected == hardware_uid,
             None => {
-                matches!(&message.payload, KnotMessage::Control(KnotControlMessage::Hello(hello)) if hello.hardware_uid == *hardware_uid)
+                matches!(&message.payload, KnotMessage::Con(KnotPayload::Control(KnotControlMessage::Hello(hello))) if hello.hardware_uid == *hardware_uid)
             }
         }
     }

@@ -1,5 +1,5 @@
 [package]
-name = "arksync-bus"
+name = "arksync-event-router"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

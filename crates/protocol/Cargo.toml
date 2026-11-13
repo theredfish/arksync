@@ -8,7 +8,7 @@ license.workspace = true
 default = []
 
 [dependencies]
-arksync-bus.workspace = true
+arksync-event-router.workspace = true
 arksync-config.workspace = true
 postcard = { version = "1", default-features = false }
 serde = { workspace = true, features = ["alloc"] }

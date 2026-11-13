@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use arksync_actuator::application::protocol::ActuatorMessage;
-use arksync_bus::EventEnvelope;
+use arksync_event_router::EventEnvelope;
 use serde::{Deserialize, Serialize};
 
 use crate::application::LegacyKnotActuatorConfig;

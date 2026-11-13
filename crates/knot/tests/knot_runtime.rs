@@ -11,7 +11,7 @@ use {
         ActuatorBackend, ActuatorConfig, ActuatorConnection, ActuatorDescriptor, ActuatorKind,
         ActuatorProtocol, GpioActuatorConnection,
     },
-    arksync_bus::Timestamp,
+    arksync_event_router::Timestamp,
     arksync_knot::application::{
         LegacyKnotActuatorConfig, LegacyKnotActuatorMessage, LegacyKnotSensorBinding,
     },

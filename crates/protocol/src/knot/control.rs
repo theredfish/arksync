@@ -3,28 +3,20 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use alloc::string::String;
-use arksync_bus::EventId;
+use arksync_event_router::EventId;
 use serde::{Deserialize, Serialize};
 
 use super::KnotConfig;
 
-/// Control-plane messages used for handshake, configuration, and delivery acknowledgement.
+/// Control-plane payloads used for handshake, configuration, and presence.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnotControlMessage {
     Hello(KnotHello),
-    Ack(KnotAck),
-    Nack(KnotNack),
     ConfigApplied(KnotConfigApplied),
     ConfigRejected(KnotConfigRejected),
     Configure(KnotConfig),
     /// Presence probe. Its acknowledgement is correlated but not persisted.
     Heartbeat,
-}
-
-impl KnotControlMessage {
-    pub fn requires_ack(&self) -> bool {
-        !matches!(self, Self::Ack(_) | Self::Nack(_))
-    }
 }
 
 /// Hardware interfaces supported by a Knot runtime.
@@ -44,7 +36,7 @@ pub struct KnotHello {
     pub last_applied_config_version: Option<u64>,
 }
 
-/// Positive acknowledgement correlated to the processed message's [`EventId`].
+/// Processing acknowledgement, with an optional business result, correlated to the processed message's [`EventId`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnotAck {
     Processed {
@@ -54,8 +46,18 @@ pub enum KnotAck {
         event_id: EventId,
         config: KnotConfig,
     },
-    Heartbeat {
+    ConfigApplied {
         event_id: EventId,
+        config_version: u64,
+    },
+    ConfigRejected {
+        event_id: EventId,
+        config_version: u64,
+        reason: String,
+    },
+    Rejected {
+        event_id: EventId,
+        reason: KnotRejectionReason,
     },
 }
 
@@ -64,28 +66,23 @@ impl KnotAck {
         match self {
             Self::Processed { event_id }
             | Self::Hello { event_id, .. }
-            | Self::Heartbeat { event_id } => *event_id,
+            | Self::ConfigApplied { event_id, .. }
+            | Self::ConfigRejected { event_id, .. }
+            | Self::Rejected { event_id, .. } => *event_id,
         }
     }
 }
 
-/// Negative acknowledgement correlated to the rejected message's [`EventId`].
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct KnotNack {
-    pub event_id: EventId,
-    pub reason: KnotNackReason,
-}
-
 /// Stable reason that determines whether a rejected message can be retried unchanged.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum KnotNackReason {
+pub enum KnotRejectionReason {
     InvalidPayload,
     UnsupportedMessage,
     ConfigurationConflict,
     TemporarilyUnavailable,
 }
 
-impl KnotNackReason {
+impl KnotRejectionReason {
     pub fn is_retryable(&self) -> bool {
         matches!(self, Self::TemporarilyUnavailable)
     }
