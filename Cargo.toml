@@ -15,6 +15,7 @@ members = [
     "crates/utils",
     "src-tauri"
 ]
+default-members = ["src-tauri"]
 resolver = "2"
 
 [workspace.package]
